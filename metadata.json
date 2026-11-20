@@ -1,0 +1,6 @@
+{
+  "name": "Domain Tech Hub — Atrium Office 3D",
+  "description": "Photorealistic 3D architectural walkthrough of Domain Tech Hub in Nairobi with sculpted characters, interior departments, dynamic daylight, and first-person exploration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
