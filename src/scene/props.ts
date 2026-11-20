@@ -112,33 +112,76 @@ export function downlight(
   y: number,
   z: number,
   M: MaterialLibrary,
-  r = 0.17
+  r = 0.14
 ): THREE.Mesh {
-  // Architectural recessed trim ring + warm diffuser lens
-  const trim = new THREE.Mesh(new THREE.RingGeometry(r * 0.92, r * 1.24, 18), M.metal);
+  // Architectural recessed baffle collar + brushed aluminum outer trim + optical lens
+  const baffle = new THREE.Mesh(
+    new THREE.CylinderGeometry(r * 0.9, r * 0.88, 0.07, 18, 1, true),
+    M.dark
+  );
+  baffle.position.set(x, y + 0.032, z);
+  parent.add(baffle);
+
+  const trim = new THREE.Mesh(new THREE.RingGeometry(r * 0.88, r * 1.28, 20), M.metal);
   trim.rotation.x = Math.PI / 2;
-  trim.position.set(x, y + 0.002, z);
+  trim.position.set(x, y - 0.002, z);
   parent.add(trim);
 
-  const m = new THREE.Mesh(new THREE.CircleGeometry(r * 0.92, 16), M.lamp);
+  const m = new THREE.Mesh(new THREE.CircleGeometry(r * 0.86, 18), M.lamp);
   m.rotation.x = Math.PI / 2;
-  m.position.set(x, y, z);
+  m.position.set(x, y + 0.006, z);
   parent.add(m);
-
-  const s = new THREE.Sprite(
-    new THREE.SpriteMaterial({
-      map: M.textures.glowTex,
-      color: 0xffedd2,
-      transparent: true,
-      opacity: 0.18,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    })
-  );
-  s.scale.set(0.95, 0.95, 1);
-  s.position.set(x, y - 0.12, z);
-  parent.add(s);
   return m;
+}
+
+const LINEAR_DIFFUSER_MAT = new THREE.MeshStandardMaterial({
+  color: 0xf4efe5,
+  emissive: 0xffe8c4,
+  emissiveIntensity: 0.42,
+  roughness: 0.6,
+  metalness: 0.0,
+});
+
+export function ceilingLinearLight(
+  parent: THREE.Object3D,
+  x: number,
+  y: number,
+  z: number,
+  len: number,
+  width: number,
+  M: MaterialLibrary
+) {
+  // Recessed anodized aluminum architectural linear channel + warm satin acrylic diffuser
+  boxAt(parent, len, 0.055, width, x, y + 0.01, z, M.dark, false, false, 0.006);
+  const lens = new THREE.Mesh(new THREE.PlaneGeometry(len - 0.06, width - 0.045), LINEAR_DIFFUSER_MAT);
+  lens.rotation.x = Math.PI / 2;
+  lens.position.set(x, y - 0.019, z);
+  parent.add(lens);
+}
+
+export function hvacDiffuser(
+  parent: THREE.Object3D,
+  x: number,
+  y: number,
+  z: number,
+  M: MaterialLibrary,
+  r = 0.24
+) {
+  // Circular multi-cone architectural ceiling supply air diffuser
+  const outer = new THREE.Mesh(new THREE.RingGeometry(r * 0.62, r, 24), M.white);
+  outer.rotation.x = Math.PI / 2;
+  outer.position.set(x, y - 0.002, z);
+  parent.add(outer);
+
+  const gap = new THREE.Mesh(new THREE.RingGeometry(r * 0.38, r * 0.62, 24), M.dark);
+  gap.rotation.x = Math.PI / 2;
+  gap.position.set(x, y + 0.003, z);
+  parent.add(gap);
+
+  const core = new THREE.Mesh(new THREE.CircleGeometry(r * 0.38, 20), M.white);
+  core.rotation.x = Math.PI / 2;
+  core.position.set(x, y - 0.004, z);
+  parent.add(core);
 }
 
 /* =========================================================
@@ -206,8 +249,23 @@ const SPECIES: Record<string, SpeciesProfile> = {
 const SPECIES_KEYS = Object.keys(SPECIES);
 
 const SOIL_MAT = new THREE.MeshStandardMaterial({ color: 0x382b1e, roughness: 1 });
+const PEBBLE_MAT = new THREE.MeshStandardMaterial({ color: 0x6c6860, roughness: 0.88 });
 const STEM_MAT = new THREE.MeshStandardMaterial({ color: 0x46682f, roughness: 0.85 });
-const LEAF_CARD_GEO = new THREE.PlaneGeometry(1, 1);
+const LEAF_CARD_GEO = (() => {
+  // Arched botanical leaf card with slight V-fold midrib curvature
+  const g = new THREE.PlaneGeometry(1, 1, 2, 5);
+  const pos = g.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const lx = pos.getX(i);
+    const ly = pos.getY(i);
+    const t = 0.5 - ly; // 0 at tip/top, 1 at base
+    const arch = -0.14 * (ly * ly) + 0.06 * (1 - t);
+    const vfold = Math.abs(lx) * 0.08;
+    pos.setZ(i, arch + vfold);
+  }
+  g.computeVertexNormals();
+  return g;
+})();
 
 function makeSculptedPotGeo(potR: number, potH: number, taper: number): THREE.LatheGeometry {
   const b = potR * taper;
@@ -252,6 +310,11 @@ export function plant(
   g.add(potMesh);
 
   cylAt(g, potR * 0.88, potR * 0.88, 0.02, 0, potH * 0.89, 0, SOIL_MAT, false, false, 16);
+  const pebbleRing = new THREE.Mesh(new THREE.TorusGeometry(potR * 0.72, potR * 0.08, 6, 16), PEBBLE_MAT);
+  pebbleRing.rotation.x = Math.PI / 2;
+  pebbleRing.scale.set(1, 1, 0.45);
+  pebbleRing.position.set(0, potH * 0.905, 0);
+  g.add(pebbleRing);
 
   const leafMats = sp.greens.map((c) => getLeafMat(sp.leaf, c));
   const stems: Array<{ sg: THREE.Group; hh: number; a: number; i: number; len: number }> = [];
@@ -431,12 +494,14 @@ export function tree(
 }
 
 /* =========================================================
-   SCULPTED FURNITURE (NO BOXES!)
+   SCULPTED ARCHITECTURAL FURNITURE & WORKSTATION HARDWARE
    ========================================================= */
 let armchairSeatGeo: THREE.BufferGeometry | null = null;
+let armchairCrownGeo: THREE.BufferGeometry | null = null;
 let armchairBackGeo: THREE.BufferGeometry | null = null;
 let armchairArmGeo: THREE.BufferGeometry | null = null;
 let sofaSeatGeo: THREE.BufferGeometry | null = null;
+let sofaCrownGeo: THREE.BufferGeometry | null = null;
 let sofaBackGeo: THREE.BufferGeometry | null = null;
 let pillowGeo: THREE.BufferGeometry | null = null;
 let officeSeatGeo: THREE.BufferGeometry | null = null;
@@ -444,26 +509,47 @@ let officeBackGeo: THREE.BufferGeometry | null = null;
 
 function initFurnitureGeos() {
   if (armchairSeatGeo) return;
-  armchairSeatGeo = getRoundedBox(1.06, 0.22, 0.96, 0.09, 4);
-  armchairBackGeo = getRoundedBox(1.24, 0.58, 0.22, 0.09, 4);
-  armchairArmGeo = getRoundedBox(0.2, 0.4, 1.12, 0.08, 4);
-  sofaSeatGeo = getRoundedBox(1.28, 0.22, 0.96, 0.09, 4);
-  sofaBackGeo = getRoundedBox(2.86, 0.62, 0.24, 0.1, 4);
+  armchairSeatGeo = getRoundedBox(1.04, 0.19, 0.94, 0.085, 4);
+  armchairCrownGeo = getRoundedBox(0.96, 0.06, 0.86, 0.03, 3);
+  armchairBackGeo = getRoundedBox(1.22, 0.56, 0.21, 0.09, 4);
+  armchairArmGeo = getRoundedBox(0.18, 0.38, 1.1, 0.08, 4);
+  sofaSeatGeo = getRoundedBox(1.26, 0.19, 0.94, 0.085, 4);
+  sofaCrownGeo = getRoundedBox(1.18, 0.06, 0.86, 0.03, 3);
+  sofaBackGeo = getRoundedBox(2.84, 0.6, 0.22, 0.095, 4);
   pillowGeo = getRoundedBox(0.42, 0.36, 0.14, 0.06, 3);
-  officeSeatGeo = getRoundedBox(0.54, 0.09, 0.52, 0.04, 3);
 
-  // Curved ergonomic mesh backrest
-  const backCurve = new THREE.Shape();
-  backCurve.moveTo(-0.25, 0);
-  backCurve.quadraticCurveTo(-0.27, 0.32, -0.22, 0.58);
-  backCurve.quadraticCurveTo(0, 0.64, 0.22, 0.58);
-  backCurve.quadraticCurveTo(0.27, 0.32, 0.25, 0);
-  backCurve.quadraticCurveTo(0, -0.03, -0.25, 0);
-  officeBackGeo = new THREE.ExtrudeGeometry(backCurve, {
-    depth: 0.04,
+  // Waterfall ergonomic office seat pan (extruded side profile -> contoured front lip)
+  const seatProf = new THREE.Shape();
+  seatProf.moveTo(-0.24, -0.01);
+  seatProf.quadraticCurveTo(-0.26, 0.055, -0.18, 0.068);
+  seatProf.quadraticCurveTo(0.02, 0.048, 0.21, 0.056);
+  seatProf.quadraticCurveTo(0.27, 0.052, 0.275, 0.0);
+  seatProf.quadraticCurveTo(0.26, -0.025, 0.21, -0.022);
+  seatProf.lineTo(-0.22, -0.022);
+  seatProf.closePath();
+  officeSeatGeo = new THREE.ExtrudeGeometry(seatProf, {
+    depth: 0.48,
     bevelEnabled: true,
-    bevelThickness: 0.015,
-    bevelSize: 0.015,
+    bevelThickness: 0.024,
+    bevelSize: 0.02,
+    bevelSegments: 3,
+    curveSegments: 10,
+  });
+  officeSeatGeo.translate(0, 0, -0.24);
+  officeSeatGeo.rotateY(Math.PI / 2);
+
+  // Curved ergonomic lumbar backrest hoop
+  const backCurve = new THREE.Shape();
+  backCurve.moveTo(-0.24, 0);
+  backCurve.quadraticCurveTo(-0.26, 0.31, -0.21, 0.57);
+  backCurve.quadraticCurveTo(0, 0.63, 0.21, 0.57);
+  backCurve.quadraticCurveTo(0.26, 0.31, 0.24, 0);
+  backCurve.quadraticCurveTo(0, -0.03, -0.24, 0);
+  officeBackGeo = new THREE.ExtrudeGeometry(backCurve, {
+    depth: 0.032,
+    bevelEnabled: true,
+    bevelThickness: 0.014,
+    bevelSize: 0.014,
     bevelSegments: 2,
   });
 }
@@ -482,45 +568,56 @@ export function armchair(
   g.position.set(x, y, z);
   g.rotation.y = rot || 0;
 
-  // Timber/metal base plinth
-  const base = new THREE.Mesh(getRoundedBox(1.26, 0.1, 1.08, 0.04, 2), M.walnut);
-  base.position.set(0, 0.26, 0);
+  // Recessed shadow reveal + chamfered walnut plinth
+  const base = new THREE.Mesh(getRoundedBox(1.24, 0.085, 1.06, 0.035, 2), M.walnut);
+  base.position.set(0, 0.255, 0);
   base.castShadow = true;
   base.receiveShadow = true;
   g.add(base);
 
-  // Plush cushion, curved back, rounded arms, angled pillow
+  const reveal = new THREE.Mesh(getRoundedBox(1.16, 0.03, 0.98, 0.01, 1), M.dark);
+  reveal.position.set(0, 0.305, 0);
+  g.add(reveal);
+
+  // Two-layer crowned seat cushion + angled backrest + armrests
   const seat = new THREE.Mesh(armchairSeatGeo!, mat);
-  seat.position.set(0, 0.39, 0.03);
+  seat.position.set(0, 0.4, 0.03);
   seat.castShadow = true;
   seat.receiveShadow = true;
   g.add(seat);
 
+  const crown = new THREE.Mesh(armchairCrownGeo!, mat);
+  crown.position.set(0, 0.48, 0.03);
+  g.add(crown);
+
   const back = new THREE.Mesh(armchairBackGeo!, mat);
-  back.position.set(0, 0.64, -0.46);
-  back.rotation.x = -0.1;
+  back.position.set(0, 0.65, -0.45);
+  back.rotation.x = -0.12;
   back.castShadow = true;
   back.receiveShadow = true;
   g.add(back);
 
   [-1, 1].forEach((s) => {
     const arm = new THREE.Mesh(armchairArmGeo!, mat);
-    arm.position.set(s * 0.56, 0.48, 0);
+    arm.position.set(s * 0.55, 0.48, 0);
     arm.castShadow = true;
     arm.receiveShadow = true;
     g.add(arm);
   });
 
-  // Splayed cylindrical tapered legs
+  // Splayed walnut legs with brass ferrules
   [
-    [-0.52, 0.42, -0.08, 0.08],
-    [0.52, 0.42, 0.08, 0.08],
-    [-0.52, -0.42, -0.08, -0.08],
-    [0.52, -0.42, 0.08, -0.08],
+    [-0.51, 0.41, -0.08, 0.08],
+    [0.51, 0.41, 0.08, 0.08],
+    [-0.51, -0.41, -0.08, -0.08],
+    [0.51, -0.41, 0.08, -0.08],
   ].forEach(([lx, lz, rz, rx]) => {
-    const leg = cylAt(g, 0.032, 0.02, 0.24, lx, 0.12, lz, M.metal, false, false, 10);
+    const leg = cylAt(g, 0.03, 0.018, 0.23, lx, 0.115, lz, M.walnut, false, false, 10);
     leg.rotation.z = rz;
     leg.rotation.x = rx;
+    const tip = cylAt(g, 0.02, 0.018, 0.045, lx * 1.03, 0.022, lz * 1.03, M.brass, false, false, 10);
+    tip.rotation.z = rz;
+    tip.rotation.x = rx;
   });
 
   parent.add(g);
@@ -541,23 +638,30 @@ export function sofaWide(
   g.position.set(x, y, z);
   g.rotation.y = rot || 0;
 
-  const base = new THREE.Mesh(getRoundedBox(2.84, 0.1, 1.08, 0.04, 2), M.walnut);
-  base.position.set(0, 0.26, 0);
+  const base = new THREE.Mesh(getRoundedBox(2.82, 0.085, 1.06, 0.035, 2), M.walnut);
+  base.position.set(0, 0.255, 0);
   base.castShadow = true;
   base.receiveShadow = true;
   g.add(base);
 
-  [-0.66, 0.66].forEach((cx) => {
+  const reveal = new THREE.Mesh(getRoundedBox(2.72, 0.03, 0.98, 0.01, 1), M.dark);
+  reveal.position.set(0, 0.305, 0);
+  g.add(reveal);
+
+  [-0.65, 0.65].forEach((cx) => {
     const c = new THREE.Mesh(sofaSeatGeo!, mat);
-    c.position.set(cx, 0.39, 0.03);
+    c.position.set(cx, 0.4, 0.03);
     c.castShadow = true;
     c.receiveShadow = true;
     g.add(c);
+    const cr = new THREE.Mesh(sofaCrownGeo!, mat);
+    cr.position.set(cx, 0.48, 0.03);
+    g.add(cr);
   });
 
   const back = new THREE.Mesh(sofaBackGeo!, mat);
-  back.position.set(0, 0.64, -0.46);
-  back.rotation.x = -0.1;
+  back.position.set(0, 0.65, -0.45);
+  back.rotation.x = -0.12;
   back.castShadow = true;
   back.receiveShadow = true;
   g.add(back);
@@ -570,8 +674,8 @@ export function sofaWide(
     g.add(arm);
 
     const pil = new THREE.Mesh(pillowGeo!, M.fabricGrey);
-    pil.position.set(s * 1.04, 0.6, -0.18);
-    pil.rotation.set(-0.24, s * 0.32, s * 0.12);
+    pil.position.set(s * 1.04, 0.6, -0.17);
+    pil.rotation.set(-0.26, s * 0.32, s * 0.12);
     pil.castShadow = true;
     g.add(pil);
   });
@@ -582,7 +686,8 @@ export function sofaWide(
     [-1.24, -0.42],
     [1.24, -0.42],
   ].forEach(([lx, lz]) => {
-    cylAt(g, 0.035, 0.022, 0.24, lx, 0.12, lz, M.metal, false, false, 10);
+    cylAt(g, 0.032, 0.02, 0.23, lx, 0.115, lz, M.walnut, false, false, 10);
+    cylAt(g, 0.021, 0.019, 0.045, lx, 0.022, lz, M.brass, false, false, 10);
   });
 
   parent.add(g);
@@ -602,73 +707,106 @@ export function officeChair(
   g.position.set(x, y, z);
   g.rotation.y = rot || 0;
 
+  // Waterfall ergonomic seat cushion + under-seat synchronous tilt hub + paddle lever
   const seat = new THREE.Mesh(officeSeatGeo!, M.leatherMat);
-  seat.position.set(0, 0.49, 0);
+  seat.position.set(0, 0.445, 0.01);
   seat.castShadow = true;
   seat.receiveShadow = true;
   g.add(seat);
 
-  const back = new THREE.Mesh(officeBackGeo!, M.fabricGrey);
-  back.position.set(0, 0.54, -0.26);
-  back.rotation.x = -0.09;
+  const hub = new THREE.Mesh(getRoundedBox(0.24, 0.055, 0.26, 0.018, 2), M.dark);
+  hub.position.set(0, 0.4, -0.02);
+  g.add(hub);
+
+  const lever = new THREE.Mesh(getRoundedBox(0.14, 0.014, 0.032, 0.005, 1), M.dark);
+  lever.position.set(0.17, 0.395, 0.03);
+  g.add(lever);
+
+  // Curved breathable mesh backrest + adjustable lumbar strap
+  const back = new THREE.Mesh(officeBackGeo!, M.meshFabric);
+  back.position.set(0, 0.515, -0.25);
+  back.rotation.x = -0.1;
   back.castShadow = true;
   back.receiveShadow = true;
   g.add(back);
 
-  // Curved spine + armrests
+  const lumbar = new THREE.Mesh(getRoundedBox(0.44, 0.075, 0.045, 0.02, 2), M.dark);
+  lumbar.position.set(0, 0.655, -0.27);
+  lumbar.rotation.x = -0.1;
+  g.add(lumbar);
+
+  // Brushed aluminum rear spine yoke
   const spine = new THREE.Mesh(
     new THREE.TubeGeometry(
       new THREE.CatmullRomCurve3([
-        new THREE.Vector3(0, 0.44, -0.04),
-        new THREE.Vector3(0, 0.46, -0.24),
-        new THREE.Vector3(0, 0.72, -0.28),
+        new THREE.Vector3(0, 0.405, -0.04),
+        new THREE.Vector3(0, 0.425, -0.24),
+        new THREE.Vector3(0, 0.715, -0.285),
       ]),
-      8,
-      0.024,
+      10,
+      0.022,
       8,
       false
     ),
-    M.black
+    M.metal
   );
   g.add(spine);
 
+  // T-post vertical armrests with soft-touch polyurethane arm pads
   [-1, 1].forEach((s) => {
-    const arm = new THREE.Mesh(
+    const post = new THREE.Mesh(
       new THREE.TubeGeometry(
         new THREE.CatmullRomCurve3([
-          new THREE.Vector3(s * 0.25, 0.46, -0.06),
-          new THREE.Vector3(s * 0.28, 0.62, -0.08),
-          new THREE.Vector3(s * 0.28, 0.63, 0.12),
+          new THREE.Vector3(s * 0.2, 0.4, -0.04),
+          new THREE.Vector3(s * 0.275, 0.425, -0.04),
+          new THREE.Vector3(s * 0.285, 0.61, -0.03),
         ]),
         8,
-        0.02,
-        7,
+        0.017,
+        8,
         false
       ),
-      M.black
+      M.metal
     );
-    g.add(arm);
+    g.add(post);
+
+    const pad = new THREE.Mesh(getRoundedBox(0.088, 0.028, 0.24, 0.012, 2), M.dark);
+    pad.position.set(s * 0.285, 0.62, 0.025);
+    pad.castShadow = true;
+    g.add(pad);
   });
 
-  cylAt(g, 0.03, 0.036, 0.34, 0, 0.3, 0, M.metal, false, false, 12);
+  // Pneumatic gas cylinder + die-cast brushed aluminum 5-star base + dual-wheel casters
+  cylAt(g, 0.028, 0.034, 0.28, 0, 0.26, 0, M.chrome, false, false, 12);
+  cylAt(g, 0.048, 0.056, 0.06, 0, 0.13, 0, M.metal, false, false, 14);
 
-  // 5-star splayed base + caster wheels
   for (let k = 0; k < 5; k++) {
     const a = (k * Math.PI * 2) / 5 + 0.3;
-    const cx = Math.cos(a) * 0.27;
-    const cz = Math.sin(a) * 0.27;
+    const cx = Math.cos(a) * 0.28;
+    const cz = Math.sin(a) * 0.28;
     const leg = new THREE.Mesh(
       new THREE.TubeGeometry(
-        new THREE.CatmullRomCurve3([new THREE.Vector3(0, 0.13, 0), new THREE.Vector3(cx, 0.06, cz)]),
-        3,
-        0.018,
+        new THREE.CatmullRomCurve3([
+          new THREE.Vector3(Math.cos(a) * 0.03, 0.135, Math.sin(a) * 0.03),
+          new THREE.Vector3(cx * 0.55, 0.105, cz * 0.55),
+          new THREE.Vector3(cx, 0.056, cz),
+        ]),
+        6,
+        0.017,
         6,
         false
       ),
       M.metal
     );
     g.add(leg);
-    cylAt(g, 0.024, 0.024, 0.03, cx, 0.026, cz, M.black, false, false, 8);
+    // Hooded twin-wheel caster
+    const wheelA = cylAt(g, 0.025, 0.025, 0.012, cx - Math.sin(a) * 0.011, 0.025, cz + Math.cos(a) * 0.011, M.black, false, false, 10);
+    wheelA.rotation.z = Math.PI / 2;
+    wheelA.rotation.y = a;
+    const wheelB = cylAt(g, 0.025, 0.025, 0.012, cx + Math.sin(a) * 0.011, 0.025, cz - Math.cos(a) * 0.011, M.black, false, false, 10);
+    wheelB.rotation.z = Math.PI / 2;
+    wheelB.rotation.y = a;
+    cylAt(g, 0.014, 0.018, 0.032, cx, 0.042, cz, M.dark, false, false, 8);
   }
 
   parent.add(g);
@@ -676,18 +814,24 @@ export function officeChair(
 }
 
 let mugGeo: THREE.LatheGeometry | null = null;
+let mugHandleGeo: THREE.TorusGeometry | null = null;
 function getMugGeo(): THREE.LatheGeometry {
   if (mugGeo) return mugGeo;
   const pts = [
     new THREE.Vector2(0.001, 0),
-    new THREE.Vector2(0.036, 0),
-    new THREE.Vector2(0.04, 0.085),
-    new THREE.Vector2(0.036, 0.09),
-    new THREE.Vector2(0.033, 0.015),
+    new THREE.Vector2(0.035, 0),
+    new THREE.Vector2(0.039, 0.082),
+    new THREE.Vector2(0.035, 0.088),
+    new THREE.Vector2(0.032, 0.015),
     new THREE.Vector2(0.001, 0.015),
   ];
-  mugGeo = new THREE.LatheGeometry(pts, 14);
+  mugGeo = new THREE.LatheGeometry(pts, 16);
   return mugGeo;
+}
+function getMugHandleGeo(): THREE.TorusGeometry {
+  if (mugHandleGeo) return mugHandleGeo;
+  mugHandleGeo = new THREE.TorusGeometry(0.024, 0.0055, 8, 14, Math.PI);
+  return mugHandleGeo;
 }
 
 export function monitor(
@@ -704,16 +848,22 @@ export function monitor(
   g.position.set(x, y, z);
   g.rotation.y = rotY || 0;
 
-  // Brushed metal sculpted Y-stand
-  const base = new THREE.Mesh(getRoundedBox(0.26, 0.018, 0.16, 0.008, 2), M.metal);
-  base.position.set(0, 0.009, 0);
+  // IMPORTANT: Preserve child indices [2] = bezel and [3] = screen for monitor raycasting & live canvas sync
+  // 0: Brushed aluminum sculpted foot plate
+  const base = new THREE.Mesh(getRoundedBox(0.24, 0.014, 0.16, 0.007, 2), M.metal);
+  base.position.set(0, 0.007, -0.01);
   g.add(base);
 
+  // 1: Swept brushed aluminum neck
   const neck = new THREE.Mesh(
     new THREE.TubeGeometry(
-      new THREE.CatmullRomCurve3([new THREE.Vector3(0, 0.01, -0.02), new THREE.Vector3(0, 0.18, -0.03), new THREE.Vector3(0, 0.34, 0)]),
-      6,
-      0.022,
+      new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0, 0.01, -0.04),
+        new THREE.Vector3(0, 0.18, -0.05),
+        new THREE.Vector3(0, 0.34, -0.012),
+      ]),
+      8,
+      0.018,
       8,
       false
     ),
@@ -721,33 +871,73 @@ export function monitor(
   );
   g.add(neck);
 
-  // Slim beveled display housing
-  const bezel = new THREE.Mesh(getRoundedBox(0.76, 0.45, 0.036, 0.014, 2), M.black);
+  // 2: Ultra-slim CNC anodized display chassis
+  const bezel = new THREE.Mesh(getRoundedBox(0.76, 0.445, 0.02, 0.01, 2), M.dark);
   bezel.position.set(0, 0.36, 0);
   bezel.castShadow = true;
   g.add(bezel);
 
-  const sc = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.39), smat || (warm ? M.screenWarm : M.screen));
-  sc.position.set(0, 0.36, 0.019);
+  // 3: Live edge-to-edge display panel
+  const sc = new THREE.Mesh(new THREE.PlaneGeometry(0.724, 0.408), smat || (warm ? M.screenWarm : M.screen));
+  sc.position.set(0, 0.36, 0.011);
   g.add(sc);
 
-  // Keyboard, wireless mouse, and ceramic coffee mug on the desk surface
-  const kb = new THREE.Mesh(getRoundedBox(0.38, 0.014, 0.13, 0.006, 2), M.dark);
-  kb.position.set(-0.04, 0.007, 0.22);
-  g.add(kb);
+  // 4+: Rear VESA aluminum hub + felt desk mat + mechanical keyboard + mouse + mug + notebook
+  const vesa = new THREE.Mesh(getRoundedBox(0.11, 0.11, 0.018, 0.008, 2), M.metal);
+  vesa.position.set(0, 0.35, -0.015);
+  g.add(vesa);
 
-  const mouse = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), M.dark);
-  mouse.scale.set(0.75, 0.42, 1.2);
-  mouse.position.set(0.24, 0.012, 0.22);
+  const deskMat = new THREE.Mesh(getRoundedBox(0.84, 0.005, 0.34, 0.002, 1), M.acousticFelt);
+  deskMat.position.set(0.02, 0.0025, 0.21);
+  deskMat.receiveShadow = true;
+  g.add(deskMat);
+
+  const kbBase = new THREE.Mesh(getRoundedBox(0.37, 0.012, 0.128, 0.005, 2), M.metal);
+  kbBase.position.set(-0.04, 0.011, 0.22);
+  kbBase.rotation.x = 0.06;
+  g.add(kbBase);
+
+  const kbKeys = new THREE.Mesh(new THREE.PlaneGeometry(0.352, 0.114), M.kbMat);
+  kbKeys.rotation.x = -Math.PI / 2 + 0.06;
+  kbKeys.position.set(-0.04, 0.0175, 0.22);
+  g.add(kbKeys);
+
+  const mouse = new THREE.Mesh(new THREE.SphereGeometry(0.034, 12, 8), M.dark);
+  mouse.scale.set(0.74, 0.4, 1.24);
+  mouse.position.set(0.24, 0.015, 0.22);
   g.add(mouse);
 
+  const scrollWheel = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.012, 8), M.metal);
+  scrollWheel.rotation.z = Math.PI / 2;
+  scrollWheel.position.set(0.24, 0.026, 0.245);
+  g.add(scrollWheel);
+
   const mug = new THREE.Mesh(getMugGeo(), M.ceramicMat);
-  mug.position.set(-0.34, 0, 0.18);
+  mug.position.set(-0.35, 0.004, 0.18);
   g.add(mug);
+
+  const handle = new THREE.Mesh(getMugHandleGeo(), M.ceramicMat);
+  handle.rotation.z = -Math.PI / 2;
+  handle.position.set(-0.312, 0.046, 0.18);
+  g.add(handle);
+
+  const notebook = new THREE.Mesh(getRoundedBox(0.16, 0.012, 0.21, 0.004, 1), M.leatherMat);
+  notebook.position.set(-0.29, 0.009, 0.32);
+  notebook.rotation.y = 0.14;
+  g.add(notebook);
 
   parent.add(g);
   return g;
 }
+
+const BOOK_PALETTE = [
+  new THREE.MeshStandardMaterial({ color: 0x8e3a32, roughness: 0.85 }),
+  new THREE.MeshStandardMaterial({ color: 0x2c4b6e, roughness: 0.85 }),
+  new THREE.MeshStandardMaterial({ color: 0x3b634b, roughness: 0.85 }),
+  new THREE.MeshStandardMaterial({ color: 0xb68b44, roughness: 0.85 }),
+  new THREE.MeshStandardMaterial({ color: 0xd8d1c4, roughness: 0.88 }),
+  new THREE.MeshStandardMaterial({ color: 0x2c3036, roughness: 0.86 }),
+];
 
 export function shelfUnit(
   parent: THREE.Object3D,
@@ -760,30 +950,80 @@ export function shelfUnit(
   const g = new THREE.Group();
   g.position.set(x, y, z);
 
-  // Beveled walnut cabinet + ceramic vase on top shelf
-  const body = new THREE.Mesh(getRoundedBox(w, 2.35, 0.36, 0.025, 2), M.walnut);
-  body.position.set(0, 1.175, 0);
-  body.castShadow = true;
-  body.receiveShadow = true;
-  g.add(body);
+  const H = 2.34;
+  const D = 0.36;
+  const wallT = 0.028;
+  const lowerH = 0.72;
 
-  const face = new THREE.Mesh(
-    new THREE.PlaneGeometry(w - 0.08, 2.26),
-    new THREE.MeshStandardMaterial({ map: M.textures.shelfTex, roughness: 0.84, metalness: 0.02 })
-  );
-  face.position.set(0, 1.175, 0.182);
-  g.add(face);
+  // Recessed shadow-gap toe-kick plinth
+  boxAt(g, w - 0.04, 0.08, D - 0.06, 0, 0.04, -0.02, M.dark, false, true);
 
-  // Sculpted ceramic vase on top
+  // Back charcoal acoustic/veneer panel
+  boxAt(g, w - wallT * 2, H - 0.08, 0.022, 0, 0.08 + (H - 0.08) / 2, -D / 2 + 0.014, M.dark, false, true);
+
+  // Left, right & top mitered walnut gables
+  boxAt(g, wallT, H - 0.08, D, -w / 2 + wallT / 2, 0.08 + (H - 0.08) / 2, 0, M.walnut, true, true, 0.008);
+  boxAt(g, wallT, H - 0.08, D, w / 2 - wallT / 2, 0.08 + (H - 0.08) / 2, 0, M.walnut, true, true, 0.008);
+  boxAt(g, w, wallT, D, 0, H - wallT / 2, 0, M.walnut, true, true, 0.008);
+
+  // Lower closed credenza cabinetry with crisp door reveal seams & vertical brass pulls
+  boxAt(g, w - wallT * 2, lowerH, D - 0.03, 0, 0.08 + lowerH / 2, -0.01, M.walnut, true, true, 0.01);
+  const doors = w >= 1.4 ? 3 : 2;
+  const doorW = (w - wallT * 2 - 0.01 * (doors + 1)) / doors;
+  for (let d = 0; d < doors; d++) {
+    const dx = -(w - wallT * 2) / 2 + 0.01 + doorW / 2 + d * (doorW + 0.01);
+    boxAt(g, doorW, lowerH - 0.03, 0.02, dx, 0.08 + lowerH / 2, D / 2 - 0.008, M.walnut, false, true, 0.006);
+    boxAt(g, 0.012, 0.14, 0.016, dx + (d % 2 === 0 ? doorW * 0.34 : -doorW * 0.34), 0.08 + lowerH * 0.72, D / 2 + 0.01, M.brass, false, false, 0.004);
+  }
+
+  // Open upper shelves (3 shelves above credenza) with real 3D books, archival boxes & ceramics
+  const shelfYs = [0.08 + lowerH, 1.24, 1.68, 2.08];
+  const innerW = w - wallT * 2;
+  shelfYs.forEach((sy, si) => {
+    boxAt(g, innerW, 0.026, D - 0.025, 0, sy, 0, M.walnut, true, true, 0.005);
+    if (si >= 3) return;
+
+    const baseObjY = sy + 0.013;
+    if (si === 0) {
+      // Lower open shelf: neat row of varied hardcover books + archival box
+      let bx = -innerW / 2 + 0.05;
+      let bi = 0;
+      while (bx < innerW * 0.24) {
+        const bt = 0.028 + ((bi * 17) % 14) * 0.0014;
+        const bh = 0.23 + ((bi * 29) % 10) * 0.008;
+        boxAt(g, bt, bh, 0.21, bx + bt / 2, baseObjY + bh / 2, 0.02, BOOK_PALETTE[bi % BOOK_PALETTE.length], true, true, 0.003);
+        bx += bt + 0.006;
+        bi++;
+      }
+      boxAt(g, 0.24, 0.16, 0.24, innerW * 0.28, baseObjY + 0.08, 0.02, M.acousticFelt, true, true, 0.008);
+    } else if (si === 1) {
+      // Mid open shelf: framed print + right book stack + brass bookend
+      boxAt(g, 0.26, 0.3, 0.024, -innerW * 0.22, baseObjY + 0.15, -0.02, M.brass, true, false, 0.004);
+      boxAt(g, 0.21, 0.25, 0.026, -innerW * 0.22, baseObjY + 0.15, -0.016, M.white, false, false);
+      let bx = 0.04;
+      for (let b = 0; b < 6; b++) {
+        const bt = 0.032;
+        const bh = 0.24 + (b % 3) * 0.022;
+        boxAt(g, bt, bh, 0.2, bx + b * 0.038, baseObjY + bh / 2, 0.02, BOOK_PALETTE[(b + 2) % BOOK_PALETTE.length], true, true, 0.003);
+      }
+    } else {
+      // Top open shelf: horizontal stacked art books + sculpted ceramic bowl
+      boxAt(g, 0.26, 0.032, 0.2, -innerW * 0.18, baseObjY + 0.016, 0.02, BOOK_PALETTE[4], true, false, 0.004);
+      boxAt(g, 0.22, 0.028, 0.18, -innerW * 0.18, baseObjY + 0.046, 0.02, BOOK_PALETTE[1], true, false, 0.004);
+      cylAt(g, 0.095, 0.055, 0.09, innerW * 0.22, baseObjY + 0.045, 0.02, M.ceramicMat, true, false, 16);
+    }
+  });
+
+  // Sculpted ceramic vase on top surface
   const vasePts = [
     new THREE.Vector2(0.001, 0),
-    new THREE.Vector2(0.06, 0),
-    new THREE.Vector2(0.1, 0.14),
-    new THREE.Vector2(0.05, 0.26),
-    new THREE.Vector2(0.065, 0.32),
+    new THREE.Vector2(0.056, 0),
+    new THREE.Vector2(0.095, 0.13),
+    new THREE.Vector2(0.046, 0.25),
+    new THREE.Vector2(0.06, 0.31),
   ];
-  const vase = new THREE.Mesh(new THREE.LatheGeometry(vasePts, 16), M.ceramicMat);
-  vase.position.set(-w * 0.24, 2.35, 0);
+  const vase = new THREE.Mesh(new THREE.LatheGeometry(vasePts, 18), M.ceramicMat);
+  vase.position.set(-w * 0.24, H, 0);
   vase.castShadow = true;
   g.add(vase);
 
@@ -824,20 +1064,6 @@ export function gooseneckLamp(
   const lens = new THREE.Mesh(getRoundedBox(0.28, 0.04, 0.56, 0.02, 2), lampHead);
   lens.position.set(x, y + 6.98, z - sideDir * 1.35);
   parent.add(lens);
-
-  const gl = new THREE.Sprite(
-    new THREE.SpriteMaterial({
-      map: M.textures.glowTex,
-      color: 0xffdca0,
-      transparent: true,
-      opacity: 0.22,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    })
-  );
-  gl.scale.set(3.2, 3.2, 1);
-  gl.position.set(x, y + 6.85, z - sideDir * 1.35);
-  parent.add(gl);
 }
 
 /* =========================================================
@@ -858,17 +1084,17 @@ interface CarGeos {
 const CAR_STYLE_CACHE = new Map<CarStyle, CarGeos>();
 const CAR_GLASS_MAT = new THREE.MeshPhysicalMaterial({
   color: 0x16202a,
-  roughness: 0.05,
-  metalness: 0.12,
-  clearcoat: 1,
-  clearcoatRoughness: 0.04,
-  envMapIntensity: 1.6,
+  roughness: 0.16,
+  metalness: 0.08,
+  clearcoat: 0.2,
+  clearcoatRoughness: 0.18,
+  envMapIntensity: 0.4,
 });
 const CAR_TYRE_MAT = new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.88 });
-const CAR_RIM_MAT = new THREE.MeshPhysicalMaterial({ color: 0xc8cfd6, roughness: 0.22, metalness: 0.9, envMapIntensity: 1.2 });
-const CAR_TRIM_MAT = new THREE.MeshStandardMaterial({ color: 0x181b20, roughness: 0.5, metalness: 0.4 });
-const CAR_HEAD_MAT = new THREE.MeshBasicMaterial({ color: 0xfff3d4, toneMapped: false });
-const CAR_TAIL_MAT = new THREE.MeshBasicMaterial({ color: 0xd92630, toneMapped: false });
+const CAR_RIM_MAT = new THREE.MeshPhysicalMaterial({ color: 0xbcc4cc, roughness: 0.36, metalness: 0.78, envMapIntensity: 0.45 });
+const CAR_TRIM_MAT = new THREE.MeshStandardMaterial({ color: 0x181b20, roughness: 0.58, metalness: 0.3 });
+const CAR_HEAD_MAT = new THREE.MeshBasicMaterial({ color: 0xefe2c4 });
+const CAR_TAIL_MAT = new THREE.MeshBasicMaterial({ color: 0xc8242e });
 
 function buildCarStyle(style: CarStyle): CarGeos {
   const existing = CAR_STYLE_CACHE.get(style);
@@ -974,11 +1200,11 @@ export function makeCar(col: number, style: CarStyle = 'sedan'): THREE.Group {
 
   const bm = new THREE.MeshPhysicalMaterial({
     color: col,
-    roughness: 0.24,
-    metalness: 0.65,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.08,
-    envMapIntensity: 1.15,
+    roughness: 0.36,
+    metalness: 0.45,
+    clearcoat: 0.35,
+    clearcoatRoughness: 0.2,
+    envMapIntensity: 0.45,
   });
 
   const bodyMesh = new THREE.Mesh(geos.body, bm);

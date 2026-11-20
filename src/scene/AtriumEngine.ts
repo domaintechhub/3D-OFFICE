@@ -37,6 +37,7 @@ export class AtriumEngine {
   private readonly isSoftwareGl: boolean;
 
   private readonly sunLight: THREE.DirectionalLight;
+  private readonly skyFillLight: THREE.DirectionalLight;
   private readonly hemiLight: THREE.HemisphereLight;
   private readonly skyMat: THREE.ShaderMaterial;
   private readonly fog: THREE.FogExp2;
@@ -95,7 +96,7 @@ export class AtriumEngine {
     this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.85;
+    this.renderer.toneMappingExposure = 0.92;
     this.renderer.shadowMap.enabled = !this.isSoftwareGl;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(this.renderer.domElement);
@@ -103,7 +104,7 @@ export class AtriumEngine {
     setMaxAnisotropy(this.renderer.capabilities.getMaxAnisotropy());
 
     this.scene = new THREE.Scene();
-    this.fog = new THREE.FogExp2(0x1b2434, 0.0042);
+    this.fog = new THREE.FogExp2(0x1b2434, 0.0022);
     this.scene.fog = this.fog;
 
     // Room environment IBL for physically-based metals, glass & car clearcoat
@@ -163,10 +164,10 @@ export class AtriumEngine {
     this.scene.add(skyDome);
 
     // Three-point + architectural sky/sun illumination
-    this.hemiLight = new THREE.HemisphereLight(0xc2dcff, 0x4b4640, 0.68);
+    this.hemiLight = new THREE.HemisphereLight(0xc8e0ff, 0x4b4640, 0.72);
     this.scene.add(this.hemiLight);
 
-    this.sunLight = new THREE.DirectionalLight(0xfff1d6, 1.85);
+    this.sunLight = new THREE.DirectionalLight(0xfff1d6, 1.9);
     this.sunLight.position.set(42, 64, 54);
     if (!this.isSoftwareGl) {
       this.sunLight.castShadow = true;
@@ -177,28 +178,44 @@ export class AtriumEngine {
       this.sunLight.shadow.camera.right = 64;
       this.sunLight.shadow.camera.top = 56;
       this.sunLight.shadow.camera.bottom = -36;
-      this.sunLight.shadow.bias = -0.0005;
-      this.sunLight.shadow.normalBias = 0.025;
+      this.sunLight.shadow.bias = -0.00035;
+      this.sunLight.shadow.normalBias = 0.018;
+      this.sunLight.shadow.radius = 2.4;
     }
     this.scene.add(this.sunLight);
+
+    // Subtle cool northern sky-bounce fill light for realistic architectural shadow wrap
+    this.skyFillLight = new THREE.DirectionalLight(0xbcd6f6, 0.36);
+    this.skyFillLight.position.set(-40, 26, 46);
+    this.scene.add(this.skyFillLight);
 
     // Build PBR material library & architectural shell
     const M = createMaterials();
     this.screenReg = createScreenRegistry();
     this.arch = buildSceneArchitecture(this.scene, M, this.screenReg);
 
-    // Architectural softbox RectAreaLights for Reception Atrium & Level 4 Board Room
+    // Architectural softbox RectAreaLights for Reception Atrium, Board Room, & upper office bays
     if (!this.isSoftwareGl) {
       RectAreaLightUniformsLib.init();
-      const recPanel = new THREE.RectAreaLight(0xfff2de, 1.6, 12, 4);
+      const recPanel = new THREE.RectAreaLight(0xfff3e0, 0.45, 13, 4.2);
       recPanel.position.set(0, 4.9, 4.8);
       recPanel.lookAt(0, 0, 5.2);
       this.scene.add(recPanel);
 
-      const boardPanel = new THREE.RectAreaLight(0xfff5e4, 1.35, 11, 2.5);
+      const boardPanel = new THREE.RectAreaLight(0xfff5e6, 0.4, 11, 2.6);
       boardPanel.position.set(0, 21.8, 4.9);
       boardPanel.lookAt(0, 18.2, 4.9);
       this.scene.add(boardPanel);
+
+      // Subtle architectural ceiling bounce strips on L1-L3 & L5 executive suite
+      [LV[1], LV[2], LV[3], LV[5]].forEach((ly) => {
+        [-10.2, 10.2].forEach((lx) => {
+          const bayLight = new THREE.RectAreaLight(0xfff6ea, 0.22, 16, 2.2);
+          bayLight.position.set(lx, ly + 3.55, 4.4);
+          bayLight.lookAt(lx, ly, 4.4);
+          this.scene.add(bayLight);
+        });
+      });
     }
 
     // Build dynamic office simulation (staff, Zuri, vehicles, walk controls)
@@ -542,7 +559,7 @@ export class AtriumEngine {
     const dayPhase = Math.max(0, Math.min(1, (hr - 6.2) / 12.6));
     const sunElev = Math.sin(dayPhase * Math.PI); // 0 at night/horizon, 1 at solar noon
     const isDay = hr >= 6.0 && hr <= 18.8;
-    const sunIntensity = isDay ? 0.35 + sunElev * 1.65 : 0.14;
+    const sunIntensity = isDay ? 0.32 + sunElev * 1.38 : 0.14;
 
     const az = (dayPhase - 0.5) * Math.PI * 0.85;
     this.sunLight.position.set(
@@ -559,7 +576,8 @@ export class AtriumEngine {
       this._horizon.setHex(0x1b2940);
       this._fogCol.setHex(0x121b2b);
       this._skyGround.setHex(0x0c1118);
-      this.hemiLight.intensity = 0.28;
+      this.hemiLight.intensity = 0.26;
+      this.skyFillLight.intensity = 0.12;
     } else if (sunElev < 0.35) {
       const k = sunElev / 0.35;
       this._sunCol.setHex(0xffa968).lerp(new THREE.Color(0xfff1d6), k);
@@ -567,14 +585,16 @@ export class AtriumEngine {
       this._horizon.setHex(0xe89e74).lerp(new THREE.Color(0xbcd8f4), k);
       this._fogCol.setHex(0x3a3242).lerp(new THREE.Color(0x7c97b8), k);
       this._skyGround.setHex(0x252832);
-      this.hemiLight.intensity = 0.45 + k * 0.3;
+      this.hemiLight.intensity = 0.4 + k * 0.24;
+      this.skyFillLight.intensity = 0.18 + k * 0.1;
     } else {
       this._sunCol.setHex(0xfff4e0);
       this._zenith.setHex(0x2d64a6);
       this._horizon.setHex(0xc4dcf4);
       this._fogCol.setHex(0x88a4c2);
       this._skyGround.setHex(0x3a404a);
-      this.hemiLight.intensity = 0.72;
+      this.hemiLight.intensity = 0.64;
+      this.skyFillLight.intensity = 0.28;
     }
 
     this.sunLight.color.copy(this._sunCol);
@@ -606,7 +626,7 @@ export class AtriumEngine {
     this.arch.sculptureCore.rotation.x = 0.26 + Math.sin(this.elapsed * 0.35) * 0.04;
     if (this.arch.sculptureRings[0]) this.arch.sculptureRings[0].rotation.z += dt * 0.45;
     if (this.arch.sculptureRings[1]) this.arch.sculptureRings[1].rotation.x -= dt * 0.32;
-    this.arch.sculptureHalo.material.opacity = 0.42 + Math.sin(this.elapsed * 1.9) * 0.08;
+    this.arch.sculptureHalo.material.opacity = 0.04 + Math.sin(this.elapsed * 1.9) * 0.015;
     for (const f of this.arch.roofFans) {
       f.rotation.y += dt * 4.5;
     }

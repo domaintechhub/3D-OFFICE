@@ -118,27 +118,47 @@ export function circ(g: CanvasRenderingContext2D, x: number, y: number, r: numbe
 
 export function buildCoreTextures() {
   const marbleTex = makeCanvasTex('marble', 512, 512, (g, W, H) => {
-    g.fillStyle = '#f3f0ea';
+    const bg = g.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0, '#f4f0e8');
+    bg.addColorStop(0.5, '#efeae0');
+    bg.addColorStop(1, '#f5f2eb');
+    g.fillStyle = bg;
     g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 40; i++) {
-      const a = 0.04 + Math.random() * 0.08;
-      g.strokeStyle = `rgba(116,120,126,${a})`;
-      g.lineWidth = 0.6 + Math.random() * 2.4;
+
+    // Soft cloudy mineral patches
+    for (let i = 0; i < 42; i++) {
+      const x = Math.random() * W;
+      const y = Math.random() * H;
+      const r = 24 + Math.random() * 86;
+      const rg = g.createRadialGradient(x, y, 2, x, y, r);
+      rg.addColorStop(0, 'rgba(205,196,182,0.14)');
+      rg.addColorStop(1, 'rgba(205,196,182,0)');
+      g.fillStyle = rg;
+      circ(g, x, y, r);
+    }
+
+    // Primary & secondary Calacatta slate + subtle warm gold mineral veins
+    for (let i = 0; i < 46; i++) {
+      const isWarm = i % 5 === 0;
+      const a = isWarm ? 0.05 + Math.random() * 0.06 : 0.04 + Math.random() * 0.09;
+      g.strokeStyle = isWarm ? `rgba(164,132,90,${a})` : `rgba(108,114,122,${a})`;
+      g.lineWidth = isWarm ? 0.6 + Math.random() * 1.4 : 0.7 + Math.random() * 2.6;
       g.beginPath();
       let x = Math.random() * W;
       let y = -20;
       g.moveTo(x, y);
-      for (let k = 0; k < 7; k++) {
-        const nx = x + (Math.random() - 0.5) * 105;
-        const ny = y + H / 6;
-        g.quadraticCurveTo(x + (Math.random() - 0.5) * 65, y + 28, nx, ny);
+      for (let k = 0; k < 8; k++) {
+        const nx = x + (Math.random() - 0.5) * 110;
+        const ny = y + H / 7;
+        g.quadraticCurveTo(x + (Math.random() - 0.5) * 70, y + 26, nx, ny);
         x = nx;
         y = ny;
       }
       g.stroke();
     }
-    // subtle slab tile seams
-    g.strokeStyle = 'rgba(130,126,118,0.14)';
+
+    // Crisp honed architectural slab grout seams
+    g.strokeStyle = 'rgba(126,120,112,0.16)';
     g.lineWidth = 1.5;
     for (let x = 0; x < W; x += 256) {
       g.beginPath();
@@ -159,13 +179,11 @@ export function buildCoreTextures() {
   const marbleNormal = heightCanvasToNormalTex('marble', 512, 512, (g, W, H) => {
     g.fillStyle = '#888888';
     g.fillRect(0, 0, W, H);
-    // subtle honed mineral surface micro-variation
     for (let i = 0; i < 1200; i++) {
-      const v = 126 + ((Math.random() * 20) | 0);
+      const v = 128 + ((Math.random() * 16) | 0);
       g.fillStyle = `rgb(${v},${v},${v})`;
       circ(g, Math.random() * W, Math.random() * H, 2 + Math.random() * 7);
     }
-    // crisp recessed slab grout joints (matching marbleTex 256px grid)
     g.strokeStyle = '#303030';
     g.lineWidth = 4;
     for (let x = 0; x < W; x += 256) {
@@ -180,19 +198,18 @@ export function buildCoreTextures() {
       g.lineTo(W, y);
       g.stroke();
     }
-  }, 2.2);
+  }, 2.1);
   marbleNormal.repeat.set(5, 3);
 
   const marbleRoughness = makeCanvasTex('marble_rough', 512, 512, (g, W, H) => {
-    g.fillStyle = '#343434'; // polished low-roughness stone face
+    g.fillStyle = '#303030';
     g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 65; i++) {
-      const v = 38 + ((Math.random() * 54) | 0);
-      g.fillStyle = `rgba(${v},${v},${v},0.35)`;
+    for (let i = 0; i < 72; i++) {
+      const v = 34 + ((Math.random() * 48) | 0);
+      g.fillStyle = `rgba(${v},${v},${v},0.34)`;
       circ(g, Math.random() * W, Math.random() * H, 14 + Math.random() * 52);
     }
-    // matte mineral grout seams (high roughness along slab joints)
-    g.strokeStyle = '#dadada';
+    g.strokeStyle = '#d8d8d8';
     g.lineWidth = 4;
     for (let x = 0; x < W; x += 256) {
       g.beginPath();
@@ -212,28 +229,33 @@ export function buildCoreTextures() {
 
   const woodTex = makeCanvasTex('wood', 512, 512, (g, W, H) => {
     const base = g.createLinearGradient(0, 0, W, 0);
-    base.addColorStop(0, '#b5804b');
-    base.addColorStop(0.5, '#cb965c');
-    base.addColorStop(1, '#ae7943');
+    base.addColorStop(0, '#b98652');
+    base.addColorStop(0.5, '#cc9961');
+    base.addColorStop(1, '#b17e49');
     g.fillStyle = base;
     g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 220; i++) {
+    for (let i = 0; i < 280; i++) {
       const x = Math.random() * W;
-      const w = 1 + Math.random() * 6;
-      g.fillStyle = `rgba(${80 + ((Math.random() * 55) | 0)},${48 + ((Math.random() * 36) | 0)},20,${0.05 + Math.random() * 0.12})`;
+      const w = 0.8 + Math.random() * 4.8;
+      g.fillStyle = `rgba(${78 + ((Math.random() * 52) | 0)},${46 + ((Math.random() * 34) | 0)},20,${0.04 + Math.random() * 0.1})`;
       g.fillRect(x, 0, w, H);
     }
-    for (let i = 0; i < 34; i++) {
-      g.strokeStyle = `rgba(96,60,28,${0.08 + Math.random() * 0.12})`;
-      g.lineWidth = 0.7 + Math.random() * 1.4;
+    for (let i = 0; i < 42; i++) {
+      g.strokeStyle = `rgba(92,56,26,${0.07 + Math.random() * 0.12})`;
+      g.lineWidth = 0.6 + Math.random() * 1.4;
       g.beginPath();
       let x = Math.random() * W;
       g.moveTo(x, 0);
-      for (let y = 0; y < H; y += 48) {
-        x += (Math.random() - 0.5) * 7;
+      for (let y = 0; y < H; y += 36) {
+        x += (Math.random() - 0.5) * 6;
         g.lineTo(x, y);
       }
       g.stroke();
+    }
+    // Delicate open wood pores
+    for (let i = 0; i < 900; i++) {
+      g.fillStyle = 'rgba(58,34,14,0.14)';
+      g.fillRect(Math.random() * W, Math.random() * H, 0.8, 3 + Math.random() * 9);
     }
   });
   woodTex.wrapS = woodTex.wrapT = THREE.RepeatWrapping;
@@ -241,12 +263,16 @@ export function buildCoreTextures() {
   const woodNormal = heightCanvasToNormalTex('wood', 256, 256, (g, W, H) => {
     g.fillStyle = '#808080';
     g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 160; i++) {
-      const v = 96 + ((Math.random() * 64) | 0);
+    for (let i = 0; i < 210; i++) {
+      const v = 100 + ((Math.random() * 56) | 0);
       g.fillStyle = `rgb(${v},${v},${v})`;
-      g.fillRect(Math.random() * W, 0, 1 + Math.random() * 3, H);
+      g.fillRect(Math.random() * W, 0, 1 + Math.random() * 2.5, H);
     }
-  }, 1.4);
+    for (let i = 0; i < 450; i++) {
+      g.fillStyle = '#585858';
+      g.fillRect(Math.random() * W, Math.random() * H, 1, 4 + Math.random() * 8);
+    }
+  }, 1.3);
   woodNormal.repeat.set(2, 2);
 
   // Architectural walnut parquet hardwood planks (albedo + V-groove normal + per-plank roughness)
@@ -599,12 +625,56 @@ export function buildCoreTextures() {
     for (let y = 0; y < H; y += 4) {
       for (let x = 0; x < W; x += 4) {
         const alt = ((x + y) / 4) % 2 === 0;
-        g.fillStyle = alt ? '#9c9c9c' : '#646464';
+        g.fillStyle = alt ? '#9e9e9e' : '#626262';
         g.fillRect(x, y, 3, 3);
       }
     }
-  }, 1.6);
+  }, 1.5);
   fabricNormal.repeat.set(8, 8);
+
+  const acousticTex = makeCanvasTex('acoustic_felt', 256, 256, (g, W, H) => {
+    g.fillStyle = '#4e555e';
+    g.fillRect(0, 0, W, H);
+    for (let i = 0; i < 4200; i++) {
+      const v = 64 + ((Math.random() * 36) | 0);
+      g.fillStyle = `rgba(${v},${v + 4},${v + 9},0.45)`;
+      g.fillRect(Math.random() * W, Math.random() * H, 1.5, 2.5);
+    }
+    // Subtle architectural acoustic vertical ribbing
+    for (let x = 0; x < W; x += 16) {
+      g.fillStyle = 'rgba(20,24,28,0.16)';
+      g.fillRect(x, 0, 2, H);
+    }
+  });
+  acousticTex.wrapS = acousticTex.wrapT = THREE.RepeatWrapping;
+  acousticTex.repeat.set(4, 1);
+
+  const kbTex = makeCanvasTex('keyboard_keys', 256, 96, (g, W, H) => {
+    g.fillStyle = '#22262c';
+    g.fillRect(0, 0, W, H);
+    g.fillStyle = '#15181c';
+    rr(g, 4, 4, W - 8, H - 8, 6);
+    g.fill();
+    const rows = 5;
+    const cols = 15;
+    const kw = (W - 22) / cols;
+    const kh = (H - 18) / rows;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (r === 4 && c >= 4 && c <= 9) {
+          if (c === 4) {
+            g.fillStyle = '#2d333b';
+            rr(g, 11 + c * kw, 9 + r * kh, kw * 6 - 3, kh - 3, 2);
+            g.fill();
+          }
+          continue;
+        }
+        g.fillStyle = r === 0 && c === 0 ? '#d95b43' : '#313740';
+        rr(g, 11 + c * kw, 9 + r * kh, kw - 3, kh - 3, 2);
+        g.fill();
+      }
+    }
+  });
 
   const carpetTex = makeCanvasTex('carpet', 256, 256, (g, W, H) => {
     g.fillStyle = '#6c6a64';
@@ -1044,6 +1114,8 @@ export function buildCoreTextures() {
     concreteNormal,
     roughTex,
     fabricNormal,
+    acousticTex,
+    kbTex,
     carpetTex,
     carpetNormal,
     carpetRoughness,

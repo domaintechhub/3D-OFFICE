@@ -28,11 +28,13 @@ import type { MaterialLibrary } from './materials';
 import {
   armchair,
   boxAt,
+  ceilingLinearLight,
   contact,
   cylAt,
   downlight,
   getRoundedBox,
   gooseneckLamp,
+  hvacDiffuser,
   monitor,
   officeChair,
   planeAt,
@@ -308,48 +310,59 @@ export function buildSceneArchitecture(
   boxAt(roofShellGroup, WIDTH, 0.4, DEPTH + 0.4, 0, ROOF - 0.2, DEPTH / 2, M.slab, false, false, 0.05);
   boxAt(roofShellGroup, WIDTH, 0.7, 0.4, 0, ROOF - 0.2, DEPTH + 0.14, M.white, true, false, 0.06);
 
-  // Side curtain walls with chamfered fins & mullions (split per level for cutaway)
+  // Side curtain walls with anodized mullions & low-iron architectural glazing (split per level for cutaway)
   const sideWinMat = new THREE.MeshPhysicalMaterial({
-    color: 0x8db3c7,
-    roughness: 0.06,
-    metalness: 0.08,
-    envMapIntensity: 2.1,
-    clearcoat: 1,
-    clearcoatRoughness: 0.04,
+    color: 0x3b4d56,
+    roughness: 0.2,
+    metalness: 0.06,
+    ior: 1.52,
+    reflectivity: 0.35,
+    envMapIntensity: 0.35,
+    clearcoat: 0.0,
   });
   for (let s = 0; s < FLOORS; s++) {
     const lg = levelGroups[s];
     [-1, 1].forEach((sd) => {
       const x = sd * (WIDTH / 2) - sd * 0.12;
       boxAt(lg, 0.26, LH[s], 1.2, x, LV[s] + LH[s] / 2, -0.1, M.concrete, true, true, 0.04);
-      boxAt(lg, 0.12, LH[s] - 0.35, 0.5, x, LV[s] + LH[s] / 2, DEPTH - 0.4, sideWinMat, false, false);
-      boxAt(lg, 0.16, 0.06, 0.58, x, LV[s] + LH[s] * 0.52, DEPTH - 0.4, M.metal, false, false, 0.015);
+      boxAt(lg, 0.09, LH[s] - 0.35, 0.5, x, LV[s] + LH[s] / 2, DEPTH - 0.4, sideWinMat, false, false);
+      boxAt(lg, 0.15, 0.06, 0.58, x, LV[s] + LH[s] * 0.52, DEPTH - 0.4, M.dark, false, false, 0.01);
+      boxAt(lg, 0.15, 0.06, 0.58, x, LV[s] + 0.19, DEPTH - 0.4, M.dark, false, false, 0.01);
     });
   }
 
-  // Structural columns & bay mullions (beveled)
+  // Structural columns with shadow-gap plinth collars & capital reveals
   for (let s = 0; s < FLOORS; s++) {
     const lg = levelGroups[s];
     for (let i = 0; i <= 4; i++) {
       const x = -WIDTH / 2 + i * BW;
       if (s === 0 && i === 2) continue;
-      boxAt(lg, 0.26, ceilHeight(s), 0.5, x, LV[s] + ceilHeight(s) / 2, 0.25, M.white, true, false, 0.04);
-      boxAt(lg, 0.28, ceilHeight(s), 0.28, x, LV[s] + ceilHeight(s) / 2, DEPTH - 0.5, M.white, true, false, 0.05);
+      const ch = ceilHeight(s);
+      boxAt(lg, 0.26, ch, 0.5, x, LV[s] + ch / 2, 0.25, M.white, true, false, 0.04);
+      boxAt(lg, 0.285, 0.06, 0.52, x, LV[s] + 0.03, 0.25, M.dark, false, false, 0.01);
+      boxAt(lg, 0.285, 0.05, 0.52, x, LV[s] + ch - 0.025, 0.25, M.dark, false, false, 0.01);
+
+      boxAt(lg, 0.28, ch, 0.28, x, LV[s] + ch / 2, DEPTH - 0.5, M.white, true, false, 0.05);
+      boxAt(lg, 0.305, 0.06, 0.305, x, LV[s] + 0.03, DEPTH - 0.5, M.dark, false, false, 0.01);
+      boxAt(lg, 0.305, 0.05, 0.305, x, LV[s] + ch - 0.025, DEPTH - 0.5, M.dark, false, false, 0.01);
     }
   }
 
-  // Upper floor glass balustrades + cylindrical stainless stanchions
+  // Upper floor low-iron glass balustrades with base shoe channels, spider clamps & stainless handrails
   const bw = WIDTH - 5.2;
   for (let s = 1; s < FLOORS; s++) {
     const lg = levelGroups[s];
-    const h = 1.02;
-    const gMesh = new THREE.Mesh(new THREE.BoxGeometry(bw, h, 0.04), M.glass);
-    gMesh.position.set(0, LV[s] + h / 2, DEPTH - 0.35);
+    const h = 1.04;
+    boxAt(lg, bw, 0.065, 0.07, 0, LV[s] + 0.032, DEPTH - 0.35, M.dark, false, true, 0.01);
+    const gMesh = new THREE.Mesh(new THREE.BoxGeometry(bw, h - 0.06, 0.024), M.glass);
+    gMesh.position.set(0, LV[s] + 0.06 + (h - 0.06) / 2, DEPTH - 0.35);
     lg.add(gMesh);
-    boxAt(lg, bw, 0.055, 0.09, 0, LV[s] + h, DEPTH - 0.35, M.metal, false, false, 0.02);
+    boxAt(lg, bw, 0.042, 0.068, 0, LV[s] + h, DEPTH - 0.35, M.metal, false, false, 0.018);
     for (let i = 0; i <= 8; i++) {
       const x = -bw / 2 + 0.6 + (i * (bw - 1.2)) / 8;
-      cylAt(lg, 0.024, 0.024, h, x, LV[s] + h / 2, DEPTH - 0.35, M.metal, false, false, 10);
+      cylAt(lg, 0.018, 0.018, h, x, LV[s] + h / 2, DEPTH - 0.35, M.metal, false, false, 10);
+      boxAt(lg, 0.055, 0.055, 0.048, x, LV[s] + 0.22, DEPTH - 0.35, M.chrome, false, false, 0.008);
+      boxAt(lg, 0.055, 0.055, 0.048, x, LV[s] + 0.84, DEPTH - 0.35, M.chrome, false, false, 0.008);
     }
   }
 
@@ -394,18 +407,19 @@ export function buildSceneArchitecture(
       boxAt(lg, BW - 1.0, 0.22, bd, bx, y + 0.11, (zf + zb) / 2, M.slab, true, true, 0.04);
       boxAt(cg, BW - 1.0, 0.16, bd, bx, y + ceilHeight(s) - 0.16, (zf + zb) / 2, M.slab, false, true, 0.03);
 
-      const bal = new THREE.Mesh(new THREE.BoxGeometry(BW - 1.0, 1.0, 0.04), M.glass);
-      bal.position.set(bx, y + 0.62, zf - 0.06);
+      boxAt(lg, BW - 1.0, 0.06, 0.068, bx, y + 0.25, zf - 0.06, M.dark, false, false, 0.01);
+      const bal = new THREE.Mesh(new THREE.BoxGeometry(BW - 1.0, 0.92, 0.024), M.glass);
+      bal.position.set(bx, y + 0.72, zf - 0.06);
       lg.add(bal);
-      boxAt(lg, BW - 1.0, 0.065, 0.1, bx, y + 1.15, zf - 0.06, M.metal, false, false, 0.025);
+      boxAt(lg, BW - 1.0, 0.046, 0.072, bx, y + 1.18, zf - 0.06, M.metal, false, false, 0.018);
       for (let k = 0; k <= 6; k++) {
         cylAt(
           lg,
-          0.022,
-          0.022,
-          1.0,
+          0.018,
+          0.018,
+          0.96,
           bx - (BW - 1.0) / 2 + 0.08 + (k * (BW - 1.16)) / 6,
-          y + 0.62,
+          y + 0.7,
           zf - 0.06,
           M.metal,
           false,
@@ -498,11 +512,11 @@ export function buildSceneArchitecture(
         normalMap: M.textures.slatNormal,
         normalScale: new THREE.Vector2(0.9, 0.9),
         roughnessMap: M.textures.roughTex,
-        roughness: 0.72,
-        metalness: 0.03,
-        envMapIntensity: 0.26,
+        roughness: 0.74,
+        metalness: 0.02,
+        envMapIntensity: 0.24,
         emissive: 0x26170a,
-        emissiveIntensity: 0.14,
+        emissiveIntensity: 0.03,
       });
     } else if (d.style === 'moss') {
       wallMat = new THREE.MeshStandardMaterial({
@@ -512,9 +526,9 @@ export function buildSceneArchitecture(
         roughnessMap: M.textures.roughTex,
         roughness: 0.96,
         metalness: 0,
-        envMapIntensity: 0.1,
+        envMapIntensity: 0.08,
         emissive: 0x0d2811,
-        emissiveIntensity: 0.16,
+        emissiveIntensity: 0.04,
       });
     } else {
       wallMat = new THREE.MeshStandardMaterial({
@@ -522,11 +536,11 @@ export function buildSceneArchitecture(
         normalMap: M.textures.plasterNormal,
         normalScale: new THREE.Vector2(0.62, 0.62),
         roughnessMap: M.textures.plasterRoughness,
-        roughness: 0.88,
-        metalness: 0.02,
-        envMapIntensity: 0.22,
+        roughness: 0.9,
+        metalness: 0.0,
+        envMapIntensity: 0.18,
         emissive: d.c,
-        emissiveIntensity: 0.08,
+        emissiveIntensity: 0.015,
       });
     }
 
@@ -536,7 +550,11 @@ export function buildSceneArchitecture(
     roomsGrp.add(wall);
     picks.push({ mesh: wall, room: d });
 
-    boxAt(roomsGrp, wallW, 0.034, 0.04, x0, y0 + 0.017, 0.242, M.dark, false, false);
+    // Anodized shadow-gap baseboard + ceiling reveal + brushed wall switch/thermostat control plate
+    boxAt(roomsGrp, wallW, 0.052, 0.035, x0, y0 + 0.026, 0.238, M.dark, false, false);
+    boxAt(roomsGrp, wallW, 0.036, 0.035, x0, ceilY(d.lv) - 0.04, 0.238, M.dark, false, false);
+    boxAt(roomsGrp, 0.13, 0.19, 0.018, x0 + wallW * 0.44, y0 + 1.38, 0.232, M.metal, false, false, 0.004);
+    boxAt(roomsGrp, 0.075, 0.095, 0.022, x0 + wallW * 0.44, y0 + 1.39, 0.235, M.dark, false, false, 0.003);
 
     const bf = new THREE.Mesh(new THREE.PlaneGeometry(wallW, 6.9), M.bayFloor);
     bf.rotation.x = -Math.PI / 2;
@@ -544,46 +562,25 @@ export function buildSceneArchitecture(
     bf.receiveShadow = true;
     roomsGrp.add(bf);
 
+    // Suspended acoustic ceiling bay + recessed architectural linear LED troffers + HVAC supply diffusers
     const cp = new THREE.Mesh(new THREE.PlaneGeometry(wallW, 6.9), M.softCeil);
     cp.rotation.x = Math.PI / 2;
     cp.position.set(x0, ceilY(d.lv) - 0.06, 3.45);
     ceilGrp.add(cp);
 
-    const lp = new THREE.Mesh(
-      new THREE.PlaneGeometry(wallW * 0.66, 1.15),
-      new THREE.MeshBasicMaterial({
-        color: 0xfff4e2,
-        transparent: true,
-        opacity: 0.46,
-        toneMapped: false,
-        depthWrite: false,
-      })
-    );
-    lp.rotation.x = Math.PI / 2;
-    lp.position.set(x0, ceilY(d.lv) - 0.05, 3.1);
-    ceilGrp.add(lp);
-    boxAt(ceilGrp, wallW, 0.1, 0.16, x0, ceilY(d.lv) - 0.07, 0.3, M.dark, false, false, 0.02);
+    ceilingLinearLight(ceilGrp, x0, ceilY(d.lv) - 0.065, 2.95, wallW * 0.56, 0.2, M);
+    ceilingLinearLight(ceilGrp, x0, ceilY(d.lv) - 0.065, 5.15, wallW * 0.48, 0.18, M);
+    hvacDiffuser(ceilGrp, x0 - 2.65, ceilY(d.lv) - 0.062, 5.2, M);
+    hvacDiffuser(ceilGrp, x0 + 2.65, ceilY(d.lv) - 0.062, 2.1, M);
+    boxAt(ceilGrp, wallW, 0.08, 0.14, x0, ceilY(d.lv) - 0.07, 0.3, M.dark, false, false, 0.015);
 
-    // Bay edge architectural fin
-    boxAt(roomsGrp, 0.11, wallH, 6.4, x0 + BW / 2 - 0.05, y0 + wallH / 2, 3.4, M.dark, false, false, 0.02);
-    boxAt(roomsGrp, 0.16, 0.05, 6.4, x0 + BW / 2 - 0.05, y0 + 0.03, 3.4, M.dark, false, false);
-    boxAt(ceilGrp, 0.16, 0.05, 6.4, x0 + BW / 2 - 0.05, ceilY(d.lv) - 0.08, 3.4, M.dark, false, false);
+    // Architectural bay dividing pilaster + walnut cap + recessed base
+    boxAt(roomsGrp, 0.13, wallH, 6.4, x0 + BW / 2 - 0.06, y0 + wallH / 2, 3.4, M.dark, false, true, 0.02);
+    boxAt(roomsGrp, 0.04, wallH - 0.12, 6.32, x0 + BW / 2 - 0.12, y0 + wallH / 2, 3.4, M.walnut, false, false, 0.01);
+    boxAt(roomsGrp, 0.17, 0.055, 6.42, x0 + BW / 2 - 0.06, y0 + 0.03, 3.4, M.dark, false, false);
+    boxAt(ceilGrp, 0.17, 0.055, 6.42, x0 + BW / 2 - 0.06, ceilY(d.lv) - 0.08, 3.4, M.dark, false, false);
 
-    const wash = new THREE.Mesh(
-      new THREE.PlaneGeometry(wallW, 3.2),
-      new THREE.MeshBasicMaterial({
-        color: d.c,
-        transparent: true,
-        opacity: 0.065,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      })
-    );
-    wash.rotation.x = -Math.PI / 2;
-    wash.position.set(x0, y0 + 0.03, 2.4);
-    roomsGrp.add(wash);
-
-    // Live wall TV with beveled aluminum bezel & soundbar
+    // Live wall TV with slim anodized bezel, wall mount shadow gap & conference soundbar
     const tvW = 4.8;
     const tvH = 2.7;
     const tvY = y0 + 2.3;
@@ -592,40 +589,42 @@ export function buildSceneArchitecture(
         map: M.textures.glowTex,
         color: d.soft,
         transparent: true,
-        opacity: 0.12,
+        opacity: 0.0,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       })
     );
-    tvHalo.scale.set(tvW * 1.55, tvH * 1.6, 1);
+    tvHalo.scale.set(tvW * 1.4, tvH * 1.4, 1);
     tvHalo.position.set(x0, tvY, 0.24);
+    tvHalo.visible = false;
     roomsGrp.add(tvHalo);
 
-    boxAt(roomsGrp, tvW + 0.16, tvH + 0.16, 0.08, x0, tvY, 0.3, M.black, false, false, 0.025);
+    boxAt(roomsGrp, tvW * 0.45, tvH * 0.36, 0.04, x0, tvY, 0.255, M.dark, false, false);
+    boxAt(roomsGrp, tvW + 0.12, tvH + 0.12, 0.065, x0, tvY, 0.305, M.black, true, false, 0.018);
     const tvMat = createWallTvMat(screenReg, d, idx);
     const tvScr = new THREE.Mesh(new THREE.PlaneGeometry(tvW, tvH), tvMat);
-    tvScr.position.set(x0, tvY, 0.345);
+    tvScr.position.set(x0, tvY, 0.342);
     roomsGrp.add(tvScr);
     screenReg.wallTVs[screenReg.wallTVs.length - 1].mesh = tvScr;
 
-    boxAt(roomsGrp, tvW * 0.62, 0.09, 0.13, x0, tvY - tvH / 2 - 0.2, 0.3, M.dark, false, false, 0.03);
+    boxAt(roomsGrp, tvW * 0.54, 0.075, 0.11, x0, tvY - tvH / 2 - 0.16, 0.295, M.dark, false, false, 0.025);
     boxAt(
       roomsGrp,
-      0.05,
-      0.025,
+      0.045,
       0.02,
-      x0 + tvW * 0.31 - 0.2,
-      tvY - tvH / 2 - 0.2,
-      0.375,
+      0.015,
+      x0 + tvW * 0.27 - 0.18,
+      tvY - tvH / 2 - 0.16,
+      0.352,
       new THREE.MeshBasicMaterial({ color: d.soft, toneMapped: false }),
       false,
       false
     );
 
-    // Workstation run (beveled wood top + rounded acoustic screen + drawer pedestals)
+    // Manufactured architectural workstation bench (chamfered oak top + steel A-frames + acoustic screen + rolling pedestals)
     const dz = 3.95;
     const rugb = new THREE.Mesh(
-      new THREE.PlaneGeometry(6.0, 3.1),
+      new THREE.PlaneGeometry(6.2, 3.2),
       new THREE.MeshPhysicalMaterial({
         map: M.textures.carpetTex,
         normalMap: M.textures.carpetNormal,
@@ -639,19 +638,50 @@ export function buildSceneArchitecture(
       })
     );
     rugb.rotation.x = -Math.PI / 2;
-    rugb.position.set(x0, y0 + 0.045, 4.95);
+    rugb.position.set(x0, y0 + 0.042, 4.95);
     rugb.receiveShadow = true;
     roomsGrp.add(rugb);
 
-    boxAt(roomsGrp, 6.24, 0.075, 1.42, x0, y0 + 0.755, dz, M.wood, true, true, 0.025);
-    contact(roomsGrp, x0, y0, dz, 7.6, 2.6, 0.6, M.textures.shadowTex);
-    contact(roomsGrp, x0, y0, dz + 1.35, 7.0, 1.6, 0.45, M.textures.shadowTex);
-    boxAt(roomsGrp, 6.16, 0.46, 0.05, x0, y0 + 0.5, dz - 0.68, M.white, false, false, 0.015);
-    boxAt(roomsGrp, 0.52, 0.72, 1.28, x0 - 2.8, y0 + 0.36, dz, M.white, true, false, 0.035);
-    boxAt(roomsGrp, 0.52, 0.72, 1.28, x0 + 2.8, y0 + 0.36, dz, M.white, true, false, 0.035);
-    boxAt(roomsGrp, 5.95, 0.025, 1.34, x0, y0 + 0.798, dz, M.white, false, false, 0.01);
+    // Single crisp chamfered oak benchtop (top face sits at y0 + 0.80, matching monitor stand!)
+    boxAt(roomsGrp, 6.26, 0.036, 1.4, x0, y0 + 0.782, dz, M.oakDesk, true, true, 0.012);
+    contact(roomsGrp, x0, y0, dz, 7.2, 2.4, 0.45, M.textures.shadowTex);
+    contact(roomsGrp, x0, y0, dz + 1.35, 6.8, 1.5, 0.35, M.textures.shadowTex);
+
+    // Powder-coated steel A-frame legs & horizontal structural stretcher rails
+    [-2.95, -0.98, 0.98, 2.95].forEach((lx) => {
+      boxAt(roomsGrp, 0.045, 0.75, 0.045, x0 + lx, y0 + 0.375, dz - 0.56, M.dark, true, false, 0.008);
+      boxAt(roomsGrp, 0.045, 0.75, 0.045, x0 + lx, y0 + 0.375, dz + 0.56, M.dark, true, false, 0.008);
+      boxAt(roomsGrp, 0.045, 0.04, 1.18, x0 + lx, y0 + 0.745, dz, M.dark, false, false, 0.008);
+      boxAt(roomsGrp, 0.04, 0.035, 1.14, x0 + lx, y0 + 0.035, dz, M.dark, false, false, 0.008);
+    });
+    boxAt(roomsGrp, 5.9, 0.045, 0.045, x0, y0 + 0.72, dz - 0.34, M.dark, false, false, 0.006);
+
+    // Perforated acoustic PET felt modesty & cable privacy screen + brushed aluminum top cap
+    boxAt(roomsGrp, 6.14, 0.44, 0.032, x0, y0 + 0.54, dz - 0.66, M.acousticFelt, true, true, 0.008);
+    boxAt(roomsGrp, 6.16, 0.022, 0.038, x0, y0 + 0.765, dz - 0.66, M.metal, false, false, 0.005);
+
+    // Galvanized under-desk cable tray & vertical braided cable spine
+    boxAt(roomsGrp, 5.84, 0.06, 0.14, x0, y0 + 0.67, dz - 0.42, M.metal, false, false, 0.008);
+    cylAt(roomsGrp, 0.026, 0.026, 0.68, x0, y0 + 0.34, dz - 0.42, M.dark, false, false, 10);
+
+    // Compact rolling 3-drawer under-desk pedestals at outer ends (recessed drawer reveals)
+    [-2.68, 2.68].forEach((px) => {
+      boxAt(roomsGrp, 0.42, 0.56, 0.54, x0 + px, y0 + 0.32, dz + 0.24, M.white, true, true, 0.014);
+      [0.16, 0.34, 0.5].forEach((ry) => {
+        boxAt(roomsGrp, 0.38, 0.012, 0.02, x0 + px, y0 + ry, dz + 0.515, M.dark, false, false);
+        boxAt(roomsGrp, 0.11, 0.014, 0.018, x0 + px, y0 + ry - 0.035, dz + 0.518, M.metal, false, false, 0.004);
+      });
+      // Pedestal caster gliders
+      [-0.15, 0.15].forEach((cx) =>
+        [-0.2, 0.2].forEach((cz) => cylAt(roomsGrp, 0.018, 0.018, 0.035, x0 + px + cx, y0 + 0.018, dz + 0.24 + cz, M.black, false, false, 8))
+      );
+    });
 
     [-2.05, 0, 2.05].forEach((ox, k) => {
+      // Flush aluminum desktop power/USB grommet strip
+      boxAt(roomsGrp, 0.18, 0.008, 0.085, x0 + ox, y0 + 0.801, dz - 0.16, M.metal, false, false, 0.002);
+      boxAt(roomsGrp, 0.13, 0.01, 0.045, x0 + ox, y0 + 0.802, dz - 0.16, M.dark, false, false);
+
       const mm = monitor(roomsGrp, x0 + ox, y0 + 0.8, dz + 0.12, k === 1, 0, M, createDeskScreenMat(screenReg, d, k));
       if (d._ws && d._ws[k]) {
         d._ws[k].mesh = mm.children[3];
@@ -690,9 +720,9 @@ export function buildSceneArchitecture(
     if (idx === 1 || idx === 9) armchair(roomsGrp, x0 + 3.5, y0, 6.6, -0.5, M.fabricGrey, M);
     if (idx === 11) sofaWide(roomsGrp, x0 + 2.4, y0, 7.2, -0.25, M.fabricBlue, M);
 
-    downlight(ceilGrp, x0 - 2.7, ceilY(d.lv) - 0.03, 2.2, M);
-    downlight(ceilGrp, x0 + 2.7, ceilY(d.lv) - 0.03, 5.4, M);
-    downlight(ceilGrp, x0, ceilY(d.lv) - 0.03, 8.4, M);
+    downlight(ceilGrp, x0 - 2.7, ceilY(d.lv) - 0.06, 2.2, M);
+    downlight(ceilGrp, x0 + 2.7, ceilY(d.lv) - 0.06, 5.4, M);
+    downlight(ceilGrp, x0, ceilY(d.lv) - 0.06, 8.4, M);
   });
 
   /* =========================================================
@@ -709,12 +739,12 @@ export function buildSceneArchitecture(
       normalMap: M.textures.marbleNormal,
       normalScale: new THREE.Vector2(0.45, 0.45),
       roughnessMap: M.textures.marbleRoughness,
-      color: 0xb2ada4,
-      roughness: 0.26,
-      metalness: 0.06,
-      clearcoat: 0.78,
-      clearcoatRoughness: 0.12,
-      envMapIntensity: 1.25,
+      color: 0xa6a198,
+      roughness: 0.56,
+      metalness: 0.0,
+      clearcoat: 0.06,
+      clearcoatRoughness: 0.48,
+      envMapIntensity: 0.22,
     })
   );
   recFloor.rotation.x = -Math.PI / 2;
@@ -727,20 +757,7 @@ export function buildSceneArchitecture(
   boxAt(rec, 8.6, cy0, 0.22, 0, cy0 / 2, 0.24, M.slate, false, true);
 
   [-4.15, 4.15].forEach((x) => {
-    boxAt(rec, 0.11, cy0 - 1.0, 0.06, x, cy0 / 2 - 0.1, 0.36, M.ledWarm, false, false);
-    const s = new THREE.Sprite(
-      new THREE.SpriteMaterial({
-        map: M.textures.glowTex,
-        color: 0xffb060,
-        transparent: true,
-        opacity: 0.34,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      })
-    );
-    s.scale.set(2.2, cy0, 1);
-    s.position.set(x, cy0 / 2 - 0.1, 0.3);
-    rec.add(s);
+    boxAt(rec, 0.08, cy0 - 1.0, 0.045, x, cy0 / 2 - 0.1, 0.36, M.ledWarm, false, false);
   });
 
   const signTex = makeCanvasTex('brandsign', 1024, 152, (gc, W, H) => {
@@ -931,12 +948,11 @@ export function buildSceneArchitecture(
       map: earthTex,
       emissiveMap: earthTex,
       emissive: 0xffffff,
-      emissiveIntensity: 0.24,
-      roughness: 0.42,
-      metalness: 0.05,
-      clearcoat: 0.55,
-      clearcoatRoughness: 0.22,
-      envMapIntensity: 1.0,
+      emissiveIntensity: 0.12,
+      roughness: 0.62,
+      metalness: 0.02,
+      clearcoat: 0.0,
+      envMapIntensity: 0.28,
     })
   );
   sculptureGroup.add(sculptureCore);
@@ -954,14 +970,20 @@ export function buildSceneArchitecture(
       map: M.textures.glowTex,
       color: 0x4ea8ff,
       transparent: true,
-      opacity: 0.36,
+      opacity: 0.04,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     })
   );
-  sculptureHalo.scale.set(6.4, 6.4, 1);
+  sculptureHalo.scale.set(3.2, 3.2, 1);
   sculptureHalo.position.copy(sculptureGroup.position);
   rec.add(sculptureHalo);
+
+  // Sculptural brushed brass architectural wall cantilever struts anchoring the centerpiece
+  [-1.08, 1.08].forEach((ox) => {
+    boxAt(rec, 0.045, 0.045, 0.72, ox, 2.75, 0.59, M.brass, false, false, 0.008);
+    cylAt(rec, 0.055, 0.055, 0.03, ox, 2.75, 0.25, M.dark, false, false, 12);
+  });
 
   // Curved reception counter with vertical fluted walnut ribs & beveled marble top
   const a0 = -Math.PI / 2 - 0.39;
@@ -1064,11 +1086,11 @@ export function buildSceneArchitecture(
     new THREE.MeshBasicMaterial({
       color: 0xffd9a8,
       transparent: true,
-      opacity: 0.1,
-      blending: THREE.AdditiveBlending,
+      opacity: 0.0,
       depthWrite: false,
     })
   );
+  cove.visible = false;
   cove.rotation.x = Math.PI / 2;
   cove.position.set(0, cy0 - 0.04, 5.0);
   levelCeilings[0].add(cove);
@@ -1094,11 +1116,16 @@ export function buildSceneArchitecture(
   const carpetExecMat = M.execCarpet;
   const stoneExecMat = M.slate;
   const glassWallMat = new THREE.MeshPhysicalMaterial({
-    color: 0x9fc6e0,
-    roughness: 0.05,
+    color: 0xc8dad8,
+    roughness: 0.18,
+    metalness: 0.0,
+    ior: 1.52,
+    reflectivity: 0.35,
     transparent: true,
     opacity: 0.14,
     side: THREE.DoubleSide,
+    envMapIntensity: 0.32,
+    clearcoat: 0.0,
     depthWrite: false,
   });
   const slatW = (w: number) =>
@@ -1107,11 +1134,11 @@ export function buildSceneArchitecture(
       normalMap: repTex(M.textures.slatNormal, Math.max(1, w * 0.42), 1),
       normalScale: new THREE.Vector2(0.85, 0.85),
       roughnessMap: repTex(M.textures.roughTex, Math.max(1, w * 0.42), 1),
-      roughness: 0.72,
-      metalness: 0.03,
-      envMapIntensity: 0.26,
+      roughness: 0.74,
+      metalness: 0.02,
+      envMapIntensity: 0.24,
       emissive: 0x26170a,
-      emissiveIntensity: 0.14,
+      emissiveIntensity: 0.03,
     });
 
   const exPlane = (w: number, h: number, x: number, y: number, z: number, mat: THREE.Material, rx?: number) => {
@@ -1127,12 +1154,14 @@ export function buildSceneArchitecture(
     cm.position.set(0, y0 + CH - 0.06, 5.3);
     cm.rotation.x = Math.PI / 2;
     exCeilForY(y0).add(cm);
-    boxAt(exCeilForY(y0), 39.2, 0.1, 0.16, 0, y0 + CH - 0.07, 0.3, M.dark, false, false, 0.02);
+    boxAt(exCeilForY(y0), 39.2, 0.09, 0.14, 0, y0 + CH - 0.07, 0.3, M.dark, false, false, 0.015);
+    [-14, -4, 6, 15].forEach((hx) => hvacDiffuser(exCeilForY(y0), hx, y0 + CH - 0.062, 7.6, M));
   };
   const exWall = (y0: number, cx: number, w: number, mat: THREE.Material, room?: ExecRoomDef | null) => {
     const h = CH - 0.06;
     const m = exPlane(w, h, cx, y0 + h / 2 + 0.03, 0.22, mat);
     m.receiveShadow = true;
+    boxAt(exForY(y0), w, 0.05, 0.035, cx, y0 + 0.025, 0.238, M.dark, false, false);
     if (room) picks.push({ mesh: m, room });
     return m;
   };
@@ -1140,15 +1169,32 @@ export function buildSceneArchitecture(
     const grp = exForY(y0);
     const h = CH - 0.1;
     const seg = (z0: number, z1: number) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(0.04, h, z1 - z0), glassWallMat);
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.026, h, z1 - z0), glassWallMat);
       m.position.set(x, y0 + h / 2 + 0.03, (z0 + z1) / 2);
       grp.add(m);
     };
     seg(0.4, 4.0);
     seg(5.4, 9.4);
-    boxAt(grp, 0.08, 0.06, 9.0, x, y0 + h + 0.03, 4.9, M.brass, false, false, 0.015);
-    boxAt(grp, 0.08, 0.06, 9.0, x, y0 + 0.06, 4.9, M.brass, false, false, 0.015);
-    [0.4, 4.0, 5.4, 9.4].forEach((z) => boxAt(grp, 0.08, h, 0.06, x, y0 + h / 2 + 0.03, z, M.brass, false, false, 0.015));
+    // Frameless glass door leaf with tubular brushed-brass pull handles + hydraulic closer
+    const doorPivot = new THREE.Group();
+    doorPivot.position.set(x, y0 + 0.06, 4.02);
+    doorPivot.rotation.y = 0.1;
+    const doorPane = new THREE.Mesh(new THREE.BoxGeometry(0.024, h - 0.12, 1.34), glassWallMat);
+    doorPane.position.set(0, (h - 0.12) / 2, 0.67);
+    doorPivot.add(doorPane);
+    cylAt(doorPivot, 0.014, 0.014, 0.88, -0.055, 1.15, 1.16, M.brass, false, false, 10);
+    cylAt(doorPivot, 0.014, 0.014, 0.88, 0.055, 1.15, 1.16, M.brass, false, false, 10);
+    boxAt(doorPivot, 0.07, 0.055, 0.22, 0, h - 0.15, 0.14, M.dark, false, false, 0.01);
+    grp.add(doorPivot);
+
+    // Dark anodized aluminum perimeter channels with brushed brass inlay strip
+    boxAt(grp, 0.065, 0.055, 9.0, x, y0 + h + 0.03, 4.9, M.dark, false, false, 0.01);
+    boxAt(grp, 0.065, 0.055, 9.0, x, y0 + 0.055, 4.9, M.dark, false, false, 0.01);
+    [0.4, 4.0, 5.4, 9.4].forEach((z) => {
+      boxAt(grp, 0.055, h, 0.045, x, y0 + h / 2 + 0.03, z, M.dark, false, false, 0.01);
+      boxAt(grp, 0.062, 0.055, 0.06, x, y0 + 0.35, z, M.brass, false, false, 0.006);
+      boxAt(grp, 0.062, 0.055, 0.06, x, y0 + h - 0.3, z, M.brass, false, false, 0.006);
+    });
   };
   const exSign = (name: string, x: number, y: number) => {
     const pw = Math.min(3.4, name.length * 0.15 + 0.95);
@@ -1168,13 +1214,23 @@ export function buildSceneArchitecture(
   };
   const exDesk = (x: number, z: number, w: number, y0: number) => {
     const grp = exForY(y0);
-    boxAt(grp, w, 0.08, 1.22, x, y0 + 0.755, z, M.walnut, true, true, 0.03);
-    boxAt(grp, w - 0.2, 0.48, 0.05, x, y0 + 0.5, z + 0.55, M.dark, false, false, 0.015);
-    [-1, 1].forEach((s) => boxAt(grp, 0.48, 0.7, 1.04, x + s * (w / 2 - 0.3), y0 + 0.37, z, M.white, true, false, 0.035));
-    contact(grp, x, y0, z, w + 1.4, 2.4, 0.55, M.textures.shadowTex);
+    // Chamfered architectural walnut desktop (top sits at y0 + 0.80) + leather executive blotter
+    boxAt(grp, w, 0.042, 1.2, x, y0 + 0.779, z, M.walnut, true, true, 0.014);
+    boxAt(grp, 0.82, 0.006, 0.42, x, y0 + 0.802, z - 0.14, M.leatherMat, false, true, 0.002);
+    // Recessed anodized steel blade legs + privacy panel
+    boxAt(grp, w - 0.36, 0.44, 0.034, x, y0 + 0.51, z + 0.52, M.dark, false, false, 0.008);
+    [-1, 1].forEach((s) => boxAt(grp, 0.048, 0.75, 0.96, x + s * (w / 2 - 0.2), y0 + 0.375, z, M.dark, true, false, 0.01));
+    // Compact side credenza drawer pedestal with recessed reveals & brass pulls
+    const pedX = x + (w / 2 - 0.38);
+    boxAt(grp, 0.46, 0.58, 0.88, pedX, y0 + 0.34, z + 0.06, M.walnut, true, true, 0.014);
+    [0.16, 0.35, 0.53].forEach((ry) => {
+      boxAt(grp, 0.42, 0.012, 0.02, pedX, y0 + ry, z - 0.382, M.dark, false, false);
+      boxAt(grp, 0.12, 0.014, 0.018, pedX, y0 + ry - 0.035, z - 0.386, M.brass, false, false, 0.004);
+    });
+    contact(grp, x, y0, z, w + 1.2, 2.2, 0.45, M.textures.shadowTex);
   };
   const exLights = (y0: number, xs: number[], zs: number[]) =>
-    xs.forEach((x) => zs.forEach((z) => downlight(exCeilForY(y0), x, y0 + CH - 0.03, z, M)));
+    xs.forEach((x) => zs.forEach((z) => downlight(exCeilForY(y0), x, y0 + CH - 0.06, z, M)));
   const floorLamp = (x: number, y0: number, z: number) => {
     const grp = exForY(y0);
     cylAt(grp, 0.024, 0.028, 1.48, x, y0 + 0.75, z, M.brass, false, false, 12);
@@ -1259,8 +1315,8 @@ export function buildSceneArchitecture(
       car.castShadow = true;
       ex4.add(car);
     });
-    boxAt(levelCeilings[4], 8.0, 0.06, 0.18, 0, y0 + CH - 0.2, tz, M.ledWarm, false, false, 0.02);
-    [-3.5, 3.5].forEach((x) => cylAt(levelCeilings[4], 0.012, 0.012, 0.2, x, y0 + CH - 0.1, tz, M.brass, false, false, 8));
+    ceilingLinearLight(levelCeilings[4], 0, y0 + CH - 0.28, tz, 8.2, 0.24, M);
+    [-3.5, 3.5].forEach((x) => cylAt(levelCeilings[4], 0.01, 0.01, 0.24, x, y0 + CH - 0.14, tz, M.brass, false, false, 8));
     exLights(y0, [-7, -3.5, 0, 3.5, 7], [3.0, 6.8]);
 
     // Executive Lounge & Espresso Bar
@@ -1600,11 +1656,16 @@ export function buildSceneArchitecture(
     cab.add(new THREE.Mesh(new THREE.TubeGeometry(railCurve, 12, 0.022, 8, false), M.metal));
 
     const paneMat = new THREE.MeshPhysicalMaterial({
-      color: 0xbfe0f5,
-      roughness: 0.05,
+      color: 0xc8dad8,
+      roughness: 0.18,
+      metalness: 0.0,
+      ior: 1.52,
+      reflectivity: 0.35,
       transparent: true,
       opacity: 0.14,
       side: THREE.DoubleSide,
+      envMapIntensity: 0.32,
+      clearcoat: 0.0,
       depthWrite: false,
     });
     const mkPane = (w: number, hh: number, d: number, x: number, z: number) => {
@@ -1612,9 +1673,14 @@ export function buildSceneArchitecture(
       m.position.set(x, 1.2, z);
       cab.add(m);
     };
-    mkPane(1.7, 2.3, 0.03, 0, 0.95);
-    mkPane(1.7, 2.3, 0.03, 0, -0.95);
-    mkPane(0.03, 2.3, 1.9, sd * 0.85, 0);
+    mkPane(1.7, 2.3, 0.024, 0, 0.95);
+    mkPane(1.7, 2.3, 0.024, 0, -0.95);
+    mkPane(0.024, 2.3, 1.9, sd * 0.85, 0);
+
+    // Interior brushed stainless Car Operating Panel (COP) + illuminated floor indicator
+    boxAt(cab, 0.18, 0.95, 0.025, -sd * 0.45, 1.22, 0.92, M.metal, false, false, 0.006);
+    boxAt(cab, 0.1, 0.14, 0.03, -sd * 0.45, 1.56, 0.915, M.black, false, false, 0.003);
+    boxAt(cab, 0.06, 0.04, 0.034, -sd * 0.45, 1.56, 0.914, M.ledCyan, false, false);
 
     const cLamp = new THREE.Mesh(new THREE.CircleGeometry(0.24, 16), M.lamp);
     cLamp.rotation.x = Math.PI / 2;
@@ -1998,6 +2064,7 @@ export function buildSceneArchitecture(
 
   for (let k = 0; k < 3; k++) {
     boxAt(plazaGroup, 30, 0.2, 1.05, 0, -0.1 - k * 0.2, 11.55 + k * 0.95, M.white, false, true, 0.03);
+    boxAt(plazaGroup, 30, 0.018, 0.045, 0, -0.005 - k * 0.2, 12.055 + k * 0.95, M.dark, false, false);
   }
   [
     [-13, 11.2],
@@ -2135,9 +2202,9 @@ export function buildSceneArchitecture(
         normalMap: nrm,
         normalScale: new THREE.Vector2(0.75, 0.75),
         roughnessMap: M.textures.roughTex,
-        roughness: glassy ? 0.25 : 0.78,
-        metalness: glassy ? 0.35 : 0.04,
-        envMapIntensity: glassy ? 0.9 : 0.4,
+        roughness: glassy ? 0.38 : 0.82,
+        metalness: glassy ? 0.2 : 0.04,
+        envMapIntensity: glassy ? 0.42 : 0.25,
       });
     const roofM = std({
       normalMap: M.textures.concreteNormal,
@@ -2213,7 +2280,7 @@ export function buildSceneArchitecture(
     }
 
     boxAt(cityGroup, n.w + 0.16, 3.4, n.d + 0.16, n.x, -0.62 + 1.7, n.z, std({ color: 0x5f646b, roughness: 0.8 }), false, false, 0.08);
-    const shopMat = std({ color: 0x243039, roughness: 0.22, metalness: 0.35, envMapIntensity: 1.0 });
+    const shopMat = std({ color: 0x243039, roughness: 0.48, metalness: 0.18, envMapIntensity: 0.35 });
     for (let x = -n.w / 2 + 2.2; x < n.w / 2 - 1.5; x += 5.4) {
       boxAt(cityGroup, 4.4, 2.5, 0.14, n.x + x, -0.62 + 1.55, n.z + n.d / 2 + 0.1, shopMat, false, false);
       boxAt(cityGroup, 4.4, 2.5, 0.14, n.x + x, -0.62 + 1.55, n.z - n.d / 2 - 0.1, shopMat, false, false);

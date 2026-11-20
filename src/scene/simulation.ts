@@ -31,6 +31,7 @@ import {
   setPose,
   updatePersonKinematics,
   type HumanPalette,
+  type MakePersonOptions,
   type PersonActor,
 } from './human';
 import type { MaterialLibrary } from './materials';
@@ -225,23 +226,13 @@ export class AtriumSimulation {
     z: number,
     face: number,
     pose: string,
-    opts: {
-      skin: THREE.MeshPhysicalMaterial;
-      shirt: THREE.Material;
-      hair: THREE.MeshStandardMaterial;
-      trou: THREE.Material;
-      s?: number;
-      fem?: boolean;
-      hs?: number;
-      sneakers?: boolean;
-      blazer?: boolean;
+    opts: MakePersonOptions & {
       look?: number;
       gest?: boolean;
       modes?: Array<[string, number]>;
       route?: Array<{ x: number; z: number; wait?: number; pose?: string; face?: number }>;
       walkPose?: string;
       speed?: number;
-      tie?: number;
     },
     M: MaterialLibrary
   ): PersonActor {
@@ -259,21 +250,6 @@ export class AtriumSimulation {
       P.wait = opts.route[0].wait || 2;
       P.speed = opts.speed || 1.15;
       P.walkPose = opts.walkPose || 'stand';
-    }
-    if (opts.tie != null) {
-      const sf = new THREE.Mesh(
-        getRoundedBox(0.14, 0.4, 0.015, 0.005, 2),
-        new THREE.MeshStandardMaterial({ color: 0xf4f4f6, roughness: 0.55 })
-      );
-      sf.position.set(0, 0.4, 0.132);
-      P.tor.add(sf);
-
-      const ti = new THREE.Mesh(
-        getRoundedBox(0.044, 0.32, 0.016, 0.004, 2),
-        new THREE.MeshStandardMaterial({ color: opts.tie, roughness: 0.42 })
-      );
-      ti.position.set(0, 0.36, 0.14);
-      P.tor.add(ti);
     }
     setPose(P, pose, this.P_LIB);
     this.peopleGroup.add(P.g);
@@ -295,14 +271,26 @@ export class AtriumSimulation {
       });
 
     // Desk workers across two shifts (Morning + Afternoon)
+    const femHairPool = ['braids', 'bun', 'puff', 'afro', 'bob', 'pixie'] as const;
+    const maleHairPool = ['fade', 'twists', 'afro', 'fade'] as const;
+
     ROOMS.forEach((d, idx) => {
       const cx = COLX[d.col];
       const modes = MODES[d.t] || MODES.def;
+      const isTechFloor = d.lv === 0 || d.lv === 1;
       [-2.05, 0, 2.05].forEach((ox, k) => {
         const seed = idx * 17 + k * 7;
         for (let sh = 0; sh < 2; sh++) {
           const id = seed + sh * 101;
-          const fem = id % 3 === 1;
+          const fem = id % 2 === 1;
+          const outfit = fem
+            ? (['dress', 'blouseSkirt', 'knit', 'shirtTrousers', 'suit'] as const)[h(id * 3, 5)]
+            : (['shirtTrousers', 'knit', 'smartCasual', 'suit'] as const)[h(id * 3, 4)];
+          const hasHeadphones = (d.t === 'front' || d.t === 'ai' || d.t === 'social' || d.t === 'mobile') && id % 3 === 0;
+          const shirtMat =
+            outfit === 'knit'
+              ? P_LIB.knits[h(id * 3, P_LIB.knits.length)]
+              : P_LIB.shirts[h(id * 3, P_LIB.shirts.length)];
           const p = this.addPerson(
             d.lv,
             cx + ox,
@@ -310,14 +298,21 @@ export class AtriumSimulation {
             Math.PI,
             pickMode(modes),
             {
-              skin: P_LIB.skins[h(id, 5)],
-              shirt: P_LIB.shirts[h(id * 3, 10)],
-              hair: P_LIB.hairs[h(id * 5, 4)],
-              trou: P_LIB.trous[h(id * 7, 4)],
+              skin: P_LIB.skins[h(id, P_LIB.skins.length)],
+              shirt: shirtMat,
+              hair: P_LIB.hairs[h(id * 5, P_LIB.hairs.length)],
+              trou: P_LIB.trous[h(id * 7, P_LIB.trous.length)],
               fem,
+              hs: h(id * 11, 6),
+              hairStyle: fem ? femHairPool[h(id * 11, femHairPool.length)] : maleHairPool[h(id * 11, maleHairPool.length)],
+              faceVariant: id % 4,
+              freckleSeed: id,
+              outfit,
+              sneakers: isTechFloor ? id % 2 === 0 : id % 4 === 0,
+              lanyard: outfit !== 'dress' && id % 3 === 0,
+              headphones: hasHeadphones,
               s: (fem ? 0.94 : 0.99) + (id % 5) * 0.015,
               modes,
-              sneakers: id % 2 === 0,
             },
             M
           ) as WorkerActor;
@@ -336,7 +331,7 @@ export class AtriumSimulation {
       });
     });
 
-    // Receptionist + Lounge concierge + Visitor
+    // Receptionist + Lounge concierge + Visitors & Guests
     const addDayVisitor = (
       lv: number,
       dx: number,
@@ -358,23 +353,48 @@ export class AtriumSimulation {
       return p;
     };
 
+    // Receptionist (emerald/navy tailored blazer, low chignon bun & warm smile)
     addDayVisitor(0, -1.2, 4.9, 0, 'standType', {
       skin: P_LIB.skins[0],
-      shirt: sMat(0xf4f4f6),
+      shirt: sMat(0x223654),
       hair: P_LIB.hairs[0],
       trou: P_LIB.trous[0],
       fem: true,
-      hs: 1,
+      hairStyle: 'bun',
+      outfit: 'suit',
+      skirt: 'short',
+      shoeStyle: 'heel',
+      warmSmile: true,
       look: 0.4,
       blazer: true,
     });
+    // Ground lobby visitor in tailored dark coat checking smartphone / reading briefs
     addDayVisitor(0, 2.55, 8.5, -Math.PI / 2, 'hold', {
       skin: P_LIB.skins[2],
-      shirt: P_LIB.shirts[4],
+      shirt: sMat(0x1b212b),
       hair: P_LIB.hairs[1],
-      trou: P_LIB.trous[1],
+      trou: P_LIB.trous[4],
+      hairStyle: 'fade',
+      beardStyle: 'full',
+      coat: true,
+      outfit: 'shirtTrousers',
+      shoeStyle: 'oxford',
       look: 0.3,
-      sneakers: true,
+    });
+    // Ground lobby architect in sleek sleeveless dress + natural puff holding coffee
+    addDayVisitor(0, 5.4, 9.8, -0.55, 'coffee', {
+      skin: P_LIB.skins[0],
+      shirt: sMat(0x16181d),
+      hair: P_LIB.hairs[0],
+      trou: sMat(0x16181d),
+      fem: true,
+      hairStyle: 'puff',
+      outfit: 'dress',
+      skirt: 'short',
+      sleeve: 'sleeveless',
+      shoeStyle: 'heel',
+      warmSmile: true,
+      look: 0.35,
     });
 
     // Ground Security Officer patrolling lobby
@@ -385,57 +405,102 @@ export class AtriumSimulation {
       0.2,
       'radio',
       {
-        skin: P_LIB.skins[1],
+        skin: P_LIB.skins[3],
         shirt: sMat(0x1b2b4a),
         hair: P_LIB.hairs[3],
         trou: sMat(0x161b26),
+        hairStyle: 'fade',
+        beardStyle: 'none',
+        outfit: 'shirtTrousers',
+        sleeve: 'short',
+        shoeStyle: 'oxford',
         s: 1.07,
         speed: 0.9,
         route: [
           { x: -5, z: 9.4, wait: 3, pose: 'radio', face: 0.1 },
           { x: 5, z: 9.4, wait: 3, pose: 'stand', face: -0.1 },
-          { x: 3.5, z: 7.2, wait: 2, pose: 'stand', face: 0 },
+          { x: 3.5, z: 7.2, wait: 2, pose: 'readDoc', face: 0 },
         ],
       },
       M
     );
     const badgeMesh = new THREE.Mesh(
-      getRoundedBox(0.06, 0.08, 0.015, 0.004, 2),
+      getRoundedBox(0.052, 0.068, 0.012, 0.004, 2),
       new THREE.MeshStandardMaterial({ color: 0xe6b83a, metalness: 0.9, roughness: 0.2 })
     );
-    badgeMesh.position.set(0.1, 0.44, 0.145);
+    badgeMesh.position.set(0.085, 0.43, 0.129);
     secOff.tor.add(badgeMesh);
 
     // Executive Lounge barista
     addDayVisitor(4, -17.6, 0.4, 0, 'standType', {
-      skin: P_LIB.skins[1],
+      skin: P_LIB.skins[2],
       shirt: sMat(0x2a2d34),
       hair: P_LIB.hairs[0],
       trou: P_LIB.trous[0],
       fem: true,
-      hs: 2,
+      hairStyle: 'afro',
+      outfit: 'blouseSkirt',
+      sleeve: 'rolled',
+      skirt: 'midi',
+      shoeStyle: 'flat',
+      warmSmile: true,
       look: 0.3,
     });
+    // Executive Lounge collaborating pair (dark coat + coffee mug, ivory blouse + cobalt midi skirt + box braids)
+    addDayVisitor(4, -14.8, 4.1, Math.PI / 2 - 0.15, 'coffee', {
+      skin: P_LIB.skins[5],
+      shirt: sMat(0x1c222d),
+      hair: P_LIB.hairs[0],
+      trou: sMat(0x16181e),
+      hairStyle: 'fade',
+      beardStyle: 'full',
+      coat: true,
+      outfit: 'shirtTrousers',
+      shoeStyle: 'oxford',
+      look: 0.3,
+    });
+    addDayVisitor(4, -13.5, 4.15, -Math.PI / 2 + 0.15, 'collaborate', {
+      skin: P_LIB.skins[4],
+      shirt: sMat(0xf0eee8),
+      hair: P_LIB.hairs[0],
+      trou: sMat(0x1e4c9a),
+      fem: true,
+      hairStyle: 'braids',
+      outfit: 'blouseSkirt',
+      sleeve: 'rolled',
+      skirt: 'midi',
+      shoeStyle: 'heel',
+      headphones: true,
+      warmSmile: true,
+      gest: true,
+      look: 0.35,
+    });
 
-    // Directors around Board Room table
+    // Directors around Board Room table (conference meeting, reading documents, presenting)
     const dirCol = [0x1c2838, 0x3a2434, 0x283630, 0x24262e, 0x363024];
     const execSeats: Array<[number, number, number, string, number, number]> = [
       [-6.9, 4.9, Math.PI / 2, 'talk', 1, 0x9c282e],
-      [-1.8, 3.0, 0, 'sit', 0, 0x284e86],
-      [1.8, 3.0, 0, 'sit', 0, 0x326a5a],
-      [-3.6, 6.8, Math.PI, 'sit', 1, 0],
-      [3.6, 6.8, Math.PI, 'talk', 0, 0x5c3670],
+      [-1.8, 3.0, 0, 'meeting', 0, 0x284e86],
+      [1.8, 3.0, 0, 'writeNotes', 0, 0x326a5a],
+      [-3.6, 6.8, Math.PI, 'meeting', 1, 0],
+      [3.6, 6.8, Math.PI, 'collaborate', 0, 0x5c3670],
     ];
     execSeats.forEach(([x, z, rot, pose, fem, tie], i) => {
       addDayVisitor(4, x, z, rot, pose, {
-        skin: P_LIB.skins[i % 5],
+        skin: P_LIB.skins[(i * 2) % P_LIB.skins.length],
         shirt: sMat(dirCol[i]),
-        hair: P_LIB.hairs[i % 4],
+        hair: P_LIB.hairs[(i * 2) % P_LIB.hairs.length],
         trou: sMat(dirCol[i]),
         fem: !!fem,
+        hairStyle: fem ? (i === 0 ? 'bun' : 'bob') : i === 2 ? 'twists' : 'fade',
+        beardStyle: !fem && i % 2 === 1 ? 'stubble' : 'none',
+        faceVariant: i % 4,
         s: fem ? 0.97 : 1.04,
+        outfit: 'suit',
+        skirt: fem && i === 0 ? 'short' : 'none',
+        shoeStyle: fem ? 'heel' : 'oxford',
         blazer: true,
-        gest: pose === 'talk',
+        gest: pose === 'talk' || pose === 'collaborate',
         look: 0.35,
         tie: fem ? undefined : tie,
       });
@@ -444,23 +509,30 @@ export class AtriumSimulation {
     // Heads of Department & Board Secretary & EA & CEO
     (
       [
-        [4, 15, 2.2, 0, 'type', 0x303846, 1, 0],
-        [5, -17.5, 2.2, 0, 'type', 0x1e2c44, 0, 0x2e64b8],
-        [5, -12.5, 2.2, 0, 'phone', 0x422238, 1, 0],
-        [5, -7.5, 2.2, 0, 'type', 0x1c3a32, 0, 0x1e7a5e],
-        [5, -2.5, 2.2, 0, 'type', 0x3c2e22, 1, 0],
-        [5, 3, 2.2, 0, 'type', 0x2c3440, 1, 0],
-        [5, 13, 2.2, 0, 'phone', 0x141a26, 0, 0x8a1f2e],
+        [4, 15, 2.2, 0, 'readDoc', 0x165e4c, 1, 0, 'dress', 'braids'],
+        [5, -17.5, 2.2, 0, 'type', 0x1e2c44, 0, 0x2e64b8, 'suit', 'fade'],
+        [5, -12.5, 2.2, 0, 'phone', 0x422238, 1, 0, 'suit', 'puff'],
+        [5, -7.5, 2.2, 0, 'think', 0x2b303a, 0, 0, 'knit', 'twists'],
+        [5, -2.5, 2.2, 0, 'writeNotes', 0x3c2e22, 1, 0, 'blouseSkirt', 'bob'],
+        [5, 3, 2.2, 0, 'sit', 0x181a20, 1, 0, 'dress', 'pixie'],
+        [5, 13, 2.2, 0, 'phone', 0x141a26, 0, 0x8a1f2e, 'suit', 'fade'],
       ] as const
-    ).forEach(([lv, x, z, rot, pose, col, fem, tie], i) => {
+    ).forEach(([lv, x, z, rot, pose, col, fem, tie, outfit, hairStyle], i) => {
       addDayVisitor(lv, x, z, rot, pose, {
-        skin: P_LIB.skins[(i + 2) % 5],
-        shirt: sMat(col),
-        hair: P_LIB.hairs[(i + 1) % 4],
+        skin: P_LIB.skins[(i + 2) % P_LIB.skins.length],
+        shirt: outfit === 'knit' ? P_LIB.knits[0] : sMat(col),
+        hair: P_LIB.hairs[(i + 1) % P_LIB.hairs.length],
         trou: sMat(col),
         fem: !!fem,
-        blazer: true,
-        s: lv === 5 && x === 13 ? 1.12 : fem ? 0.96 : 1.02,
+        hairStyle,
+        beardStyle: !fem ? 'full' : 'none',
+        faceVariant: i % 4,
+        outfit,
+        blazer: outfit === 'suit',
+        sleeve: outfit === 'dress' ? 'sleeveless' : undefined,
+        skirt: outfit === 'dress' || outfit === 'blouseSkirt' ? 'short' : 'none',
+        shoeStyle: fem ? 'heel' : 'oxford',
+        s: lv === 5 && x === 13 ? 1.1 : fem ? 0.96 : 1.02,
         look: 0.35,
         tie: tie || undefined,
       });
@@ -1684,15 +1756,21 @@ export class AtriumSimulation {
     for (const a of actors) {
       if (a.state && a.state !== 'atDesk') {
         transit++;
-      } else if (a.pose === 'type' || a.pose === 'standType') {
+      } else if (a.pose === 'type' || a.pose === 'standType' || a.pose === 'writeNotes') {
         typing++;
-      } else if (a.pose === 'talk') {
+      } else if (a.pose === 'talk' || a.pose === 'collaborate' || a.pose === 'meeting') {
         talking++;
       } else if (a.pose === 'phone') {
         phone++;
       } else if (a.pose === 'coffee') {
         coffee++;
-      } else if (a.pose === 'sit') {
+      } else if (
+        a.pose === 'sit' ||
+        a.pose === 'think' ||
+        a.pose === 'monitorLook' ||
+        a.pose === 'leanScreen' ||
+        a.pose === 'readDoc'
+      ) {
         seated++;
       } else {
         typing++;
@@ -1848,7 +1926,12 @@ export class AtriumSimulation {
           zone: 'Executive Lounge',
           color: '#7a5c3a',
           count: barista.length,
-          status: barista.length > 0 ? 'Barista at espresso bar' : 'Lounge unattended',
+          status:
+            barista.length > 1
+              ? `Barista & ${barista.length - 1} guests in lounge`
+              : barista.length === 1
+              ? 'Barista at espresso bar'
+              : 'Lounge unattended',
         },
         {
           zone: 'Board Secretary',
@@ -1918,8 +2001,14 @@ export class AtriumSimulation {
       if (pose === 'standType') return 'Working at standing counter';
       if (pose === 'phone') return 'On a live client / team call';
       if (pose === 'point') return 'Reviewing & pointing on screen';
-      if (pose === 'talk') return 'Collaborating at desk';
-      if (pose === 'sit') return 'Reviewing reports at desk';
+      if (pose === 'talk' || pose === 'collaborate') return 'Collaborating with colleague';
+      if (pose === 'sit') return 'Working on laptop in ergonomic chair';
+      if (pose === 'monitorLook') return 'Examining computer monitor';
+      if (pose === 'leanScreen') return 'Leaning forward inspecting screen';
+      if (pose === 'think') return 'Thinking through architecture at desk';
+      if (pose === 'writeNotes') return 'Writing notes in notebook';
+      if (pose === 'readDoc') return 'Reviewing printed documents';
+      if (pose === 'meeting') return 'Participating in conference meeting';
       return 'Working at workstation';
     };
 

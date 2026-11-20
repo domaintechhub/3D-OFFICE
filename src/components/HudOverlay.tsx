@@ -9,11 +9,13 @@ import {
   Pause,
   Play,
   Users,
+  UserSquare2,
   Volume2,
   VolumeX,
   X,
 } from 'lucide-react';
 import { TOUR_TEXT, type HudSnapshot } from '../scene/constants';
+import { CharacterStudioModal } from './CharacterStudioModal';
 import { WorkstationInspector } from './WorkstationInspector';
 
 interface HudOverlayProps {
@@ -82,21 +84,22 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
   getInspectedScreenCanvas,
 }) => {
   const [dockOpen, setDockOpen] = useState(true);
+  const [studioOpen, setStudioOpen] = useState(false);
   const joyRef = useRef<HTMLDivElement | null>(null);
   const [joyKnob, setJoyKnob] = useState({ x: 0, y: 0 });
   const joyActive = useRef(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code === 'KeyH' && !hud.walking && !(e.target instanceof HTMLInputElement)) {
+      if (e.code === 'KeyH' && !hud.walking && !studioOpen && !(e.target instanceof HTMLInputElement)) {
         setDockOpen((v) => !v);
-      } else if (e.code === 'Escape' && !hud.walking && hud.inspectedMonitor) {
+      } else if (e.code === 'Escape' && !studioOpen && !hud.walking && hud.inspectedMonitor) {
         onCloseMonitor();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [hud.walking, hud.inspectedMonitor, onCloseMonitor]);
+  }, [hud.walking, hud.inspectedMonitor, studioOpen, onCloseMonitor]);
 
   const updateJoystick = (clientX: number, clientY: number) => {
     const el = joyRef.current;
@@ -443,7 +446,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
               <button
                 type="button"
                 onClick={onToggleStaff}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded border transition-colors cursor-pointer ${
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                   hud.staffVisible
                     ? 'border-white/18 bg-white/10 text-white'
                     : 'border-white/10 bg-white/3 text-slate-400'
@@ -451,6 +454,16 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
               >
                 <Users className="w-3.5 h-3.5" />
                 <span>{hud.staffVisible ? 'Staff ON' : 'Staff OFF'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStudioOpen(true)}
+                title="Inspect & Export 3D Rigged Office Characters (.GLB)"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded border border-emerald-500/40 bg-emerald-500/14 text-emerald-100 hover:bg-emerald-500/24 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <UserSquare2 className="w-3.5 h-3.5" />
+                <span>Characters · GLB</span>
               </button>
 
               <button
@@ -505,6 +518,8 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
           </div>
         </div>
       )}
+
+      <CharacterStudioModal isOpen={studioOpen} onClose={() => setStudioOpen(false)} />
     </div>
   );
 };
