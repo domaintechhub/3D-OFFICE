@@ -293,6 +293,35 @@ const WORK_THOUGHTS: Record<string, string[]> = {
     'Proud of how cohesive the engineering and growth floors feel today.',
     'Mapping out next year’s East Africa enterprise hub expansion.',
   ],
+  security_ops: [
+    'All 6 perimeter and basement CCTV feeds are crystal clear with normal badge flow.',
+    'Reconciling visitor access logs and B1 server vault biometric check-ins.',
+    'Coordinating campus security patrols and main gate turnstile telemetry.',
+  ],
+  hr: [
+    'Shortlisting senior full-stack and AI engineering candidates for next week.',
+    'Finalizing onboarding welcome kits and mentoring pairs for Monday’s new hires.',
+    'Reviewing quarterly wellbeing and wellness-gym participation metrics.',
+  ],
+  relax: [
+    'Anyone up for a quick best-of-three table tennis match after standup?',
+    'Restocking espresso beans and chilling sparkling water for the afternoon break.',
+    'Nothing beats a ten-minute lounge reset before diving back into code.',
+  ],
+  gym: [
+    'Logging a quick 20-minute cardio warm-up on the treadmill before lunch.',
+    'Adjusting the dumbbell rack and booking this evening’s mobility session.',
+    'Great energy in the studio today—fitness keeps the sprint momentum high.',
+  ],
+  strategy: [
+    'Mapping 2026 East Africa expansion targets across Nairobi, Mombasa, and Kigali.',
+    'Aligning enterprise ARR milestones with our Q4 engineering roadmap.',
+    'Sharpening strategic priorities ahead of the afternoon Board Room briefing.',
+  ],
+  gallery: [
+    'Preparing the campus architectural scale model for visiting enterprise partners.',
+    'Walk-through guests love seeing how all nine campus buildings interconnect.',
+  ],
   guide: [
     'Ready whenever someone wants a full 17-stop tour of DomainTechHub!',
     'Love watching every department hustle from the ground atrium.',
@@ -312,15 +341,15 @@ const WORK_THOUGHTS: Record<string, string[]> = {
   ],
   b2_senior: [
     'PV solar array is feeding 18.4 kW clean—zero grid draw right now.',
-    'Monitoring HV transformer oil temperature and harmonic distortion across phase B.',
+    'Analyzing HV transformer harmonic curves and inverter efficiency logs on the B2 workstation.',
     'Auditing main switchgear interlocks before authorizing afternoon battery test.',
-    'Checking in with the junior electrical techs to review lockout/tagout tags.',
+    'Reviewing live LiFePO4 battery discharge trends at the Power Room analytics monitor.',
   ],
   b2_junior: [
-    'Recording cell balance voltages across all three LiFePO4 battery rows.',
-    'Organizing calibrated torque drivers and multimeter leads on the service trolley.',
+    'Logging LiFePO4 cell balance voltages across all three battery rows at the telemetry desk.',
+    'Comparing live SCADA load charts on the Power Room monitor against yesterday’s peak.',
     'Inverter #3 efficiency is reading 98%—jotting telemetry in the maintenance log.',
-    'Transporting replacement breaker module to the main busbar bay.',
+    'Organizing calibrated torque drivers and multimeter leads on the service trolley.',
   ],
   visitor: [
     'Really impressed by the open atrium design and live engineering bays.',
@@ -372,11 +401,17 @@ export function createCharacterBrain(identity: CharacterIdentity): CharacterBrai
   const workList = WORK_THOUGHTS[identity.topicKey] || DISTRICT_WORK_THOUGHTS[identity.topicKey] || WORK_THOUGHTS.web;
   const seed = Math.abs(Math.round(identity.homeX * 13 + identity.homeZ * 7 + identity.homeLv * 31));
   const initialThought = workList[seed % workList.length];
+  const startsAtDesk = identity.homeLv >= 0 || identity.homePose === 'type';
   return {
     identity,
-    mood: identity.homeLv < 0 ? 'Alert' : 'Focused',
-    goal: identity.homeLv < 0 ? 'inspect' : 'work',
-    actionLabel: identity.homeLv < 0 ? 'Inspecting equipment' : 'Working at station',
+    mood: startsAtDesk ? 'Focused' : 'Alert',
+    goal: startsAtDesk ? 'work' : 'inspect',
+    actionLabel:
+      identity.homeLv < 0 && startsAtDesk
+        ? 'Analyzing power & battery work at desk'
+        : startsAtDesk
+          ? 'Working at station'
+          : 'Inspecting equipment',
     thought: initialThought,
     recentThoughts: [],
     focus: 62 + (seed % 32),

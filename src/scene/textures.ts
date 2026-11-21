@@ -1092,6 +1092,118 @@ export function buildCoreTextures() {
     g.fillRect(W - 6, 0, 6, H);
   });
 
+  const gymRubberTex = makeCanvasTex('gym_rubber', 256, 256, (g, W, H) => {
+    g.fillStyle = '#1e2228';
+    g.fillRect(0, 0, W, H);
+    const specks = ['#3a4352', '#526072', '#4fe38a', '#3b82f6', '#94a3b8'];
+    for (let i = 0; i < 1600; i++) {
+      g.fillStyle = specks[(Math.random() * specks.length) | 0];
+      g.globalAlpha = 0.28 + Math.random() * 0.36;
+      g.fillRect(Math.random() * W, Math.random() * H, 1.5 + Math.random() * 1.5, 1.5 + Math.random() * 1.5);
+    }
+    g.globalAlpha = 1;
+    g.strokeStyle = 'rgba(10,12,16,0.55)';
+    g.lineWidth = 2;
+    for (let x = 0; x <= W; x += 128) {
+      g.beginPath();
+      g.moveTo(x, 0);
+      g.lineTo(x, H);
+      g.stroke();
+    }
+    for (let y = 0; y <= H; y += 128) {
+      g.beginPath();
+      g.moveTo(0, y);
+      g.lineTo(W, y);
+      g.stroke();
+    }
+  });
+  gymRubberTex.wrapS = gymRubberTex.wrapT = THREE.RepeatWrapping;
+  gymRubberTex.repeat.set(4, 4);
+
+  const restroomTileTex = makeCanvasTex('restroom_tile', 256, 256, (g, W, H) => {
+    g.fillStyle = '#dce2e6';
+    g.fillRect(0, 0, W, H);
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 4; c++) {
+        const shade = 218 + ((r + c) % 2) * 8 + ((Math.random() * 8) | 0);
+        g.fillStyle = `rgb(${shade},${shade + 4},${shade + 8})`;
+        g.fillRect(c * 64 + 2, r * 64 + 2, 60, 60);
+      }
+    }
+    g.strokeStyle = '#9aa4ad';
+    g.lineWidth = 2;
+    for (let i = 0; i <= 256; i += 64) {
+      g.beginPath();
+      g.moveTo(i, 0);
+      g.lineTo(i, H);
+      g.stroke();
+      g.beginPath();
+      g.moveTo(0, i);
+      g.lineTo(W, i);
+      g.stroke();
+    }
+  });
+  restroomTileTex.wrapS = restroomTileTex.wrapT = THREE.RepeatWrapping;
+  restroomTileTex.repeat.set(3, 4);
+
+  const restroomTileNormal = heightCanvasToNormalTex('restroom_tile', 256, 256, (g, W, H) => {
+    g.fillStyle = '#c8c8c8';
+    g.fillRect(0, 0, W, H);
+    g.strokeStyle = '#505050';
+    g.lineWidth = 4;
+    for (let i = 0; i <= 256; i += 64) {
+      g.beginPath();
+      g.moveTo(i, 0);
+      g.lineTo(i, H);
+      g.stroke();
+      g.beginPath();
+      g.moveTo(0, i);
+      g.lineTo(W, i);
+      g.stroke();
+    }
+  }, 1.8);
+  restroomTileNormal.repeat.set(3, 4);
+
+  const hrBoardTex = makeCanvasTex('hr_board', 512, 256, (g, W, H) => {
+    g.fillStyle = '#132226';
+    g.fillRect(0, 0, W, H);
+    g.fillStyle = '#2e7d6b';
+    g.fillRect(0, 0, W, 38);
+    g.fillStyle = '#ffffff';
+    g.font = '700 18px "Plus Jakarta Sans", sans-serif';
+    g.fillText('PEOPLE & CULTURE · NAIROBI HQ ORG CHART', 18, 25);
+    const boxes = [
+      { x: 196, y: 54, w: 120, t: 'Executive Team', c: '#0f766e' },
+      { x: 36, y: 124, w: 132, t: 'Engineering (22)', c: '#1d4ed8' },
+      { x: 190, y: 124, w: 132, t: 'Growth & Ads (16)', c: '#b45309' },
+      { x: 344, y: 124, w: 132, t: 'People & Ops (12)', c: '#047857' },
+      { x: 36, y: 190, w: 206, t: 'Q2 Hiring Pipeline: 6 Open Roles', c: '#334155' },
+      { x: 266, y: 190, w: 210, t: 'Wellness & Onboarding: 98% eNPS', c: '#334155' },
+    ];
+    g.strokeStyle = 'rgba(148,163,184,0.45)';
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(256, 92);
+    g.lineTo(256, 108);
+    g.moveTo(102, 108);
+    g.lineTo(410, 108);
+    g.moveTo(102, 108);
+    g.lineTo(102, 124);
+    g.moveTo(256, 108);
+    g.lineTo(256, 124);
+    g.moveTo(410, 108);
+    g.lineTo(410, 124);
+    g.stroke();
+    for (const b of boxes) {
+      g.fillStyle = b.c;
+      rr(g, b.x, b.y, b.w, 38, 6);
+      g.fill();
+      g.fillStyle = '#f8fafc';
+      g.font = '600 12px "Plus Jakarta Sans", sans-serif';
+      g.fillText(b.t, b.x + 10, b.y + 23);
+    }
+  });
+
   return {
     marbleTex,
     marbleNormal,
@@ -1140,6 +1252,10 @@ export function buildCoreTextures() {
     glowTex,
     shadowTex,
     shelfTex,
+    gymRubberTex,
+    restroomTileTex,
+    restroomTileNormal,
+    hrBoardTex,
   };
 }
 

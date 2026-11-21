@@ -13,6 +13,7 @@ import {
   type InspectedMonitor,
   type RoomDef,
   type SelectedCharacterSnapshot,
+  type WeatherMode,
 } from './constants';
 import type { PersonActor } from './human';
 import {
@@ -26,6 +27,7 @@ import { createScreenRegistry, updateAllScreens, type ScreenRegistry } from './s
 import { AtriumSimulation } from './simulation';
 import { AmbientAudioManager } from './audio';
 import { getMaxAnisotropy, setMaxAnisotropy } from './textures';
+import { WeatherSystem, type WeatherAtmosphereState } from './weather';
 
 function detectSoftwareGl(): boolean {
   try {
@@ -50,6 +52,8 @@ export class AtriumEngine {
   private readonly screenReg: ScreenRegistry;
   private readonly arch: ArchitectureHandles;
   private readonly sim: AtriumSimulation;
+  private readonly weather: WeatherSystem;
+  private readonly asphaltMat: THREE.MeshStandardMaterial;
   private readonly audio = new AmbientAudioManager();
   private readonly isSoftwareGl: boolean;
 
@@ -113,6 +117,10 @@ export class AtriumEngine {
   private readonly _horizon = new THREE.Color();
   private readonly _fogCol = new THREE.Color();
   private readonly _skyGround = new THREE.Color();
+  private readonly _wZenith = new THREE.Color();
+  private readonly _wHorizon = new THREE.Color();
+  private readonly _wFog = new THREE.Color();
+  private readonly _lightningCol = new THREE.Color(0xcbdcff);
   private readonly _camRight = new THREE.Vector3();
   private readonly _segA = new THREE.Vector3();
   private readonly _segB = new THREE.Vector3();
@@ -152,7 +160,7 @@ export class AtriumEngine {
     pmrem.dispose();
 
     this.camera = new THREE.PerspectiveCamera(40, width / height, 0.08, 420);
-    this.camera.position.set(0, 16, 49);
+    this.camera.position.set(0, 20, 64);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.target.set(0, 12.2, 4);
@@ -171,7 +179,7 @@ export class AtriumEngine {
       this.markInteraction();
     });
 
-    // Procedural atmospheric gradient sky dome
+    // Procedural atmospheric gradient sky dome with animated FBM cloud strata & storm lightning
     this.skyMat = new THREE.ShaderMaterial({
       side: THREE.BackSide,
       depthWrite: false,
@@ -179,6 +187,9 @@ export class AtriumEngine {
         uZenith: { value: new THREE.Color(0x2a5488) },
         uHorizon: { value: new THREE.Color(0xb8d4f0) },
         uGround: { value: new THREE.Color(0x3a404a) },
+        uTime: { value: 0 },
+        uCloudCover: { value: 0.08 },
+        uLightning: { value: 0.0 },
       },
       vertexShader: `
         varying vec3 vWorldPos;
@@ -192,13 +203,62 @@ export class AtriumEngine {
         uniform vec3 uZenith;
         uniform vec3 uHorizon;
         uniform vec3 uGround;
+        uniform float uTime;
+        uniform float uCloudCover;
+        uniform float uLightning;
         varying vec3 vWorldPos;
+
+        float hash21(vec2 p) {
+          p = fract(p * vec2(234.34, 435.345));
+          p += dot(p, p + 34.23);
+          return fract(p.x * p.y);
+        }
+
+        float noise2(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          float a = hash21(i);
+          float b = hash21(i + vec2(1.0, 0.0));
+          float c = hash21(i + vec2(0.0, 1.0));
+          float d = hash21(i + vec2(1.0, 1.0));
+          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
+
+        float fbm(vec2 p) {
+          float v = 0.0;
+          float amp = 0.5;
+          for (int i = 0; i < 4; i++) {
+            v += amp * noise2(p);
+            p = p * 2.04 + vec2(17.3, 9.2);
+            amp *= 0.5;
+          }
+          return v;
+        }
+
         void main() {
           vec3 d = normalize(vWorldPos);
           float h = d.y;
           vec3 col = h >= 0.0
             ? mix(uHorizon, uZenith, pow(clamp(h, 0.0, 1.0), 0.52))
             : mix(uHorizon, uGround, pow(clamp(-h * 3.0, 0.0, 1.0), 0.7));
+
+          if (h > 0.005 && uCloudCover > 0.05) {
+            vec2 cloudUv = (d.xz / (h + 0.20)) * 1.45 + vec2(uTime * 0.018, uTime * 0.008);
+            float n = fbm(cloudUv);
+            float threshold = mix(0.76, 0.20, clamp(uCloudCover, 0.0, 1.0));
+            float cloudMask = smoothstep(threshold, threshold + 0.32, n) * smoothstep(0.005, 0.14, h);
+            float skyLum = dot(uHorizon, vec3(0.299, 0.587, 0.114));
+            vec3 brightCloud = mix(vec3(0.22, 0.26, 0.34), vec3(0.92, 0.95, 0.98), clamp(skyLum * 1.25, 0.0, 1.0));
+            vec3 shadowCloud = mix(vec3(0.09, 0.12, 0.17), vec3(0.45, 0.51, 0.58), clamp(skyLum, 0.0, 1.0));
+            vec3 cloudCol = mix(shadowCloud, brightCloud, smoothstep(0.35, 0.82, n) * (1.0 - uCloudCover * 0.45));
+            col = mix(col, cloudCol, cloudMask * clamp(uCloudCover * 1.12, 0.0, 0.94));
+          }
+
+          if (uLightning > 0.01 && h > 0.0) {
+            col += vec3(0.72, 0.82, 1.0) * uLightning * 0.55 * smoothstep(0.0, 0.35, h);
+          }
+
           gl_FragColor = vec4(col, 1.0);
         }
       `,
@@ -222,8 +282,10 @@ export class AtriumEngine {
 
     // Build PBR material library & architectural shell
     const M = createMaterials();
+    this.asphaltMat = M.asphalt;
     this.screenReg = createScreenRegistry();
     this.arch = buildSceneArchitecture(this.scene, M, this.screenReg);
+    this.weather = new WeatherSystem(this.scene, this.arch.levelGroups);
 
     // Build dynamic office simulation (staff, district NPCs, Zuri, vehicles, walk controls)
     this.sim = new AtriumSimulation(
@@ -297,7 +359,9 @@ export class AtriumEngine {
     this.renderer.domElement.addEventListener('click', this.handleClick);
     this.renderer.domElement.addEventListener('webglcontextlost', this.handleContextLost);
 
-    this.updateTimeOfDayLighting(this.sim.simMin);
+    const initW = this.weather.update(0.016, this.elapsed, this.sim.simMin, this.activeLevel, this.arch.roofShellGroup.visible);
+    this.sim.setWeatherTimeMultiplier(this.weather.getTimeMultiplier());
+    this.updateTimeOfDayLighting(this.sim.simMin, initW);
     this.emitHud();
     const now = performance.now();
     this.lastTs = now;
@@ -404,9 +468,16 @@ export class AtriumEngine {
       );
     }
     addBadge(0, 'DomainTechHub Reception', 0, LV[0] + 4.3, 2.2, '#4ea8ff');
+    addBadge(0, 'Security Room', EXEC.security.cx, LV[0] + 3.55, 2.0, '#38bdf8');
+    addBadge(0, 'Toilets', EXEC.toilets.cx, LV[0] + 3.55, 4.4, '#94a3b8');
+    addBadge(1, 'HR Room', EXEC.hr.cx, LV[1] + 3.55, 2.0, '#34d399');
+    addBadge(2, 'Relax Room', EXEC.relax.cx, LV[2] + 3.55, 2.0, '#f59e0b');
+    addBadge(3, 'Gym Room', EXEC.gym.cx, LV[3] + 3.55, 2.0, '#f87171');
+    addBadge(4, 'Strategy Room', EXEC.strategy.cx, LV[4] + 3.45, 1.55, '#818cf8');
     addBadge(4, 'Board Room', EXEC.board.cx, LV[4] + 3.45, 1.55, '#c9a24b');
     addBadge(4, 'Executive Lounge', EXEC.lounge.cx, LV[4] + 3.45, 1.55, '#7a5c3a');
     addBadge(4, 'Board Secretary', EXEC.secr.cx, LV[4] + 3.45, 1.55, '#5d6b7a');
+    addBadge(5, 'Executive Gallery', EXEC.gallery.cx, LV[5] + 3.45, 1.55, '#b08452');
     addBadge(5, EXEC.tech.n, EXEC.tech.cx, LV[5] + 3.45, 1.55, '#34598f');
     addBadge(5, EXEC.mkt.n, EXEC.mkt.cx, LV[5] + 3.45, 1.55, '#7a2f5a');
     addBadge(5, EXEC.fin.n, EXEC.fin.cx, LV[5] + 3.45, 1.55, '#2d7a5a');
@@ -800,9 +871,10 @@ export class AtriumEngine {
       .filter((m) => {
         const bId = m.buildingId ?? 'hub';
         if (cut !== null) {
-          return bId === this.activeBuilding && m.lv <= cut;
+          if (bId !== this.activeBuilding) return false;
+          return cut < 0 ? m.lv === cut : m.lv >= 0 && m.lv <= cut;
         }
-        return m.lv === 0 || bId === 'hub';
+        return m.lv === 0 || (bId === 'hub' && m.lv >= 0);
       })
       .flatMap((m) => m.meshes);
     const visibleBuildingMeshes = this.buildingPickList
@@ -888,9 +960,10 @@ export class AtriumEngine {
       .filter((m) => {
         const bId = m.buildingId ?? 'hub';
         if (cut !== null) {
-          return bId === this.activeBuilding && m.lv <= cut;
+          if (bId !== this.activeBuilding) return false;
+          return cut < 0 ? m.lv === cut : m.lv >= 0 && m.lv <= cut;
         }
-        return m.lv === 0 || bId === 'hub';
+        return m.lv === 0 || (bId === 'hub' && m.lv >= 0);
       })
       .flatMap((m) => m.meshes);
     const visibleBuildingMeshes = this.buildingPickList
@@ -959,10 +1032,11 @@ export class AtriumEngine {
     this.selectedActor = null;
     this.followSelectedActor = false;
     this.inspectedMonitor = mon;
-    this.arch.basementGroup.visible = false;
-    this.arch.plazaGroup.visible = true;
+    const isBasement = mon.lv < 0;
+    this.arch.basementGroup.visible = isBasement;
+    this.arch.plazaGroup.visible = !isBasement;
     this.activeBuilding = mon.buildingId ?? 'hub';
-    this.activeLevel = String(mon.lv);
+    this.activeLevel = mon.lv === -1 ? 'b1' : mon.lv === -2 ? 'b2' : String(mon.lv);
     mon.screenRef.next = 0;
     // Fly camera straight to an angled 3/4 over-the-shoulder view so the worker and screen are clearly visible
     const fx = Math.sin(mon.rotY);
@@ -983,13 +1057,13 @@ export class AtriumEngine {
     clearTimeout(this.timerId);
   };
 
-  private updateTimeOfDayLighting(simMinutes: number) {
+  private updateTimeOfDayLighting(simMinutes: number, weatherState?: WeatherAtmosphereState) {
     // Solar elevation curve (sunrise ~06:20, zenith ~12:30, sunset ~18:40)
     const hr = simMinutes / 60;
     const dayPhase = Math.max(0, Math.min(1, (hr - 6.2) / 12.6));
     const sunElev = Math.sin(dayPhase * Math.PI); // 0 at night/horizon, 1 at solar noon
     const isDay = hr >= 6.0 && hr <= 18.8;
-    const sunIntensity = isDay ? 0.32 + sunElev * 1.38 : 0.14;
+    const baseSunIntensity = isDay ? 0.32 + sunElev * 1.38 : 0.14;
 
     const az = (dayPhase - 0.5) * Math.PI * 0.85;
     this.sunLight.position.set(
@@ -997,7 +1071,6 @@ export class AtriumEngine {
       Math.max(12, sunElev * 74),
       Math.cos(az) * 58
     );
-    this.sunLight.intensity = sunIntensity;
 
     // Warm golden hour vs crisp equatorial noon vs indigo dusk
     if (!isDay) {
@@ -1027,19 +1100,51 @@ export class AtriumEngine {
       this.skyFillLight.intensity = 0.28;
     }
 
+    const w = weatherState ?? this.weather.state;
+    const nightDarken = isDay ? 0.45 + 0.55 * sunElev : 0.22;
+    this._wZenith.copy(w.skyTintZenith).multiplyScalar(nightDarken);
+    this._wHorizon.copy(w.skyTintHorizon).multiplyScalar(nightDarken);
+    this._wFog.copy(w.fogTint).multiplyScalar(nightDarken);
+
+    if (w.skyMix > 0.005) {
+      this._zenith.lerp(this._wZenith, w.skyMix);
+      this._horizon.lerp(this._wHorizon, w.skyMix);
+      this._fogCol.lerp(this._wFog, w.skyMix);
+      this._skyGround.lerp(this._wFog, w.skyMix * 0.45);
+    }
+
+    const flash = w.lightningFlash;
+    if (flash > 0.01) {
+      this._fogCol.lerp(this._lightningCol, flash * 0.28);
+      this._sunCol.lerp(this._lightningCol, flash * 0.55);
+    }
+
+    this.sunLight.intensity = baseSunIntensity * w.sunMult + flash * 2.25;
+    this.hemiLight.intensity = this.hemiLight.intensity * w.hemiMult + flash * 0.55;
+    this.skyFillLight.intensity = this.skyFillLight.intensity * w.fillMult + flash * 0.35;
+    this.fog.density = w.fogDensity;
+
     this.sunLight.color.copy(this._sunCol);
     this.skyMat.uniforms.uZenith.value.copy(this._zenith);
     this.skyMat.uniforms.uHorizon.value.copy(this._horizon);
     this.skyMat.uniforms.uGround.value.copy(this._skyGround);
+    this.skyMat.uniforms.uTime.value = this.elapsed;
+    this.skyMat.uniforms.uCloudCover.value = w.cloudCover;
+    this.skyMat.uniforms.uLightning.value = flash;
     this.fog.color.copy(this._fogCol);
 
-    // Interior warm lights glow brighter after dusk
-    const nightBoost = isDay ? 1.2 : 2.3;
+    // Wet plaza / street asphalt response during rain, thunderstorm, or snowmelt
+    this.asphaltMat.roughness = THREE.MathUtils.lerp(0.92, 0.24, w.wetness);
+    this.asphaltMat.envMapIntensity = THREE.MathUtils.lerp(0.22, 0.65, w.wetness);
+
+    // Interior warm lights glow brighter after dusk and under overcast/storm skies
+    const weatherGlow = w.skyMix * 0.72;
+    const interiorIntensity = (isDay ? 1.2 : 2.3) + weatherGlow;
     for (const l of this.arch.interiorWarmLights) {
-      l.intensity = nightBoost;
+      l.intensity = interiorIntensity;
     }
     for (const g of this.arch.streetGlows) {
-      (g.material as THREE.SpriteMaterial).opacity = isDay ? 0.14 : 0.48;
+      (g.material as THREE.SpriteMaterial).opacity = isDay ? 0.14 + w.skyMix * 0.24 : 0.48;
     }
   }
 
@@ -1078,8 +1183,16 @@ export class AtriumEngine {
     // Floor cutaway peel-off animation from above
     this.updateFloorCutaway(dt);
 
-    // Dynamic Time-of-Day lighting & sky
-    this.updateTimeOfDayLighting(this.sim.simMin);
+    // Dynamic weather particles, window droplets/frost & time-of-day atmosphere
+    const wState = this.weather.update(
+      dt,
+      this.elapsed,
+      this.sim.simMin,
+      this.activeLevel,
+      this.arch.roofShellGroup.visible
+    );
+    this.sim.setWeatherTimeMultiplier(this.weather.getTimeMultiplier());
+    this.updateTimeOfDayLighting(this.sim.simMin, wState);
 
     // Staff, lifts, traffic, tour & first-person walk
     if (this.selectedActor) {
@@ -1125,7 +1238,7 @@ export class AtriumEngine {
 
     // Animated office screens & wall TVs (only draws visible screens on active floors)
     const cut = this.getCutawayLevelIndex();
-    updateAllScreens(this.screenReg, this.camera, this.elapsed, cut !== null && cut >= 0 ? cut : null);
+    updateAllScreens(this.screenReg, this.camera, this.elapsed, cut);
     if (this.inspectedMonitor) {
       const s = this.inspectedMonitor.screenRef;
       if (this.elapsed >= s.next) {
@@ -1160,7 +1273,14 @@ export class AtriumEngine {
       projectTitle: m.projectTitle,
       zone: m.zone,
       role: m.role,
-      levelLabel: m.lv === 0 ? 'Ground (G)' : `Level ${m.lv}`,
+      levelLabel:
+        m.lv === -1
+          ? 'Basement 1 (B1)'
+          : m.lv === -2
+            ? 'Basement 2 (B2)'
+            : m.lv === 0
+              ? 'Ground (G)'
+              : `Level ${m.lv}`,
       color: m.color,
       workerActivity: ws.workerActivity,
       screenTask: m.screenTask,
@@ -1250,6 +1370,10 @@ export class AtriumEngine {
         b.sprite.visible = false;
       }
     }
+    snap.weatherMode = this.weather.getMode();
+    snap.activeWeather = this.weather.state.activeWeather;
+    snap.weatherLabel = this.weather.state.label;
+    snap.weatherTimeFactor = this.weather.state.timeFactor;
     this.onHudChange(snap);
   }
 
@@ -1322,6 +1446,7 @@ export class AtriumEngine {
     this.arch.plazaGroup.visible = true;
     const spec = DISTRICT_BUILDING_MAP[id];
     this.sim.flyTo(new THREE.Vector3(...spec.overviewCam.p), new THREE.Vector3(...spec.overviewCam.t));
+    this.weather.update(0.001, this.elapsed, this.sim.simMin, this.activeLevel, this.arch.roofShellGroup.visible);
     this.emitHud();
   }
 
@@ -1340,7 +1465,7 @@ export class AtriumEngine {
       this.arch.plazaGroup.visible = !isBasement;
 
       if (key === 'overview') {
-        this.sim.flyTo(new THREE.Vector3(0, 16, 49), new THREE.Vector3(0, 12.2, 4));
+        this.sim.flyTo(new THREE.Vector3(0, 20, 64), new THREE.Vector3(0, 12.2, 4));
       } else if (VIEWS[key]) {
         const v = VIEWS[key];
         this.sim.flyTo(new THREE.Vector3(...v.p), new THREE.Vector3(...v.t));
@@ -1361,6 +1486,7 @@ export class AtriumEngine {
         this.sim.flyTo(new THREE.Vector3(...fv.p), new THREE.Vector3(...fv.t));
       }
     }
+    this.weather.update(0.001, this.elapsed, this.sim.simMin, this.activeLevel, this.arch.roofShellGroup.visible);
     this.emitHud();
   }
 
@@ -1451,7 +1577,30 @@ export class AtriumEngine {
   public jumpToTime(minutes: number) {
     this.markInteraction();
     this.sim.setClock(minutes);
-    this.updateTimeOfDayLighting(this.sim.simMin);
+    const wState = this.weather.update(
+      0.016,
+      this.elapsed,
+      this.sim.simMin,
+      this.activeLevel,
+      this.arch.roofShellGroup.visible
+    );
+    this.sim.setWeatherTimeMultiplier(this.weather.getTimeMultiplier());
+    this.updateTimeOfDayLighting(this.sim.simMin, wState);
+    this.emitHud();
+  }
+
+  public setWeatherMode(mode: WeatherMode) {
+    this.markInteraction();
+    this.weather.setMode(mode);
+    const wState = this.weather.update(
+      0.016,
+      this.elapsed,
+      this.sim.simMin,
+      this.activeLevel,
+      this.arch.roofShellGroup.visible
+    );
+    this.sim.setWeatherTimeMultiplier(this.weather.getTimeMultiplier());
+    this.updateTimeOfDayLighting(this.sim.simMin, wState);
     this.emitHud();
   }
 
@@ -1474,6 +1623,7 @@ export class AtriumEngine {
     this.renderer.domElement.removeEventListener('click', this.handleClick);
     this.renderer.domElement.removeEventListener('webglcontextlost', this.handleContextLost);
     this.unwireWalk();
+    this.weather.dispose();
     this.sim.dispose();
     this.audio.dispose();
     for (const b of this.overheadBadges) {

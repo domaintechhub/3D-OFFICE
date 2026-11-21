@@ -62,6 +62,15 @@ export interface MaterialLibrary {
   chrome: THREE.MeshStandardMaterial;
   meshFabric: THREE.MeshStandardMaterial;
   kbMat: THREE.MeshStandardMaterial;
+  gymFloor: THREE.MeshStandardMaterial;
+  restroomFloor: THREE.MeshStandardMaterial;
+  restroomWall: THREE.MeshStandardMaterial;
+  mirrorMat: THREE.MeshStandardMaterial;
+  tableTennisGreen: THREE.MeshStandardMaterial;
+  navyWall: THREE.MeshStandardMaterial;
+  sageWall: THREE.MeshStandardMaterial;
+  yogamatTeal: THREE.MeshStandardMaterial;
+  yogamatCoral: THREE.MeshStandardMaterial;
 }
 
 export function createMaterials(): MaterialLibrary {
@@ -538,6 +547,72 @@ export function createMaterials(): MaterialLibrary {
       roughness: 0.58,
       metalness: 0.12,
       envMapIntensity: 0.25,
+    }),
+    gymFloor: new THREE.MeshStandardMaterial({
+      map: T.gymRubberTex,
+      normalMap: T.roughTex,
+      normalScale: new THREE.Vector2(0.35, 0.35),
+      roughness: 0.88,
+      metalness: 0.02,
+      envMapIntensity: 0.16,
+    }),
+    restroomFloor: new THREE.MeshStandardMaterial({
+      map: T.restroomTileTex,
+      normalMap: T.restroomTileNormal,
+      normalScale: new THREE.Vector2(0.55, 0.55),
+      color: 0xd0d8de,
+      roughness: 0.42,
+      metalness: 0.04,
+      envMapIntensity: 0.26,
+    }),
+    restroomWall: new THREE.MeshStandardMaterial({
+      map: T.restroomTileTex,
+      normalMap: T.restroomTileNormal,
+      normalScale: new THREE.Vector2(0.45, 0.45),
+      color: 0xeaf0f4,
+      roughness: 0.35,
+      metalness: 0.02,
+      envMapIntensity: 0.28,
+    }),
+    mirrorMat: new THREE.MeshStandardMaterial({
+      color: 0xd8e6f2,
+      roughness: 0.06,
+      metalness: 0.96,
+      envMapIntensity: 0.9,
+    }),
+    tableTennisGreen: new THREE.MeshStandardMaterial({
+      color: 0x165b3c,
+      roughness: 0.48,
+      metalness: 0.04,
+      envMapIntensity: 0.22,
+    }),
+    navyWall: new THREE.MeshStandardMaterial({
+      color: 0x1e2d48,
+      normalMap: T.fabricNormal,
+      normalScale: new THREE.Vector2(0.35, 0.35),
+      roughness: 0.88,
+      metalness: 0.04,
+      envMapIntensity: 0.16,
+    }),
+    sageWall: new THREE.MeshStandardMaterial({
+      color: 0x2c5e54,
+      normalMap: T.plasterNormal,
+      normalScale: new THREE.Vector2(0.35, 0.35),
+      roughness: 0.86,
+      metalness: 0.0,
+      envMapIntensity: 0.16,
+    }),
+    yogamatTeal: new THREE.MeshStandardMaterial({
+      color: 0x1e8f8a,
+      roughness: 0.82,
+      metalness: 0.0,
+      envMapIntensity: 0.15,
+    }),
+    yogamatCoral: new THREE.MeshStandardMaterial({
+      color: 0xc95f4a,
+      roughness: 0.82,
+      metalness: 0.0,
+      envMapIntensity: 0.15,
     }),
   };
 }

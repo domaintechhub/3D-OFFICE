@@ -90,12 +90,19 @@ export interface SelectedCharacterSnapshot {
   isGuide: boolean;
 }
 
+export type WeatherMode = 'auto' | 'clear' | 'overcast' | 'rain' | 'storm' | 'snow';
+export type WeatherCondition = 'clear' | 'overcast' | 'rain' | 'storm' | 'snow';
+
 export interface HudSnapshot {
   simMinutes: number;
   simRate: number;
   timeText: string;
   shiftLabel: string;
   statsLabel: string;
+  weatherMode: WeatherMode;
+  activeWeather: WeatherCondition;
+  weatherLabel: string;
+  weatherTimeFactor: number;
   activeBuilding: BuildingId;
   activeBuildingName: string;
   activeBuildingNiche: string;
@@ -129,7 +136,7 @@ export const LV = [0, 5.6, 9.8, 14.0, 18.2, 22.4];
 export const LH = [5.6, 4.2, 4.2, 4.2, 4.2, 4.2];
 export const FLOORS = 6;
 export const DEPTH = 11;
-export const WIDTH = 40;
+export const WIDTH = 60;
 export const ROOF = 26.6;
 
 export const BASE = [
@@ -144,8 +151,8 @@ export const ceilY = (s: number): number => LV[s] + LH[s] - 0.4;
 export const ceilHeight = (s: number): number => ceilY(s) - LV[s];
 
 export const LANE = 10.05;
-export const LIFTX = 18.55;
-export const GATE = 16.2;
+export const LIFTX = 28.55;
+export const GATE = 26.2;
 export const STAND = 3.2;
 export const GATE_STOP = GATE - 1.05;
 
@@ -170,26 +177,34 @@ export const ROOMS: RoomDef[] = [
 ];
 
 export const EXEC: Record<string, ExecRoomDef> = {
+  security: { n: 'Security Room', c: 0x243b55, lv: 0, cx: -25, sub: 'Level 0 · 24/7 CCTV & Access Control' },
+  hr: { n: 'HR Room', c: 0x2e7d6b, lv: 1, cx: -25, sub: 'Level 1 · People, Talent & Culture' },
+  relax: { n: 'Relax Room', c: 0xb07c4f, lv: 2, cx: -25, sub: 'Level 2 · Staff Lounge & Ping-Pong' },
+  gym: { n: 'Gym Room', c: 0xd9534f, lv: 3, cx: -25, sub: 'Level 3 · Cardio, Weights & Yoga Studio' },
+  strategy: { n: 'Strategy Room', c: 0x3b5998, lv: 4, cx: -25, sub: 'Level 4 · Corporate OKRs & Growth War Room' },
   board: { n: 'Board Room', c: 0xc9a24b, lv: 4, cx: 0, sub: 'Level 4 · Board Room' },
   lounge: { n: 'Executive Lounge', c: 0x7a5c3a, lv: 4, cx: -15, sub: 'Level 4 · Lounge & coffee bar' },
   secr: { n: 'Board Secretary', c: 0x5d6b7a, lv: 4, cx: 15, sub: 'Level 4 · Board secretariat' },
+  gallery: { n: 'Executive Gallery', c: 0x6b5b47, lv: 5, cx: -25, sub: 'Level 5 · Partner Briefing & Model Lounge' },
   tech: { n: 'Head of Technology', c: 0x34598f, lv: 5, cx: -17.5, sub: 'Level 5 · Heads of department' },
   mkt: { n: 'Head of Marketing', c: 0x7a2f5a, lv: 5, cx: -12.5, sub: 'Level 5 · Heads of department' },
   fin: { n: 'Head of Finance', c: 0x2d7a5a, lv: 5, cx: -7.5, sub: 'Level 5 · Heads of department' },
   ops: { n: 'Head of Operations', c: 0xc9762e, lv: 5, cx: -2.5, sub: 'Level 5 · Heads of department' },
   ceo: { n: 'Chief Executive Officer', c: 0x8a1f2e, lv: 5, cx: 13, sub: 'Level 5 · CEO suite' },
+  toilets: { n: 'Toilets', c: 0x64748b, lv: 0, cx: 27.1, sub: 'East Wing · Ladies & Gents Restrooms (L0–L5)' },
+  stairs: { n: 'Stairwell Core', c: 0x475569, lv: 0, cx: 22.25, sub: 'East Core · Inter-floor Switchback Stairs (L0–Roof)' },
 };
 
 export const VIEWS: Record<string, { p: [number, number, number]; t: [number, number, number] }> = {
-  '5': { p: [0, 22.4 + 28.5, 20.5], t: [0, 22.4 + 0.8, 5.2] },
-  '4': { p: [0, 18.2 + 28.5, 20.5], t: [0, 18.2 + 0.8, 5.2] },
-  '3': { p: [0, 14.0 + 28.5, 20.5], t: [0, 14.0 + 0.8, 5.2] },
-  '2': { p: [0, 9.8 + 28.5, 20.5], t: [0, 9.8 + 0.8, 5.2] },
-  '1': { p: [0, 5.6 + 28.5, 20.5], t: [0, 5.6 + 0.8, 5.2] },
-  '0': { p: [0, 0.0 + 29.5, 21.5], t: [0, 0.0 + 1.0, 5.4] },
-  b1: { p: [0, -4.6 + 26.5, 20.0], t: [0, -4.6 + 1.0, 5.0] },
-  b2: { p: [0, -9.0 + 26.5, 20.0], t: [0, -9.0 + 1.0, 5.0] },
-  roof: { p: [13, 38, 19], t: [0, 27.0, 4.8] },
+  '5': { p: [0, 22.4 + 34.0, 27.0], t: [0, 22.4 + 0.8, 5.2] },
+  '4': { p: [0, 18.2 + 34.0, 27.0], t: [0, 18.2 + 0.8, 5.2] },
+  '3': { p: [0, 14.0 + 34.0, 27.0], t: [0, 14.0 + 0.8, 5.2] },
+  '2': { p: [0, 9.8 + 34.0, 27.0], t: [0, 9.8 + 0.8, 5.2] },
+  '1': { p: [0, 5.6 + 34.0, 27.0], t: [0, 5.6 + 0.8, 5.2] },
+  '0': { p: [0, 0.0 + 35.0, 28.0], t: [0, 0.0 + 1.0, 5.4] },
+  b1: { p: [0, -4.6 + 31.0, 25.0], t: [0, -4.6 + 1.0, 5.0] },
+  b2: { p: [0, -9.0 + 31.0, 25.0], t: [0, -9.0 + 1.0, 5.0] },
+  roof: { p: [18, 41, 26], t: [0, 27.0, 4.8] },
 };
 
 export const NEIGHBOURS = [
@@ -205,6 +220,22 @@ export const NEIGHBOURS = [
 export const ROAD_Z = 66;
 
 export const TOUR_TEXT: Record<string, string> = {
+  'Security Room':
+    'The Ground Floor Security Control Room monitors 24/7 CCTV feeds, biometric turnstiles, and building access across the entire campus.',
+  'HR Room':
+    'Level 1 People & Culture hub handling technical hiring, onboarding interviews, and employee wellbeing.',
+  'Relax Room':
+    'Level 2 recharge lounge with espresso bar, cozy sofas, television screen, and a full-size table tennis court.',
+  'Gym Room':
+    'Level 3 fitness studio fitted with treadmills, stationary bikes, free weights, mirrors, and yoga mats.',
+  'Strategy Room':
+    'Level 4 war room with live East Africa OKR roadmaps and strategic planning displays right beside the Board Room.',
+  Toilets:
+    'Dedicated Ladies and Gents restrooms on every floor from Ground to Level 5 beside the East stairwell core.',
+  'Stairwell Core':
+    'Continuous architectural switchback staircase connecting every floor from Ground Reception up to the Rooftop Pavilion.',
+  'Executive Gallery':
+    'Level 5 partner briefing lounge displaying architectural models and company milestones.',
   'Maintenance & Security': 'Keeps client sites patched, backed up and monitored around the clock.',
   'Mobile Apps': 'Native and cross-platform apps for iOS and Android, from prototype to store release.',
   Consultancy: 'Scoping, roadmaps and technology choices, settled before any code is written.',

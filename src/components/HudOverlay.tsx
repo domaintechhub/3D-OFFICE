@@ -6,19 +6,29 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  Cloud,
+  CloudLightning,
+  CloudRain,
   Compass,
   Crosshair,
   Eye,
   Footprints,
   Pause,
   Play,
+  Snowflake,
   Sparkles,
+  Sun,
   Users,
   Volume2,
   VolumeX,
   X,
 } from 'lucide-react';
-import { TOUR_TEXT, type HudSnapshot } from '../scene/constants';
+import {
+  TOUR_TEXT,
+  type HudSnapshot,
+  type WeatherCondition,
+  type WeatherMode,
+} from '../scene/constants';
 import { DISTRICT_BUILDINGS, type BuildingId } from '../scene/districtData';
 import { WorkstationInspector } from './WorkstationInspector';
 
@@ -38,6 +48,7 @@ interface HudOverlayProps {
   onToggleAudio: () => void;
   onSetRate: (rate: number) => void;
   onJumpToTime: (minutes: number) => void;
+  onSetWeatherMode: (mode: WeatherMode) => void;
   onCloseMonitor: () => void;
   getInspectedScreenCanvas: () => HTMLCanvasElement | null;
   onCloseCharacter: () => void;
@@ -77,6 +88,30 @@ const TIME_PRESETS = [
   { label: 'Night', minutes: 22 * 60 + 15 },
 ];
 
+const WEATHER_MODES: Array<{ mode: WeatherMode; label: string }> = [
+  { mode: 'auto', label: 'Auto' },
+  { mode: 'clear', label: 'Clear' },
+  { mode: 'overcast', label: 'Clouds' },
+  { mode: 'rain', label: 'Rain' },
+  { mode: 'storm', label: 'Storm' },
+  { mode: 'snow', label: 'Snow' },
+];
+
+function WeatherIcon({ condition }: { condition: WeatherCondition }) {
+  switch (condition) {
+    case 'overcast':
+      return <Cloud className="w-3.5 h-3.5 text-slate-300 shrink-0" />;
+    case 'rain':
+      return <CloudRain className="w-3.5 h-3.5 text-sky-300 shrink-0" />;
+    case 'storm':
+      return <CloudLightning className="w-3.5 h-3.5 text-indigo-300 shrink-0" />;
+    case 'snow':
+      return <Snowflake className="w-3.5 h-3.5 text-cyan-200 shrink-0" />;
+    default:
+      return <Sun className="w-3.5 h-3.5 text-amber-300 shrink-0" />;
+  }
+}
+
 export const HudOverlay: React.FC<HudOverlayProps> = ({
   hud,
   onSelectBuilding,
@@ -93,6 +128,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
   onToggleAudio,
   onSetRate,
   onJumpToTime,
+  onSetWeatherMode,
   onCloseMonitor,
   getInspectedScreenCanvas,
   onCloseCharacter,
@@ -166,6 +202,15 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
             <span className="font-mono-tabular font-semibold text-white">{hud.timeText}</span>
             <span className="text-slate-500">·</span>
             <span>{hud.shiftLabel}</span>
+            <span className="text-slate-500">·</span>
+            <span className="inline-flex items-center gap-1 text-slate-200">
+              <WeatherIcon condition={hud.activeWeather} />
+              <span>{hud.weatherLabel}</span>
+              {hud.weatherMode === 'auto' && <span className="text-slate-400">(Auto)</span>}
+              {hud.weatherTimeFactor < 0.99 && (
+                <span className="font-mono-tabular text-sky-300">{hud.weatherTimeFactor.toFixed(2)}×</span>
+              )}
+            </span>
             <span className="text-slate-500">·</span>
             <span className="font-mono-tabular text-slate-400">{hud.statsLabel}</span>
           </div>
@@ -686,16 +731,16 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
             </div>
           </div>
 
-          {/* Second Row: Time Speed & Shift Presets */}
+          {/* Second Row: Time Speed, Weather & Shift Presets */}
           <div className="mt-2 pt-2 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-1">
-              <span className="text-[11px] uppercase tracking-wider text-slate-400 mr-1.5">Speed</span>
+              <span className="text-[11px] uppercase tracking-wider text-slate-400 mr-1">Speed</span>
               {RATES.map((r) => (
                 <button
                   key={r.rate}
                   type="button"
                   onClick={() => onSetRate(r.rate)}
-                  className={`px-2 py-1 text-[11px] font-mono-tabular rounded transition-colors cursor-pointer ${
+                  className={`px-2 py-1 text-[11px] font-mono-tabular rounded transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                     hud.simRate === r.rate
                       ? 'bg-sky-500 text-slate-950 font-semibold'
                       : 'bg-white/5 text-slate-300 hover:bg-white/12'
@@ -707,13 +752,31 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
             </div>
 
             <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
-              <span className="text-[11px] uppercase tracking-wider text-slate-400 mr-1.5">Jump</span>
+              <span className="text-[11px] uppercase tracking-wider text-slate-400 mr-1 shrink-0">Weather</span>
+              {WEATHER_MODES.map((w) => (
+                <button
+                  key={w.mode}
+                  type="button"
+                  onClick={() => onSetWeatherMode(w.mode)}
+                  className={`px-2 py-1 text-[11px] rounded transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                    hud.weatherMode === w.mode
+                      ? 'bg-indigo-400 text-slate-950 font-semibold'
+                      : 'bg-white/5 text-slate-300 hover:bg-white/12 hover:text-white'
+                  }`}
+                >
+                  {w.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+              <span className="text-[11px] uppercase tracking-wider text-slate-400 mr-1 shrink-0">Jump</span>
               {TIME_PRESETS.map((p) => (
                 <button
                   key={p.label}
                   type="button"
                   onClick={() => onJumpToTime(p.minutes)}
-                  className="px-2 py-1 text-[11px] rounded bg-white/5 text-slate-300 hover:bg-white/12 hover:text-white transition-colors cursor-pointer shrink-0"
+                  className="px-2 py-1 text-[11px] rounded bg-white/5 text-slate-300 hover:bg-white/12 hover:text-white transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 >
                   {p.label}
                 </button>

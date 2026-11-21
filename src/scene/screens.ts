@@ -1345,7 +1345,16 @@ export function createExecScreen(reg: ScreenRegistry, key: string, k: number): W
     mesh: null,
     next: 0,
     off: ++exN * 3.7 + k * 4.3,
-    lv: key === 'reception' ? 0 : key === 'secr' ? 4 : 5,
+    lv:
+      key === 'power'
+        ? -2
+        : key === 'reception' || key === 'security'
+          ? 0
+          : key === 'hr'
+            ? 1
+            : key === 'secr' || key === 'strategy'
+              ? 4
+              : 5,
     fn,
   };
   reg.workScreens.push(s);
@@ -1509,9 +1518,16 @@ export function updateAllScreens(
   for (let i = 0; i < reg.workScreens.length; i++) {
     const s = reg.workScreens[i];
     if (t < s.next || !s.mesh) continue;
-    if (cutawayMaxLv !== null && s.lv != null && s.lv > cutawayMaxLv) {
-      s.next = t + 0.8;
-      continue;
+    if (s.lv != null) {
+      if (cutawayMaxLv === null) {
+        if (s.lv < 0) {
+          s.next = t + 0.8;
+          continue;
+        }
+      } else if (cutawayMaxLv < 0 ? s.lv !== cutawayMaxLv : s.lv < 0 || s.lv > cutawayMaxLv) {
+        s.next = t + 0.8;
+        continue;
+      }
     }
     const mesh = s.mesh as THREE.Mesh;
     if (!_tvFr.intersectsObject(mesh)) {

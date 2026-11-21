@@ -123,10 +123,10 @@ function buildCollidersForLevel(lv: number): FloorColliderSet {
     circles.push({ x: -12.9, z: 7.8, r: 0.22 }, { x: -12.3, z: 7.8, r: 0.22 });
     // Glazed lift security vestibule enclosures & shafts (solid in basement)
     boxes.push(
-      { minX: -19.6, maxX: -15.5, minZ: 8.92, maxZ: 11.12 },
-      { minX: 15.5, maxX: 19.6, minZ: 8.92, maxZ: 11.12 }
+      { minX: -29.6, maxX: -25.5, minZ: 8.92, maxZ: 11.12 },
+      { minX: 25.5, maxX: 29.6, minZ: 8.92, maxZ: 11.12 }
     );
-    return { boxes, obbs, circles, minX: -19.2, maxX: 19.2, minZ: 0.72, maxZ: 10.15 };
+    return { boxes, obbs, circles, minX: -29.2, maxX: 29.2, minZ: 0.72, maxZ: 10.15 };
   }
 
   if (lv === -2) {
@@ -136,34 +136,53 @@ function buildCollidersForLevel(lv: number): FloorColliderSet {
     [4.9, 6.9, 8.7].forEach((z) => boxes.push({ minX: -6.82, maxX: -0.58, minZ: z - 0.44, maxZ: z + 0.44 }));
     addBox(boxes, 2.2, 8.9, 1.55, 0.74);
     boxes.push({ minX: 7.95, maxX: 10.45, minZ: 2.6, maxZ: 4.25 });
+    // Power & Battery Analytics Workstation Desk (x=4.5, z=5.65, w=3.28, d=1.08)
+    addBox(boxes, 4.5, 5.65, 3.28, 1.08);
     circles.push({ x: 18, z: 0.5, r: 0.25 });
     boxes.push(
-      { minX: -19.6, maxX: -15.5, minZ: 8.92, maxZ: 11.12 },
-      { minX: 15.5, maxX: 19.6, minZ: 8.92, maxZ: 11.12 }
+      { minX: -29.6, maxX: -25.5, minZ: 8.92, maxZ: 11.12 },
+      { minX: 25.5, maxX: 29.6, minZ: 8.92, maxZ: 11.12 }
     );
-    return { boxes, obbs, circles, minX: -19.2, maxX: 19.2, minZ: 0.72, maxZ: 10.15 };
+    return { boxes, obbs, circles, minX: -29.2, maxX: 29.2, minZ: 0.72, maxZ: 10.15 };
   }
 
   // Above-ground levels (0..5): Glass lift shaft frames/walls + inner sliding door leaf
   // Only the sliding door leaf opens when allowLiftShaft is true.
   boxes.push(
     // West shaft north/south/outer glass walls
-    { minX: -19.62, maxX: -17.46, minZ: 8.92, maxZ: 9.14 },
-    { minX: -19.62, maxX: -17.46, minZ: 10.88, maxZ: 11.14 },
-    { minX: -19.62, maxX: -19.4, minZ: 8.92, maxZ: 11.14 },
-    { minX: -17.64, maxX: -17.44, minZ: 9.14, maxZ: 10.88, liftDoorSide: -1 },
+    { minX: -29.62, maxX: -27.46, minZ: 8.92, maxZ: 9.14 },
+    { minX: -29.62, maxX: -27.46, minZ: 10.88, maxZ: 11.14 },
+    { minX: -29.62, maxX: -29.4, minZ: 8.92, maxZ: 11.14 },
+    { minX: -27.64, maxX: -27.44, minZ: 9.14, maxZ: 10.88, liftDoorSide: -1 },
     // East shaft north/south/outer glass walls
-    { minX: 17.46, maxX: 19.62, minZ: 8.92, maxZ: 9.14 },
-    { minX: 17.46, maxX: 19.62, minZ: 10.88, maxZ: 11.14 },
-    { minX: 19.4, maxX: 19.62, minZ: 8.92, maxZ: 11.14 },
-    { minX: 17.44, maxX: 17.64, minZ: 9.14, maxZ: 10.88, liftDoorSide: 1 }
+    { minX: 27.46, maxX: 29.62, minZ: 8.92, maxZ: 9.14 },
+    { minX: 27.46, maxX: 29.62, minZ: 10.88, maxZ: 11.14 },
+    { minX: 29.4, maxX: 29.62, minZ: 8.92, maxZ: 11.14 },
+    { minX: 27.44, maxX: 27.64, minZ: 9.14, maxZ: 10.88, liftDoorSide: 1 }
   );
 
-  // Front structural columns along balustrade line
-  for (let i = 0; i <= 4; i++) {
-    if (lv === 0 && i === 2) continue;
-    circles.push({ x: -20 + i * 10, z: 10.5, r: 0.24 });
+  // Front structural columns along balustrade line (60m = 7 grid lines [-30..+30])
+  for (let i = 0; i <= 6; i++) {
+    if (lv === 0 && i === 3) continue;
+    circles.push({ x: -30 + i * 10, z: 10.5, r: 0.24 });
   }
+
+  // East Wing Switchback Stairwell [20.0..24.5] x [1.0..8.4] (L0..L5)
+  addBox(boxes, 20.06, 4.7, 0.18, 7.6);
+  addBox(boxes, 24.44, 4.7, 0.18, 7.6);
+  addBox(boxes, 22.25, 1.05, 4.3, 0.16);
+  addBox(boxes, 22.25, 5.55, 0.14, 5.3);
+
+  // East Wing Toilets [24.5..29.8] x [0.2..8.6] (L0..L5)
+  addBox(boxes, 24.54, 4.4, 0.14, 8.2);
+  addBox(boxes, 28.35, 8.45, 2.9, 0.18);
+  addBox(boxes, 27.2, 3.25, 0.16, 6.1);
+  boxes.push({ minX: 24.54, maxX: 26.25, minZ: 0.3, maxZ: 3.1 });
+  boxes.push({ minX: 24.54, maxX: 25.05, minZ: 3.9, maxZ: 5.75 });
+  addBox(boxes, 26.86, 4.8, 0.64, 2.48);
+  boxes.push({ minX: 28.1, maxX: 29.8, minZ: 0.3, maxZ: 4.35 });
+  addBox(boxes, 27.54, 5.4, 0.64, 2.48);
+  circles.push({ x: 29.2, z: 7.6, r: 0.42 });
 
   // Department bays (Levels 0..3)
   ROOMS.forEach((d, idx) => {
@@ -183,6 +202,17 @@ function buildCollidersForLevel(lv: number): FloorColliderSet {
   });
 
   if (lv === 0) {
+    // West Wing Security Room (cx = -25) partitions & furniture
+    boxes.push(
+      { minX: -20.14, maxX: -19.96, minZ: 0.3, maxZ: 8.6 },
+      { minX: -29.85, maxX: -24.4, minZ: 8.46, maxZ: 8.64 },
+      { minX: -22.2, maxX: -20.05, minZ: 8.46, maxZ: 8.64 }
+    );
+    addBox(boxes, -25.0, 3.6, 4.55, 1.26);
+    addBox(boxes, -29.2, 5.4, 0.96, 1.06);
+    addBox(boxes, -29.2, 2.0, 0.76, 1.56);
+    circles.push({ x: -21.6, z: 5.4, r: 0.68 }, { x: -29.2, z: 7.6, r: 0.45 });
+
     // Ground Reception Lobby furnishings (exact OBB for armchairs) & Plaza planters
     addObb(obbs, -2.55, 8.5, 1.28, 1.1, Math.PI / 2);
     addObb(obbs, 2.55, 8.5, 1.28, 1.1, -Math.PI / 2);
@@ -197,12 +227,14 @@ function buildCollidersForLevel(lv: number): FloorColliderSet {
     addBox(boxes, 9.3, 7.6, 0.94, 3.65);
     addBox(boxes, -13, 11.2, 3.7, 2.3);
     addBox(boxes, 13, 11.2, 3.7, 2.3);
+    addBox(boxes, -25, 11.2, 3.7, 2.3);
+    addBox(boxes, 25, 11.2, 3.7, 2.3);
     addBox(boxes, -16.5, 13.4, 3.7, 2.3);
     addBox(boxes, 16.5, 13.4, 3.7, 2.3);
     // Exterior podium terrace edges outside stair span (|x| > 15) prevent drop-offs
     boxes.push(
-      { minX: -19.6, maxX: -14.8, minZ: 10.65, maxZ: 11.45 },
-      { minX: 14.8, maxX: 19.6, minZ: 10.65, maxZ: 11.45 }
+      { minX: -29.6, maxX: -14.8, minZ: 10.65, maxZ: 11.45 },
+      { minX: 14.8, maxX: 29.6, minZ: 10.65, maxZ: 11.45 }
     );
     // Approach planting beds along front plaza (y_plaza = -0.61)
     [
@@ -212,24 +244,22 @@ function buildCollidersForLevel(lv: number): FloorColliderSet {
       [13, 40],
     ].forEach(([bx, bz]) => addBox(boxes, bx, bz, 4.28, 4.28));
 
-    // Plaza approach street trees (matching architecture.ts lines 2535-2540)
+    // Plaza approach street trees (matching architecture.ts)
     const rndT = (n: number) => (((Math.sin(n * 12.9898) * 43758.5453) % 1) + 1) % 1;
     for (let i = 0; i < 9; i++) {
       const tx = -34 + i * 8.6 + (rndT(i * 3.1) - 0.5) * 3;
-      if (Math.abs(tx) < 7) continue;
+      if (Math.abs(tx) < 7 || Math.abs(Math.abs(tx) - 36.5) < 4.5 || Math.abs(tx) > 29.0) continue;
       const r = rndT(i * 5.7);
       const tz = 44 + r * 8;
-      if (Math.abs(tx) <= 19.6) {
-        circles.push({ x: tx, z: tz, r: 0.45 });
-      }
+      circles.push({ x: tx, z: tz, r: 0.45 });
     }
 
     return {
       boxes,
       obbs,
       circles,
-      minX: -19.2,
-      maxX: 19.2,
+      minX: -29.2,
+      maxX: 29.2,
       minZ: 0.72,
       maxZ: 54.0,
       curvedCounter: { cx: 0, cz: -2.5, rIn: 8.05, rOut: 9.14, halfAngle: 0.405 },
@@ -238,9 +268,15 @@ function buildCollidersForLevel(lv: number): FloorColliderSet {
 
   if (lv === 4) {
     // Level 4 glass partitions & nearly-closed frameless door leaves [0.35..9.38] (corridor [9.40..10.30] is open)
-    [-10, 10].forEach((px) => {
+    [-20, -10, 10].forEach((px) => {
       boxes.push({ minX: px - 0.1, maxX: px + 0.1, minZ: 0.35, maxZ: 9.38 });
     });
+    // Strategy Room (cx = -25) credenza, table & easel
+    addBox(boxes, -26.8, 0.85, 3.84, 0.58);
+    addBox(boxes, -25.0, 4.7, 5.66, 1.96);
+    addBox(boxes, -21.2, 1.8, 1.52, 0.22);
+    circles.push({ x: -29.1, z: 7.6, r: 0.48 });
+
     // Board Room credenza & boat conference table
     addBox(boxes, 0, 0.62, 8.05, 0.54);
     boxes.push({ minX: -6.12, maxX: 6.12, minZ: 3.65, maxZ: 6.15 });
@@ -266,14 +302,21 @@ function buildCollidersForLevel(lv: number): FloorColliderSet {
     );
     addBox(boxes, 19.0, 0.55, 1.32, 0.55);
 
-    return { boxes, obbs, circles, minX: -19.2, maxX: 19.2, minZ: 0.32, maxZ: 10.3 };
+    return { boxes, obbs, circles, minX: -29.2, maxX: 29.2, minZ: 0.32, maxZ: 10.3 };
   }
 
   if (lv === 5) {
     // Level 5 glass partitions & nearly-closed door leaves [0.35..9.38] (front atrium corridor [9.40..10.30] is open)
-    [-15, -10, -5, 0, 6].forEach((px) => {
+    [-20, -15, -10, -5, 0, 6].forEach((px) => {
       boxes.push({ minX: px - 0.1, maxX: px + 0.1, minZ: 0.35, maxZ: 9.38 });
     });
+    // Executive Gallery (cx = -25) scale model plinth, chairs, shelf & table
+    addBox(boxes, -25.0, 4.5, 3.74, 1.94);
+    addObb(obbs, -21.8, 6.4, 1.28, 1.1, -Math.PI * 0.75);
+    addObb(obbs, -28.2, 6.4, 1.28, 1.1, Math.PI * 0.75);
+    addBox(boxes, -29.0, 1.8, 0.6, 1.44);
+    circles.push({ x: -25.0, z: 7.2, r: 0.42 }, { x: -21.0, z: 1.4, r: 0.5 });
+
     // 4 HoD suites (desks, shelves, plants & visitor chairs; HoD chairs tracked dynamically)
     [-17.5, -12.5, -7.5, -2.5].forEach((cx) => {
       addBox(boxes, cx, 3.5, 2.24, 1.24);
@@ -312,11 +355,58 @@ function buildCollidersForLevel(lv: number): FloorColliderSet {
       { x: 7.0, z: 1.7, r: 0.25 },
       { x: 8.3, z: 1.7, r: 0.25 }
     );
-    return { boxes, obbs, circles, minX: -19.2, maxX: 19.2, minZ: 0.72, maxZ: 10.3 };
+    return { boxes, obbs, circles, minX: -29.2, maxX: 29.2, minZ: 0.72, maxZ: 10.3 };
   }
 
-  // Levels 1..3
-  return { boxes, obbs, circles, minX: -19.2, maxX: 19.2, minZ: 0.72, maxZ: 10.3 };
+  // Levels 1..3 West Wing Rooms (cx = -25)
+  boxes.push({ minX: -20.14, maxX: -19.96, minZ: 0.3, maxZ: 8.6 });
+  if (lv === 1) {
+    // HR Room
+    boxes.push(
+      { minX: -29.85, maxX: -24.5, minZ: 8.46, maxZ: 8.64 },
+      { minX: -22.1, maxX: -20.05, minZ: 8.46, maxZ: 8.64 }
+    );
+    addBox(boxes, -26.9, 3.2, 2.16, 1.14);
+    addBox(boxes, -23.0, 3.2, 2.16, 1.14);
+    addBox(boxes, -29.2, 2.0, 0.64, 1.44);
+    addObb(obbs, -23.75, 6.2, 1.24, 1.08, Math.PI / 2);
+    addObb(obbs, -21.45, 6.2, 1.24, 1.08, -Math.PI / 2);
+    circles.push({ x: -22.6, z: 6.2, r: 0.88 }, { x: -29.1, z: 6.8, r: 0.48 }, { x: -20.8, z: 1.2, r: 0.42 });
+  } else if (lv === 2) {
+    // Relax Room
+    boxes.push(
+      { minX: -29.85, maxX: -24.6, minZ: 8.46, maxZ: 8.64 },
+      { minX: -22.2, maxX: -20.05, minZ: 8.46, maxZ: 8.64 }
+    );
+    addBox(boxes, -26.8, 2.2, 2.86, 1.12);
+    addBox(boxes, -26.8, 5.4, 2.86, 1.12);
+    addBox(boxes, -26.8, 3.8, 1.54, 0.94);
+    addBox(boxes, -22.3, 4.2, 1.6, 2.78);
+    addBox(boxes, -29.2, 6.8, 0.76, 2.52);
+    addBox(boxes, -29.2, 5.1, 0.64, 0.68);
+    circles.push(
+      { x: -28.3, z: 6.3, r: 0.28 },
+      { x: -28.3, z: 7.3, r: 0.28 },
+      { x: -29.1, z: 2.0, r: 0.32 },
+      { x: -20.8, z: 1.2, r: 0.46 }
+    );
+  } else if (lv === 3) {
+    // Gym Room
+    boxes.push(
+      { minX: -29.85, maxX: -24.5, minZ: 8.46, maxZ: 8.64 },
+      { minX: -22.2, maxX: -20.05, minZ: 8.46, maxZ: 8.64 }
+    );
+    addBox(boxes, -28.2, 2.5, 0.9, 1.96);
+    addBox(boxes, -26.3, 2.5, 0.9, 1.96);
+    addBox(boxes, -28.0, 5.7, 0.58, 1.22);
+    addBox(boxes, -26.2, 5.7, 0.58, 1.22);
+    addBox(boxes, -22.6, 1.5, 2.24, 0.56);
+    addBox(boxes, -23.2, 3.2, 0.48, 1.36);
+    addBox(boxes, -29.25, 7.2, 0.64, 1.84);
+    addBox(boxes, -29.2, 1.6, 0.46, 0.46);
+  }
+
+  return { boxes, obbs, circles, minX: -29.2, maxX: 29.2, minZ: 0.72, maxZ: 10.3 };
 }
 
 export function getFloorColliders(lv: number): FloorColliderSet {
@@ -377,6 +467,12 @@ export function resolveObstaclePosition(
   let nx = Math.max(col.minX, Math.min(col.maxX, x));
   let nz = Math.max(minZFloor, Math.min(maxZFloor, z));
   let blocked = nx !== x || nz !== z;
+
+  // Pedestrians on upper floors must stay out of the East stairwell core hole [20.1..24.4] x [1.0..8.5]
+  if (lv >= 0 && options?.pedestrianOnly && nx > 19.85 && nx < 24.65 && nz < 8.65) {
+    nz = 8.65;
+    blocked = true;
+  }
 
   // Pedestrians on ground floor outside porch stairs (z > 14) stick to main stone entrance walkway
   if (lv === 0 && options?.pedestrianOnly && nz > 14.0) {
@@ -546,10 +642,30 @@ export function getChairDockPoint(
   homeZ: number,
   swivelDir = 1
 ): { x: number; z: number } | null {
+  if (lv === -2 && Math.abs(homeZ - 6.42) < 0.35 && homeX > 2.8 && homeX < 6.2) {
+    const dir = homeX < 4.5 ? -1 : 1;
+    return { x: homeX + dir * 0.62, z: 6.52 };
+  }
+  if (lv === 0 && homeX < -23 && homeZ >= 4.2 && homeZ <= 4.9) {
+    const dir = homeX < -25 ? -1 : 1;
+    return { x: homeX + dir * 0.62, z: 4.85 };
+  }
+  if (lv === 1 && homeX < -20) {
+    if (homeZ < 2.8) {
+      const dir = swivelDir >= 0 ? 1 : -1;
+      return { x: homeX + dir * 0.62, z: 2.15 };
+    }
+    if (homeZ >= 4.9 && homeZ <= 5.4) {
+      return { x: homeX, z: 4.9 };
+    }
+    if (homeZ >= 7.0 && homeZ <= 7.5) {
+      return { x: homeX, z: 7.55 };
+    }
+  }
   if (lv === 0 && Math.abs(homeX) < 3.7 && homeZ < 5.7) {
     return { x: homeX < 0 ? -4.3 : 4.3, z: 4.4 };
   }
-  if (lv >= 0 && lv <= 3 && homeZ >= 4.5 && homeZ <= 5.1) {
+  if (lv >= 0 && lv <= 3 && homeX > -20 && homeZ >= 4.5 && homeZ <= 5.1) {
     // Bay chair facing -Z: open space beside chair at z = 4.96, side offset = +/-0.58m
     // Outer seats step inward if near pedestals; center seat uses swivelDir
     const relX = ((homeX % 10) + 15) % 10 - 5;
@@ -557,6 +673,11 @@ export function getChairDockPoint(
     return { x: homeX + dir * 0.58, z: 4.96 };
   }
   if (lv === 4) {
+    if (homeX < -20) {
+      const dir = swivelDir >= 0 ? 1 : -1;
+      if (homeZ <= 3.6) return { x: homeX + dir * 0.62, z: 2.66 };
+      return { x: homeX + dir * 0.62, z: 6.72 };
+    }
     if (homeX < -14.8 && homeZ < 0.75) {
       return { x: -14.55, z: 0.48 };
     }
@@ -598,15 +719,15 @@ interface StaticFloorGrid {
 
 const STATIC_GRIDS = new Map<number, StaticFloorGrid>();
 const DISTRICT_STATIC_GRIDS = new Map<string, StaticFloorGrid>();
-const A_CLOSED = new Uint32Array(32768);
-const A_GSCORE = new Float32Array(32768);
-const A_PARENT = new Int32Array(32768);
-const A_INHEAP = new Uint32Array(32768);
+const A_CLOSED = new Uint32Array(65536);
+const A_GSCORE = new Float32Array(65536);
+const A_PARENT = new Int32Array(65536);
+const A_INHEAP = new Uint32Array(65536);
 let aStarRunId = 1;
 
 // Min-heap for A* open set (zero per-call allocation)
-const HEAP_NODE = new Int32Array(32768);
-const HEAP_F = new Float32Array(32768);
+const HEAP_NODE = new Int32Array(65536);
+const HEAP_F = new Float32Array(65536);
 let heapLen = 0;
 
 function heapPush(node: number, f: number) {
@@ -1096,9 +1217,9 @@ function getDistrictWalkColliders(): FloorColliderSet {
 
   // Add DomainTechHub outer perimeter walls (front stairs x = -14.8..14.8 stay open)
   boxes.push(
-    { minX: -20.1, maxX: 20.1, minZ: -0.25, maxZ: 0.45 },
-    { minX: -20.1, maxX: -19.55, minZ: 0.0, maxZ: 11.1 },
-    { minX: 19.55, maxX: 20.1, minZ: 0.0, maxZ: 11.1 }
+    { minX: -30.1, maxX: 30.1, minZ: -0.25, maxZ: 0.45 },
+    { minX: -30.1, maxX: -29.55, minZ: 0.0, maxZ: 11.1 },
+    { minX: 29.55, maxX: 30.1, minZ: 0.0, maxZ: 11.1 }
   );
 
   // Add street bollards at z = 55.5 outside center gap
@@ -1117,8 +1238,8 @@ function getDistrictWalkColliders(): FloorColliderSet {
     boxes,
     obbs,
     circles,
-    minX: -92.0,
-    maxX: 92.0,
+    minX: -106.0,
+    maxX: 106.0,
     minZ: -38.0,
     maxZ: 106.0,
     curvedCounter: hubCol.curvedCounter,

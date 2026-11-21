@@ -73,7 +73,7 @@ type WorkerActor = PersonActor & {
   sh_shift: number;
   sd: number;
   seat: { x: number; z: number };
-  state: 'atDesk' | 'toLift' | 'wait' | 'inCab' | 'out' | 'away' | 'toDesk';
+  state: 'atDesk' | 'toLift' | 'wait' | 'inCab' | 'toStairs' | 'onStairs' | 'out' | 'away' | 'toDesk';
   cab: number;
   ex: number;
   want: 'desk' | 'lunch' | 'home';
@@ -84,6 +84,12 @@ type WorkerActor = PersonActor & {
   navKey?: string;
   chair?: OfficeChairHandle;
   chairCollider?: TrackedChairCollider;
+  stairLv?: number;
+  stairDir?: 1 | -1;
+  stairTargetLv?: number;
+  stairQueue?: Array<{ x: number; z: number }>;
+  stairJitter?: number;
+  laneZ?: number;
 };
 
 type DayVisitorActor = PersonActor & {
@@ -93,7 +99,7 @@ type DayVisitorActor = PersonActor & {
   df: number;
   dpose: string;
   sd: number;
-  state: 'in' | 'wait' | 'inCab' | 'toDesk' | 'atDesk' | 'toLift' | 'out' | 'away';
+  state: 'in' | 'wait' | 'inCab' | 'toStairs' | 'onStairs' | 'toDesk' | 'atDesk' | 'toLift' | 'out' | 'away';
   cab: number;
   _arr?: number;
   _w2?: number;
@@ -101,6 +107,21 @@ type DayVisitorActor = PersonActor & {
   navKey?: string;
   chair?: OfficeChairHandle;
   chairCollider?: TrackedChairCollider;
+  stairLv?: number;
+  stairDir?: 1 | -1;
+  stairTargetLv?: number;
+  stairQueue?: Array<{ x: number; z: number }>;
+  stairJitter?: number;
+  laneZ?: number;
+};
+
+type StairTraveller = PersonActor & {
+  stairLv?: number;
+  stairDir?: 1 | -1;
+  stairTargetLv?: number;
+  stairQueue?: Array<{ x: number; z: number }>;
+  stairJitter?: number;
+  laneZ?: number;
 };
 
 type BasementCrewActor = PersonActor & {
@@ -196,11 +217,11 @@ export interface GuideTourStep {
 
 const standX = (cx: number) => (cx < 0 ? -1 : 1) * Math.min(Math.abs(cx) + 3.2, GATE_STOP);
 
-const DRV_X = 26.5;
+const DRV_X = 36.5;
 const AISLE_Z = 29.75;
 const LANE_WEST = ROAD_Z - 3.2;
 const LANE_EAST = ROAD_Z + 3.2;
-const STREET_END = 112;
+const STREET_END = 124;
 const BAY_XS = [8.2, 11.7, 15.2, 18.7, 22.0];
 const BAY_ROWS = [25, 34.5];
 const CAR_COLS = [0x1c2432, 0x7b2329, 0x3b4854, 0xcfd3d6, 0x2c4237, 0x16171a, 0x7a6a58, 0x2e4a76];
@@ -247,7 +268,7 @@ export class AtriumSimulation {
   public tourPlay = false;
   public tourI = 0;
   private tourLv = 0;
-  private tourSt: 'idle' | 'toLift' | 'waitCab' | 'toDest' | 'arrived' = 'idle';
+  private tourSt: 'idle' | 'toLift' | 'waitCab' | 'toStairs' | 'onStairs' | 'toDest' | 'arrived' = 'idle';
   private tourArr = false;
   private tourHold = 0;
   private tourCab = 1;
@@ -255,6 +276,9 @@ export class AtriumSimulation {
   private tourCam = { on: false, pos: new THREE.Vector3(), tgt: new THREE.Vector3() };
   private guideNavQueue: Array<{ x: number; z: number }> = [];
   private guideNavKey = '';
+  private guideStairLv = 0;
+  private guideStairDir: 1 | -1 = 1;
+  private guideStairQueue: Array<{ x: number; z: number }> | undefined;
 
   // First-person walk state
   public walkOn = false;
@@ -270,12 +294,13 @@ export class AtriumSimulation {
   private walkLY = 0;
   private walkJoy = { x: 0, y: 0 };
   private walkStep = 0;
-  private savedCamPos = new THREE.Vector3(0, 16, 49);
+  private savedCamPos = new THREE.Vector3(0, 20, 64);
   private savedCamTgt = new THREE.Vector3(0, 12.2, 4);
   private readonly onFootstep?: () => void;
   private readonly ambientSources: AmbientSource[] = [];
   private cutawayMinY: number | null = null;
   private cutawayMaxY: number | null = null;
+  private weatherTimeMultiplier = 1.0;
   private readonly districtSim: DistrictSim;
 
   // Pre-allocated scratch vectors for zero-GC update loops
@@ -434,6 +459,17 @@ export class AtriumSimulation {
         }
       }
     }
+
+    for (const b of this.BASEMENT_STAFF) {
+      const ag = this.freeAgents.get(b);
+      if (!ag) continue;
+      const pair = findChairPair(b.lv, ag.homeX, ag.homeZ);
+      if (pair) {
+        ag.chair = pair.handle;
+        ag.chairCollider = pair.collider;
+        pair.occupants.push(b);
+      }
+    }
   }
 
   private attachBrain(
@@ -565,6 +601,8 @@ export class AtriumSimulation {
           p.ex = 0;
           p.want = 'desk';
           p.lunch = (idx * 3 + k) % 3;
+          p.stairJitter = (((idx * 3 + k) % 5) - 2) * 0.13;
+          p.laneZ = 8.95 + ((idx + k + sh) % 5) * 0.22;
           if (sh === 1) p.g.visible = false;
           this.attachBrain(
             p,
@@ -584,7 +622,7 @@ export class AtriumSimulation {
               homePose: p.pose,
             },
             true,
-            1.18
+            1.58
           );
           this.WORKERS.push(p);
         }
@@ -618,6 +656,8 @@ export class AtriumSimulation {
       p.sd = dx < 0 ? -1 : 1;
       p.state = 'atDesk';
       p.cab = 0;
+      p.stairJitter = ((dayIdx % 5) - 2) * 0.13;
+      p.laneZ = 8.95 + (dayIdx % 5) * 0.22;
       this.attachBrain(
         p,
         {
@@ -636,7 +676,7 @@ export class AtriumSimulation {
           homePose: dpose,
         },
         false,
-        1.12
+        1.52
       );
       this.DAYONLY.push(p);
       return p;
@@ -961,6 +1001,309 @@ export class AtriumSimulation {
       );
     });
 
+    // Expanded Wing Staff: L0 Security Room, L1 HR Room, L2 Relax Room, L3 Gym Room, L4 Strategy Room, L5 Executive Gallery
+    addDayVisitor(
+      0,
+      -25.9,
+      4.55,
+      Math.PI,
+      'type',
+      {
+        skin: P_LIB.skins[1],
+        shirt: sMat(0x1b2b4a),
+        hair: P_LIB.hairs[0],
+        trou: sMat(0x141a26),
+        hairStyle: 'fade',
+        beardStyle: 'stubble',
+        outfit: 'shirtTrousers',
+        sleeve: 'short',
+        shoeStyle: 'oxford',
+        lanyard: true,
+        look: 0.25,
+      },
+      {
+        name: 'Marcus Odhiambo',
+        role: 'Security Operations Lead',
+        department: 'Level 0 · Security Room',
+        seniority: 'Lead',
+        topicKey: 'security_ops',
+        accentColor: '#38bdf8',
+      }
+    );
+    addDayVisitor(
+      0,
+      -24.1,
+      4.55,
+      Math.PI,
+      'monitorLook',
+      {
+        skin: P_LIB.skins[4],
+        shirt: sMat(0x1b2b4a),
+        hair: P_LIB.hairs[0],
+        trou: sMat(0x141a26),
+        fem: true,
+        hairStyle: 'bun',
+        outfit: 'shirtTrousers',
+        sleeve: 'short',
+        shoeStyle: 'flat',
+        lanyard: true,
+        look: 0.25,
+      },
+      {
+        name: 'Farida Karanja',
+        role: 'Campus Patrol Officer',
+        department: 'Level 0 · Security Room',
+        topicKey: 'security_ops',
+        accentColor: '#38bdf8',
+      }
+    );
+    addDayVisitor(
+      1,
+      -26.9,
+      2.4,
+      0,
+      'type',
+      {
+        skin: P_LIB.skins[2],
+        shirt: sMat(0x2e6f64),
+        hair: P_LIB.hairs[0],
+        trou: P_LIB.trous[0],
+        fem: true,
+        hairStyle: 'braids',
+        outfit: 'suit',
+        skirt: 'none',
+        blazer: true,
+        shoeStyle: 'heel',
+        warmSmile: true,
+        look: 0.35,
+      },
+      {
+        name: 'Lilian Mutua',
+        role: 'HR Director',
+        department: 'Level 1 · HR Room',
+        seniority: 'Lead',
+        topicKey: 'hr',
+        accentColor: '#34d399',
+      }
+    );
+    addDayVisitor(
+      1,
+      -23.0,
+      2.4,
+      0,
+      'sitReadDoc',
+      {
+        skin: P_LIB.skins[3],
+        shirt: sMat(0xf1f5f9),
+        hair: P_LIB.hairs[2],
+        trou: P_LIB.trous[2],
+        hairStyle: 'twists',
+        beardStyle: 'none',
+        outfit: 'shirtTrousers',
+        sleeve: 'rolled',
+        shoeStyle: 'oxford',
+        lanyard: true,
+        look: 0.3,
+      },
+      {
+        name: 'Dennis Kiprop',
+        role: 'Talent & Onboarding Lead',
+        department: 'Level 1 · HR Room',
+        seniority: 'Senior',
+        topicKey: 'hr',
+        accentColor: '#34d399',
+      }
+    );
+    addDayVisitor(
+      2,
+      -23.7,
+      4.2,
+      Math.PI / 2,
+      'collaborate',
+      {
+        skin: P_LIB.skins[5],
+        shirt: sMat(0x2a4a7f),
+        hair: P_LIB.hairs[1],
+        trou: P_LIB.trous[1],
+        hairStyle: 'afro',
+        outfit: 'smartCasual',
+        sleeve: 'short',
+        sneakers: true,
+        gest: true,
+        look: 0.3,
+      },
+      {
+        name: 'Ian Omondi',
+        role: 'Ping-Pong Break Coach',
+        department: 'Level 2 · Relax Room',
+        topicKey: 'relax',
+        accentColor: '#f59e0b',
+      }
+    );
+    addDayVisitor(
+      2,
+      -27.4,
+      6.8,
+      -Math.PI / 2,
+      'coffee',
+      {
+        skin: P_LIB.skins[0],
+        shirt: sMat(0xd97742),
+        hair: P_LIB.hairs[0],
+        trou: P_LIB.trous[3],
+        fem: true,
+        hairStyle: 'puff',
+        outfit: 'knit',
+        sneakers: true,
+        warmSmile: true,
+        look: 0.35,
+      },
+      {
+        name: 'Joy Achieng',
+        role: 'Developer Experience Host',
+        department: 'Level 2 · Relax Room',
+        topicKey: 'relax',
+        accentColor: '#f59e0b',
+      }
+    );
+    addDayVisitor(
+      3,
+      -25.0,
+      4.1,
+      Math.PI,
+      'hold',
+      {
+        skin: P_LIB.skins[6],
+        shirt: sMat(0x1f2937),
+        hair: P_LIB.hairs[0],
+        trou: sMat(0x111827),
+        hairStyle: 'fade',
+        outfit: 'smartCasual',
+        sleeve: 'short',
+        sneakers: true,
+        look: 0.25,
+      },
+      {
+        name: 'Trevor Kamau',
+        role: 'Wellness & Fitness Coordinator',
+        department: 'Level 3 · Gym Room',
+        topicKey: 'gym',
+        accentColor: '#f87171',
+      }
+    );
+    addDayVisitor(
+      3,
+      -21.4,
+      5.8,
+      Math.PI,
+      'stand',
+      {
+        skin: P_LIB.skins[1],
+        shirt: sMat(0xd9465f),
+        hair: P_LIB.hairs[0],
+        trou: sMat(0x1e293b),
+        fem: true,
+        hairStyle: 'bob',
+        outfit: 'smartCasual',
+        sleeve: 'sleeveless',
+        sneakers: true,
+        warmSmile: true,
+        look: 0.3,
+      },
+      {
+        name: 'Halima Mohamed',
+        role: 'Athletic Trainer',
+        department: 'Level 3 · Gym Room',
+        topicKey: 'gym',
+        accentColor: '#f87171',
+      }
+    );
+    addDayVisitor(
+      4,
+      -26.6,
+      3.35,
+      0,
+      'type',
+      {
+        skin: P_LIB.skins[3],
+        shirt: sMat(0x283e6e),
+        hair: P_LIB.hairs[0],
+        trou: sMat(0x1e293b),
+        fem: true,
+        hairStyle: 'bun',
+        outfit: 'suit',
+        blazer: true,
+        shoeStyle: 'heel',
+        warmSmile: true,
+        look: 0.35,
+      },
+      {
+        name: 'Pendo Barasa',
+        role: 'Head of Corporate Strategy',
+        department: 'Level 4 · Strategy Room',
+        seniority: 'Lead',
+        topicKey: 'strategy',
+        accentColor: '#818cf8',
+      }
+    );
+    addDayVisitor(
+      4,
+      -25.0,
+      3.35,
+      0,
+      'sitTalk',
+      {
+        skin: P_LIB.skins[4],
+        shirt: sMat(0xf8fafc),
+        hair: P_LIB.hairs[1],
+        trou: sMat(0x273244),
+        hairStyle: 'fade',
+        beardStyle: 'stubble',
+        outfit: 'suit',
+        blazer: true,
+        tie: 0x3b5998,
+        shoeStyle: 'oxford',
+        gest: true,
+        look: 0.35,
+      },
+      {
+        name: 'Kamau Ouko',
+        role: 'Growth & OKR Analyst',
+        department: 'Level 4 · Strategy Room',
+        seniority: 'Senior',
+        topicKey: 'strategy',
+        accentColor: '#818cf8',
+      }
+    );
+    addDayVisitor(
+      5,
+      -25.0,
+      2.3,
+      0,
+      'stand',
+      {
+        skin: P_LIB.skins[2],
+        shirt: sMat(0x4b3d2d),
+        hair: P_LIB.hairs[0],
+        trou: sMat(0x1f242d),
+        fem: true,
+        hairStyle: 'pixie',
+        outfit: 'blouseSkirt',
+        skirt: 'midi',
+        shoeStyle: 'heel',
+        warmSmile: true,
+        look: 0.35,
+      },
+      {
+        name: 'Talia Mugo',
+        role: 'Partner Relations Director',
+        department: 'Level 5 · Executive Gallery',
+        seniority: 'Executive',
+        topicKey: 'gallery',
+        accentColor: '#b08452',
+      }
+    );
+
     // B1 Server Room & B2 Power Room Maintenance Teams (Senior Engineers & Junior Technicians)
     let baseIdx = 0;
     const addBasementCrew = (
@@ -993,6 +1336,7 @@ export class AtriumSimulation {
       p.lv = lv;
       p.seniority = seniority;
       p.roleLabel = roleLabel;
+      const isDeskWorker = opts.startPose === 'type';
       this.attachBrain(
         p,
         {
@@ -1017,7 +1361,7 @@ export class AtriumSimulation {
           homeFace: opts.startFace,
           homePose: opts.startPose,
         },
-        false,
+        isDeskWorker,
         speed
       );
       this.BASEMENT_STAFF.push(p);
@@ -1107,10 +1451,17 @@ export class AtriumSimulation {
       glasses: true,
       hardHat: 0xf4f6f9,
       s: 1.07,
-      startX: 7.55,
-      startZ: 3.4,
-      startFace: Math.PI / 2,
-      startPose: 'readDoc',
+      startX: 3.7,
+      startZ: 6.42,
+      startFace: Math.PI,
+      startPose: 'type',
+      modes: [
+        ['type', 5],
+        ['monitorLook', 2],
+        ['leanScreen', 1.5],
+        ['writeNotes', 1.5],
+        ['think', 1],
+      ],
     });
     addBasementCrew(-2, 'senior', 'Esther Karanja', 'Senior Solar & Inverter Engineer', {
       skin: P_LIB.skins[5],
@@ -1143,10 +1494,17 @@ export class AtriumSimulation {
       shoeStyle: 'oxford',
       hardHat: 0xf2b705,
       s: 0.96,
-      startX: -3.5,
-      startZ: 4.02,
-      startFace: 0,
-      startPose: 'hold',
+      startX: 5.3,
+      startZ: 6.42,
+      startFace: Math.PI,
+      startPose: 'type',
+      modes: [
+        ['type', 5],
+        ['monitorLook', 2],
+        ['leanScreen', 1.5],
+        ['writeNotes', 1.5],
+        ['think', 1],
+      ],
     });
     addBasementCrew(-2, 'junior', 'Mercy Auma', 'Junior Electrical Maintenance Tech', {
       skin: P_LIB.skins[0],
@@ -1202,7 +1560,7 @@ export class AtriumSimulation {
       )
     );
 
-    // 2. VitalCare Medical Clinic (4 bays along z = -15.0 ring road)
+    // 2. VitalCare Medical Clinic (4 bays along z = -15.0 ring road via ±36.5 inner drives)
     [-16.0, -11.0, 11.0, 16.0].forEach((bx) =>
       pushBay({
         company: 'medical',
@@ -1210,124 +1568,124 @@ export class AtriumSimulation {
         x: bx,
         z: -10.5,
         face: 0,
-        gateX: -26.5,
+        gateX: -36.5,
         gateLane: LANE_WEST,
         exitLane: LANE_EAST,
         entryPts: [
-          [-26.5, LANE_WEST],
-          [-26.5, -15.0],
+          [-36.5, LANE_WEST],
+          [-36.5, -15.0],
           [bx, -15.0],
           [bx, -10.5],
         ],
         exitPts: [
           [bx, -15.0],
-          [26.5, -15.0],
-          [26.5, LANE_WEST],
-          [26.5, LANE_EAST],
+          [36.5, -15.0],
+          [36.5, LANE_WEST],
+          [36.5, LANE_EAST],
         ],
       })
     );
 
-    // 3. Meridian Reserve Bank (4 bays via West Commercial Ave x = -59 & NW Forecourt z = 18)
-    [-82, -78, -74, -70].forEach((bx) =>
+    // 3. Meridian Reserve Bank (4 bays via West Commercial Ave x = -73.5 & NW Forecourt z = 18)
+    [-96, -92, -88, -84].forEach((bx) =>
       pushBay({
         company: 'bank',
         sd: -1,
         x: bx,
         z: 13.8,
         face: Math.PI,
-        gateX: -59.0,
+        gateX: -73.5,
         gateLane: LANE_WEST,
         exitLane: LANE_EAST,
         entryPts: [
-          [-59.0, LANE_WEST],
-          [-59.0, 18.0],
+          [-73.5, LANE_WEST],
+          [-73.5, 18.0],
           [bx, 18.0],
           [bx, 13.8],
         ],
         exitPts: [
           [bx, 18.0],
-          [-59.0, 18.0],
-          [-59.0, LANE_WEST],
-          [-59.0, LANE_EAST],
+          [-73.5, 18.0],
+          [-73.5, LANE_WEST],
+          [-73.5, LANE_EAST],
         ],
       })
     );
 
-    // 4. Saffron & Ember Kitchen (4 bays via West Commercial Ave x = -59 -> exit via x = -26.5)
-    [-49, -45, -41, -37].forEach((bx) =>
+    // 4. Saffron & Ember Kitchen (4 bays via West Commercial Ave x = -73.5 -> exit via x = -36.5)
+    [-63, -59, -55, -51].forEach((bx) =>
       pushBay({
         company: 'restaurant',
         sd: -1,
         x: bx,
         z: 13.8,
         face: Math.PI,
-        gateX: -59.0,
+        gateX: -73.5,
         gateLane: LANE_WEST,
         exitLane: LANE_EAST,
         entryPts: [
-          [-59.0, LANE_WEST],
-          [-59.0, 18.0],
+          [-73.5, LANE_WEST],
+          [-73.5, 18.0],
           [bx, 18.0],
           [bx, 13.8],
         ],
         exitPts: [
           [bx, 18.0],
-          [-26.5, 18.0],
-          [-26.5, LANE_WEST],
-          [-26.5, LANE_EAST],
+          [-36.5, 18.0],
+          [-36.5, LANE_WEST],
+          [-36.5, LANE_EAST],
         ],
       })
     );
 
-    // 5. Apex Motors Dealership (4 bays via East Commercial Ave x = +59 -> exit via x = +26.5)
-    [37, 41, 45, 49].forEach((bx) =>
+    // 5. Apex Motors Dealership (4 bays via East Commercial Ave x = +73.5 -> exit via x = +36.5)
+    [51, 55, 59, 63].forEach((bx) =>
       pushBay({
         company: 'dealership',
         sd: 1,
         x: bx,
         z: 13.8,
         face: Math.PI,
-        gateX: 59.0,
+        gateX: 73.5,
         gateLane: LANE_WEST,
         exitLane: LANE_EAST,
         entryPts: [
-          [59.0, LANE_WEST],
-          [59.0, 18.0],
+          [73.5, LANE_WEST],
+          [73.5, 18.0],
           [bx, 18.0],
           [bx, 13.8],
         ],
         exitPts: [
           [bx, 18.0],
-          [26.5, 18.0],
-          [26.5, LANE_WEST],
-          [26.5, LANE_EAST],
+          [36.5, 18.0],
+          [36.5, LANE_WEST],
+          [36.5, LANE_EAST],
         ],
       })
     );
 
-    // 6. KryptoNexus Exchange (4 bays via East Commercial Ave x = +59 & NE Forecourt z = 18)
-    [68, 72, 76, 80].forEach((bx) =>
+    // 6. KryptoNexus Exchange (4 bays via East Commercial Ave x = +73.5 & NE Forecourt z = 18)
+    [84, 88, 92, 96].forEach((bx) =>
       pushBay({
         company: 'crypto',
         sd: 1,
         x: bx,
         z: 13.8,
         face: Math.PI,
-        gateX: 59.0,
+        gateX: 73.5,
         gateLane: LANE_WEST,
         exitLane: LANE_EAST,
         entryPts: [
-          [59.0, LANE_WEST],
-          [59.0, 18.0],
+          [73.5, LANE_WEST],
+          [73.5, 18.0],
           [bx, 18.0],
           [bx, 13.8],
         ],
         exitPts: [
           [bx, 18.0],
-          [59.0, 18.0],
-          [59.0, LANE_WEST],
-          [59.0, LANE_EAST],
+          [73.5, 18.0],
+          [73.5, LANE_WEST],
+          [73.5, LANE_EAST],
         ],
       })
     );
@@ -1442,9 +1800,18 @@ export class AtriumSimulation {
     addLock(0, 4.9, 6.4);
     addLock(-17.6, 1.0, 2.7);
     addLock(0, 5.4, 3.3);
+    addLock(-25.0, 3.6, 2.3);
+    addLock(-26.9, 3.2, 1.3);
+    addLock(-23.0, 3.2, 1.3);
+    addLock(-22.3, 4.2, 1.6);
+    addLock(-25.0, 4.7, 2.8);
+    addLock(-25.0, 4.5, 2.0);
+    addLock(22.25, 4.7, 3.8);
+    addLock(27.15, 4.4, 3.6);
     [-1, 1].forEach((s) => {
       addLock(s * LIFTX, LANE, 1.35);
       addLock(s * 13, 11.2, 2.0);
+      addLock(s * 25, 11.2, 2.0);
       addLock(s * 16.5, 13.4, 2.0);
     });
 
@@ -1581,25 +1948,10 @@ export class AtriumSimulation {
   private buildTourStops(): TourStop[] {
     const out: TourStop[] = [];
     const byName = new Map(ROOMS.map((r) => [r.n, r]));
-    const order = [
-      'Maintenance & Security',
-      'Mobile Apps',
-      'Consultancy',
-      'AI Solutions',
-      'Custom CRM',
-      'Social Media',
-      'SEO',
-      'Digital Marketing',
-      'PPC · Google Ads',
-      'WhatsApp Marketing',
-      'CMS & WordPress',
-      'E-Commerce',
-      'Front-End',
-      'Web Development',
-    ];
-    for (const n of order) {
-      const r = byName.get(n);
-      if (!r) continue;
+    const totalStops = 23;
+    const pushRoom = (name: string) => {
+      const r = byName.get(name);
+      if (!r) return;
       const cx = COLX[r.col];
       out.push({
         n: r.n,
@@ -1607,28 +1959,48 @@ export class AtriumSimulation {
         lv: r.lv,
         cx,
         col: `#${r.col >= 0 ? r.c.toString(16).padStart(6, '0') : '6fe3a1'}`,
-        lab: `Level ${r.lv} · Bay ${r.col + 1} · Department ${out.length + 1} of 17`,
+        lab: `Level ${r.lv} · Bay ${r.col + 1} · Stop ${out.length + 1} of ${totalStops}`,
         text: TOUR_TEXT[r.n] || '',
       });
-    }
-    out.push({
-      n: 'Board Room',
-      room: EXEC.board,
-      lv: 4,
-      cx: 0,
-      col: '#c9a24b',
-      lab: 'Level 4 · Executive Floor · Stop 15 of 17',
-      text: TOUR_TEXT['Board Room'],
-    });
-    out.push({
-      n: 'Heads of Department',
-      room: EXEC.tech,
-      lv: 5,
-      cx: -10,
-      col: '#5b8ee8',
-      lab: 'Level 5 · Heads of Department · Stop 16 of 17',
-      text: TOUR_TEXT['Heads of Department'],
-    });
+    };
+    const pushWing = (title: string, room: (typeof EXEC)[keyof typeof EXEC], hex: string, labPrefix: string) => {
+      out.push({
+        n: title,
+        room,
+        lv: room.lv,
+        cx: room.cx,
+        col: hex,
+        lab: `${labPrefix} · Stop ${out.length + 1} of ${totalStops}`,
+        text: TOUR_TEXT[title] || room.sub,
+      });
+    };
+
+    pushWing('Security Room', EXEC.security, '#38bdf8', 'Ground Floor · West Wing');
+    pushRoom('Maintenance & Security');
+    pushRoom('Mobile Apps');
+
+    pushWing('HR Room', EXEC.hr, '#34d399', 'Level 1 · West Wing');
+    pushRoom('Consultancy');
+    pushRoom('AI Solutions');
+    pushRoom('Custom CRM');
+    pushRoom('Social Media');
+
+    pushWing('Relax Room', EXEC.relax, '#f59e0b', 'Level 2 · West Wing');
+    pushRoom('SEO');
+    pushRoom('Digital Marketing');
+    pushRoom('PPC · Google Ads');
+    pushRoom('WhatsApp Marketing');
+
+    pushWing('Gym Room', EXEC.gym, '#f87171', 'Level 3 · West Wing');
+    pushRoom('CMS & WordPress');
+    pushRoom('E-Commerce');
+    pushRoom('Front-End');
+    pushRoom('Web Development');
+
+    pushWing('Strategy Room', EXEC.strategy, '#818cf8', 'Level 4 · West Wing');
+    pushWing('Board Room', EXEC.board, '#c9a24b', 'Level 4 · Executive Floor');
+    pushWing('Executive Gallery', EXEC.gallery, '#b08452', 'Level 5 · West Wing');
+    pushWing('Heads of Department', EXEC.tech, '#5b8ee8', 'Level 5 · Heads of Department');
     out.push({
       n: 'CEO Office',
       room: EXEC.ceo,
@@ -1657,6 +2029,21 @@ export class AtriumSimulation {
   }
 
   private groundElevationAt(lv: number, x: number, z: number, buildingId: BuildingId = 'hub'): number {
+    if (buildingId === 'hub' && lv >= 0 && lv < FLOORS && x >= 20.14 && x <= 24.36 && z >= 1.05 && z <= 7.85) {
+      const y0 = LV[lv];
+      const halfRise = (lv === 0 ? 5.6 : 4.2) * 0.5;
+      const flightZStart = 7.75;
+      const flightZEnd = 2.85;
+      if (z <= flightZEnd) {
+        return y0 + halfRise + 0.04;
+      }
+      if (x <= 22.25) {
+        const t = Math.max(0, Math.min(1, (flightZStart - z) / (flightZStart - flightZEnd)));
+        return y0 + t * halfRise;
+      }
+      const t = Math.max(0, Math.min(1, (z - flightZEnd) / (flightZStart - flightZEnd)));
+      return y0 + halfRise + t * halfRise + 0.02;
+    }
     if (lv !== 0) {
       if (buildingId !== 'hub') {
         const spec = DISTRICT_BUILDING_MAP[buildingId];
@@ -1664,7 +2051,7 @@ export class AtriumSimulation {
       }
       return liftY(lv);
     }
-    if (Math.abs(x) <= 20.0 && z >= 0 && z <= 11.025) return 0;
+    if (Math.abs(x) <= 30.0 && z >= 0 && z <= 11.025) return 0;
     if (Math.abs(x) <= 15.0 && z > 11.025 && z <= 13.975) {
       if (z <= 12.025) return 0;
       if (z <= 12.975) return -0.2;
@@ -1770,7 +2157,8 @@ export class AtriumSimulation {
     ignoreChair?: TrackedChairCollider,
     radius?: number
   ): { x: number; z: number } {
-    const minDist = 0.48;
+    const inStairwell = lv >= 0 && nx >= 20.1 && nx <= 24.4 && nz <= 8.45;
+    const minDist = inStairwell ? 0.34 : 0.48;
     const minDistSq = minDist * minDist;
     const py = actor.g.position.y;
     let rx = nx;
@@ -1780,7 +2168,7 @@ export class AtriumSimulation {
       if (other === actor || !other.g.visible) return;
       const st = (other as { state?: string }).state;
       if (st === 'inCab' || st === 'away') return;
-      if (Math.abs(other.g.position.y - py) > 0.65) return;
+      if (Math.abs(other.g.position.y - py) > (inStairwell ? 0.52 : 0.65)) return;
       const dx = rx - other.g.position.x;
       const dz = rz - other.g.position.z;
       const dSq = dx * dx + dz * dz;
@@ -1790,7 +2178,7 @@ export class AtriumSimulation {
           rx = other.g.position.x + (dx / d) * minDist;
           rz = other.g.position.z + (dz / d) * minDist;
         } else {
-          rx += 0.25;
+          rx += 0.22;
         }
       }
     };
@@ -1812,7 +2200,7 @@ export class AtriumSimulation {
     gx: number,
     gz: number,
     dt: number,
-    opts?: { allowLiftShaft?: boolean; ignoreChair?: TrackedChairCollider; radius?: number }
+    opts?: { allowLiftShaft?: boolean; ignoreChair?: TrackedChairCollider; radius?: number; elevationLv?: number }
   ): boolean {
     const dx = gx - P.g.position.x;
     const dz = gz - P.g.position.z;
@@ -1835,14 +2223,16 @@ export class AtriumSimulation {
       }
       P.g.position.x = fx;
       P.g.position.z = fz;
-      if (actorState !== 'inCab' && lv === 0) {
-        P.g.position.y = this.groundElevationAt(0, fx, fz);
+      if (actorState !== 'inCab' && (opts?.elevationLv !== undefined || lv === 0)) {
+        const elevLv = opts?.elevationLv ?? 0;
+        const effLv = opts?.elevationLv !== undefined && fx > 22.25 && fz > 7.85 ? elevLv + 1 : elevLv;
+        P.g.position.y = this.groundElevationAt(effLv, fx, fz);
       }
       P.moving = false;
       return true;
     }
 
-    const totalStep = Math.min(dist, (P.speed || 2.3) * dt);
+    const totalStep = Math.min(dist, (P.speed || 2.5) * dt);
     const subs = Math.max(1, Math.ceil(totalStep / 0.08));
     const subLen = totalStep / subs;
     const ux = dx / dist;
@@ -1878,8 +2268,10 @@ export class AtriumSimulation {
       );
       nx = sep.x;
       nz = sep.z;
-      if (lv === 0) {
-        P.g.position.y = this.groundElevationAt(0, nx, nz);
+      if (opts?.elevationLv !== undefined || lv === 0) {
+        const elevLv = opts?.elevationLv ?? 0;
+        const effLv = opts?.elevationLv !== undefined && nx > 22.25 && nz > 7.85 ? elevLv + 1 : elevLv;
+        P.g.position.y = this.groundElevationAt(effLv, nx, nz);
       }
     }
 
@@ -1896,7 +2288,7 @@ export class AtriumSimulation {
   }
 
   private followNavPath(
-    P: PersonActor & { navQueue?: Array<{ x: number; z: number }>; navKey?: string },
+    P: PersonActor & { navQueue?: Array<{ x: number; z: number }>; navKey?: string; laneZ?: number },
     lv: number,
     key: string,
     toX: number,
@@ -1906,6 +2298,7 @@ export class AtriumSimulation {
       useHomeDock?: { homeX: number; homeZ: number; chairCollider?: TrackedChairCollider; behindCounter?: boolean };
       endBeforeDock?: boolean;
       allowLiftShaftAtEnd?: boolean;
+      walkSpeed?: number;
     }
   ): boolean {
     if (P.navKey !== key || !P.navQueue) {
@@ -1921,9 +2314,37 @@ export class AtriumSimulation {
         fromZ = dock.z;
       }
       const targetDock = options?.endBeforeDock && dock ? dock : { x: toX, z: toZ };
-      const body = buildObstacleAwarePath(lv, fromX, fromZ, targetDock.x, targetDock.z, {
-        ignoreChair: options?.useHomeDock?.chairCollider,
-      });
+      // Spread corridor travel across personal Z lanes (8.95..9.83) so hallway traffic never queues single-file
+      let body: Array<{ x: number; z: number }>;
+      const laneZ = P.laneZ;
+      if (
+        laneZ !== undefined &&
+        lv >= 0 &&
+        Math.abs(targetDock.x - fromX) > 7.0 &&
+        targetDock.z >= 8.2 &&
+        fromZ >= 7.0
+      ) {
+        const midX = (fromX + targetDock.x) * 0.5;
+        const midCheck = resolveObstaclePosition(lv, midX, laneZ, { pedestrianOnly: true });
+        if (!midCheck.blocked) {
+          body = [
+            ...buildObstacleAwarePath(lv, fromX, fromZ, midCheck.x, midCheck.z, {
+              ignoreChair: options?.useHomeDock?.chairCollider,
+            }),
+            ...buildObstacleAwarePath(lv, midCheck.x, midCheck.z, targetDock.x, targetDock.z, {
+              ignoreChair: options?.useHomeDock?.chairCollider,
+            }),
+          ];
+        } else {
+          body = buildObstacleAwarePath(lv, fromX, fromZ, targetDock.x, targetDock.z, {
+            ignoreChair: options?.useHomeDock?.chairCollider,
+          });
+        }
+      } else {
+        body = buildObstacleAwarePath(lv, fromX, fromZ, targetDock.x, targetDock.z, {
+          ignoreChair: options?.useHomeDock?.chairCollider,
+        });
+      }
       if (options?.endBeforeDock && dock) {
         body.push({ x: toX, z: toZ });
       }
@@ -1952,16 +2373,118 @@ export class AtriumSimulation {
         ? 0.14
         : undefined;
 
+    const prevSpd = P.speed;
+    if (options?.walkSpeed !== undefined) P.speed = options.walkSpeed;
     const reached = this.walkPt(P, wp.x, wp.z, dt, {
       allowLiftShaft: isLast && options?.allowLiftShaftAtEnd,
       ignoreChair,
       radius,
     });
+    P.speed = prevSpd;
     if (reached) {
       P.navQueue.shift();
     }
     if (P.navQueue.length === 0) {
       P.moving = false;
+      return true;
+    }
+    return false;
+  }
+
+  private buildSingleFlightWaypoints(
+    flightLv: number,
+    dir: 1 | -1,
+    targetLv: number,
+    jitter = 0
+  ): Array<{ x: number; z: number }> {
+    const xLeft = Math.max(20.65, Math.min(21.72, 21.18 + jitter));
+    const xRight = Math.max(22.8, Math.min(23.85, 23.32 + jitter));
+    if (dir === 1) {
+      const pts = [
+        { x: xLeft, z: 7.75 },
+        { x: xLeft, z: 1.98 },
+        { x: xRight, z: 1.98 },
+        { x: xRight, z: 7.75 },
+        { x: xRight, z: 8.55 },
+      ];
+      if (flightLv + 1 < targetLv) {
+        pts.push({ x: xRight, z: 8.75 }, { x: xLeft, z: 8.75 });
+      }
+      return pts;
+    }
+    const pts = [
+      { x: xRight, z: 7.75 },
+      { x: xRight, z: 1.98 },
+      { x: xLeft, z: 1.98 },
+      { x: xLeft, z: 7.75 },
+      { x: xLeft, z: 8.55 },
+    ];
+    if (flightLv > targetLv) {
+      pts.push({ x: xLeft, z: 8.75 }, { x: xRight, z: 8.75 });
+    }
+    return pts;
+  }
+
+  private stepStairTravel(p: StairTraveller, dt: number): boolean {
+    if (p.stairLv === undefined || p.stairDir === undefined || p.stairTargetLv === undefined) {
+      return true;
+    }
+    if (!p.stairQueue || p.stairQueue.length === 0) {
+      p.stairQueue = this.buildSingleFlightWaypoints(
+        p.stairLv,
+        p.stairDir,
+        p.stairTargetLv,
+        p.stairJitter || 0
+      );
+    }
+
+    while (
+      p.stairQueue.length > 0 &&
+      Math.hypot(p.stairQueue[0].x - p.g.position.x, p.stairQueue[0].z - p.g.position.z) < 0.1
+    ) {
+      p.stairQueue.shift();
+    }
+
+    if (p.stairQueue.length > 0) {
+      const wp = p.stairQueue[0];
+      const prevSpd = p.speed;
+      p.speed = 3.35; // Brisk faster stair climbing/descending speed
+      const reached = this.walkPt(p, wp.x, wp.z, dt, {
+        elevationLv: p.stairLv,
+        radius: 0.14,
+      });
+      p.speed = prevSpd;
+      if (reached) {
+        p.stairQueue.shift();
+      }
+    }
+
+    if (!p.stairQueue || p.stairQueue.length === 0) {
+      if (p.stairDir === 1) {
+        const arrivedLv = p.stairLv + 1;
+        if (arrivedLv < p.stairTargetLv) {
+          p.stairLv = arrivedLv;
+          p.stairQueue = undefined;
+          return false;
+        }
+        p.g.position.y = LV[p.stairTargetLv];
+        p.stairLv = undefined;
+        p.stairDir = undefined;
+        p.stairTargetLv = undefined;
+        p.stairQueue = undefined;
+        return true;
+      }
+      const arrivedLv = p.stairLv;
+      if (arrivedLv > p.stairTargetLv) {
+        p.stairLv = arrivedLv - 1;
+        p.stairQueue = undefined;
+        return false;
+      }
+      p.g.position.y = LV[p.stairTargetLv];
+      p.stairLv = undefined;
+      p.stairDir = undefined;
+      p.stairTargetLv = undefined;
+      p.stairQueue = undefined;
       return true;
     }
     return false;
@@ -2183,75 +2706,108 @@ export class AtriumSimulation {
           { x: -16.2, z: 2.8, face: Math.PI },
           { x: -17.4, z: 2.85, face: Math.PI },
           { x: -15.6, z: 3.3, face: -Math.PI * 0.75 },
-          { x: -13.8, z: 6.8, face: Math.PI }
+          { x: -13.8, z: 6.8, face: Math.PI },
+          { x: -24.8, z: 7.2, face: Math.PI }
+        );
+      } else if (lv === 2) {
+        out.push(
+          { x: -27.4, z: 6.8, face: -Math.PI / 2 },
+          { x: -25.2, z: 7.2, face: -Math.PI / 2 },
+          { x: -23.7, z: 4.2, face: Math.PI / 2 },
+          { x: -14.2, z: 6.8, face: 0 },
+          { x: -5.8, z: 6.8, face: 0 },
+          { x: 4.2, z: 6.8, face: 0 },
+          { x: 14.2, z: 6.8, face: 0 }
+        );
+      } else if (lv === 3) {
+        out.push(
+          { x: -28.4, z: 2.1, face: -Math.PI / 2 },
+          { x: -24.8, z: 4.2, face: Math.PI },
+          { x: -22.2, z: 6.2, face: 0 },
+          { x: -14.2, z: 6.8, face: 0 },
+          { x: -5.8, z: 6.8, face: 0 },
+          { x: 4.2, z: 6.8, face: 0 },
+          { x: 14.2, z: 6.8, face: 0 }
+        );
+      } else if (lv === 1) {
+        out.push(
+          { x: -22.6, z: 4.9, face: Math.PI },
+          { x: -23.8, z: 7.4, face: -Math.PI / 2 },
+          { x: -14.2, z: 6.8, face: 0 },
+          { x: -5.8, z: 6.8, face: 0 },
+          { x: 4.2, z: 6.8, face: 0 },
+          { x: 14.2, z: 6.8, face: 0 }
         );
       } else if (lv === 0) {
         out.push(
-          { x: -5.4, z: 9.55, face: 0 },
-          { x: 5.4, z: 9.55, face: 0 },
-          { x: -6.8, z: 9.45, face: 0.2 },
-          { x: 6.8, z: 9.45, face: -0.2 }
+          { x: -5.4, z: 7.4, face: 0 },
+          { x: 5.4, z: 7.4, face: 0 },
+          { x: -14.2, z: 6.8, face: 0 },
+          { x: 14.2, z: 6.8, face: 0 },
+          { x: -23.3, z: 7.2, face: 0 }
         );
       } else if (lv === 5) {
         out.push(
-          { x: homeX < 0 ? Math.max(-17.8, Math.min(-2.2, homeX)) : 3.2, z: 9.72, face: 0 },
-          { x: -12.6, z: 9.75, face: 0 },
-          { x: 13.0, z: 9.75, face: 0 }
-        );
-      } else {
-        out.push(
-          { x: homeX < 0 ? -13.6 : 13.6, z: 9.72, face: 0 },
-          { x: homeX < 0 ? -5.8 : 5.8, z: 9.72, face: 0 },
-          { x: -15.4, z: 9.72, face: 0 },
-          { x: 15.4, z: 9.72, face: 0 }
+          { x: -25.0, z: 6.4, face: Math.PI },
+          { x: -22.8, z: 6.6, face: -Math.PI / 2 },
+          { x: -17.5, z: 7.2, face: 0 },
+          { x: -7.5, z: 7.2, face: 0 },
+          { x: 17.6, z: 5.8, face: 0 }
         );
       }
       return out;
     }
 
-    // 'balcony' — curated open atrium walkway viewpoints per floor
+    // 'balcony' — well-spaced open atrium viewpoints (never densely bunched)
     if (lv === 0) {
       out.push(
-        { x: -6.5, z: 9.65, face: 0 },
-        { x: -4.8, z: 9.65, face: 0 },
-        { x: 4.8, z: 9.65, face: 0 },
-        { x: 6.5, z: 9.65, face: 0 },
-        { x: -13.6, z: 9.65, face: 0 },
-        { x: 13.6, z: 9.65, face: 0 }
+        { x: -25.8, z: 9.55, face: 0 },
+        { x: -6.2, z: 9.55, face: 0 },
+        { x: 6.2, z: 9.55, face: 0 },
+        { x: 25.5, z: 9.55, face: 0 }
       );
     } else if (lv === 4) {
       out.push(
-        { x: -15.4, z: 9.75, face: 0 },
-        { x: -12.8, z: 9.75, face: 0 },
-        { x: -5.4, z: 9.75, face: 0 },
-        { x: 0.0, z: 9.75, face: 0 },
-        { x: 5.4, z: 9.75, face: 0 },
-        { x: 13.4, z: 9.75, face: 0 },
-        { x: 16.2, z: 9.75, face: 0 }
+        { x: -26.2, z: 9.65, face: 0 },
+        { x: -13.4, z: 9.65, face: 0 },
+        { x: 0.0, z: 9.65, face: 0 },
+        { x: 13.4, z: 9.65, face: 0 },
+        { x: 25.8, z: 9.65, face: 0 }
       );
     } else if (lv === 5) {
       out.push(
-        { x: -17.4, z: 9.75, face: 0 },
-        { x: -12.5, z: 9.75, face: 0 },
-        { x: -7.5, z: 9.75, face: 0 },
-        { x: -2.5, z: 9.75, face: 0 },
-        { x: 3.0, z: 9.75, face: 0 },
-        { x: 12.6, z: 9.75, face: 0 },
-        { x: 15.8, z: 9.75, face: 0 }
+        { x: -26.2, z: 9.65, face: 0 },
+        { x: -12.5, z: 9.65, face: 0 },
+        { x: -2.5, z: 9.65, face: 0 },
+        { x: 12.6, z: 9.65, face: 0 },
+        { x: 25.8, z: 9.65, face: 0 }
       );
     } else {
       out.push(
-        { x: -16.2, z: 9.72, face: 0 },
-        { x: -13.5, z: 9.72, face: 0 },
-        { x: -6.5, z: 9.72, face: 0 },
-        { x: -3.5, z: 9.72, face: 0 },
-        { x: 3.5, z: 9.72, face: 0 },
-        { x: 6.5, z: 9.72, face: 0 },
-        { x: 13.5, z: 9.72, face: 0 },
-        { x: 16.2, z: 9.72, face: 0 }
+        { x: -26.0, z: 9.6, face: 0 },
+        { x: -14.8, z: 9.6, face: 0 },
+        { x: -4.8, z: 9.6, face: 0 },
+        { x: 4.8, z: 9.6, face: 0 },
+        { x: 14.8, z: 9.6, face: 0 },
+        { x: 25.6, z: 9.6, face: 0 }
       );
     }
     return out;
+  }
+
+  private countHallwayLingerers(lv: number): number {
+    if (lv < 0) return 0;
+    let n = 0;
+    const fy = LV[lv] ?? 0;
+    for (let i = 0; i < this.STAFF.length; i++) {
+      const other = this.STAFF[i];
+      if (!other.g.visible || Math.abs(other.g.position.y - fy) > 0.6) continue;
+      const oag = this.freeAgents.get(other);
+      if (oag && oag.lv === lv && (oag.mode === 'toGoal' || oag.mode === 'atGoal') && other.g.position.z >= 8.65) {
+        n++;
+      }
+    }
+    return n;
   }
 
   private decideFreeWill(actor: PersonActor, forceMove = false) {
@@ -2271,33 +2827,40 @@ export class AtriumSimulation {
 
     const r = Math.random();
     let goal: FreeGoal = 'work';
+    const hallwayBusy = this.countHallwayLingerers(ag.lv) >= 2;
 
     if (ag.lv < 0) {
-      if (forceMove || r < 0.72) {
+      if (ag.isDeskWorker) {
+        if (ag.mode !== 'home') {
+          goal = r < 0.68 && !forceMove ? 'work' : r < 0.85 ? 'inspect' : 'socialize';
+        } else {
+          goal = r < 0.54 && !forceMove ? 'work' : r < 0.8 ? 'inspect' : r < 0.92 ? 'socialize' : 'stretch';
+        }
+      } else if (forceMove || r < 0.72) {
         goal = r < 0.4 ? 'inspect' : r < 0.62 ? 'patrol' : 'socialize';
       } else {
         goal = 'stretch';
       }
     } else if (brain.identity.topicKey === 'security') {
-      goal = r < 0.48 ? 'patrol' : r < 0.72 ? 'socialize' : r < 0.88 ? 'balcony' : 'coffeeBreak';
+      goal = r < 0.56 ? 'patrol' : r < 0.8 ? 'socialize' : hallwayBusy ? 'coffeeBreak' : 'balcony';
     } else {
       const tired = brain.energy < 46;
       const lonely = brain.social < 42;
       if (forceMove || ag.mode === 'home') {
-        const wStay = forceMove ? 0 : tired ? 0.25 : 0.5;
+        const wStay = forceMove ? 0 : tired ? 0.34 : 0.6;
         if (r < wStay) {
           goal = 'work';
-        } else if (r < wStay + (tired ? 0.26 : 0.16)) {
+        } else if (r < wStay + (tired ? 0.24 : 0.14)) {
           goal = 'stretch';
-        } else if (r < wStay + (tired ? 0.52 : 0.34)) {
-          goal = 'balcony';
-        } else if (r < wStay + (lonely ? 0.76 : 0.52)) {
+        } else if (r < wStay + (tired ? 0.32 : 0.2)) {
+          goal = hallwayBusy ? 'stretch' : 'balcony';
+        } else if (r < wStay + (lonely ? 0.74 : 0.44)) {
           goal = 'socialize';
         } else {
           goal = 'coffeeBreak';
         }
       } else {
-        goal = r < 0.72 && !forceMove ? 'work' : r < 0.86 ? 'balcony' : 'socialize';
+        goal = r < 0.8 && !forceMove ? 'work' : hallwayBusy ? 'socialize' : r < 0.9 ? 'balcony' : 'socialize';
       }
     }
 
@@ -2493,13 +3056,16 @@ export class AtriumSimulation {
               { x: -3.5, z: 5.82, face: Math.PI, pose: 'inspectPanel' },
               { x: 0.4, z: 7.4, face: -Math.PI / 2, pose: 'readDoc' },
               { x: 3.24, z: 8.9, face: -Math.PI / 2, pose: 'standLowCounter' },
-              { x: 4.4, z: 5.8, face: Math.PI, pose: 'carry' },
+              { x: 4.5, z: 6.85, face: Math.PI, pose: 'point' },
+              { x: 4.4, z: 4.6, face: 0, pose: 'writeNotes' },
             ]
           : [
               { x: -5.2, z: 9.4, face: 0.15, pose: 'radio' },
               { x: 5.2, z: 9.4, face: -0.15, pose: 'stand' },
               { x: 4.6, z: 7.2, face: 0, pose: 'readDoc' },
               { x: -4.6, z: 7.4, face: 0.3, pose: 'hold' },
+              { x: -23.3, z: 7.4, face: Math.PI, pose: 'radio' },
+              { x: -23.3, z: 8.95, face: Math.PI, pose: 'stand' },
               { x: 0.2, z: 10.2, face: 0, pose: 'stand' },
             ];
 
@@ -2613,6 +3179,7 @@ export class AtriumSimulation {
     const w = this.wantOf(p, this.simMin);
     p.want = w;
     const gx = p.sd * GATE_STOP;
+    const useStairs = p.d.lv > 0; // All L1-L3 department staff use the stairs for fast uncongested vertical travel
 
     if (p.state === 'away') {
       if (w === 'desk') {
@@ -2622,14 +3189,24 @@ export class AtriumSimulation {
         p.g.position.set(sx, this.groundElevationAt(0, sx, sz), sz);
         p.navQueue = undefined;
         p.navKey = undefined;
+        p.stairQueue = undefined;
         this.setSafePose(p, 'stand');
-        p.state = 'toLift';
+        if (useStairs) {
+          p.stairDir = 1;
+          p.stairLv = 0;
+          p.stairTargetLv = p.d.lv;
+          p.state = 'toStairs';
+        } else {
+          p.state = 'toLift';
+        }
         if (p.brain) {
           setBrainThought(
             p.brain,
             'Focused',
             'Arriving for shift',
-            `Just arrived at DomainTechHub—heading up to ${p.d.n}.`
+            useStairs
+              ? `Just arrived at DomainTechHub—taking the East stairs up to ${p.d.n}.`
+              : `Just arrived at DomainTechHub—heading up to ${p.d.n}.`
           );
         }
       }
@@ -2640,7 +3217,7 @@ export class AtriumSimulation {
       if (SEATED_POSES.has(p.pose)) this.setSafePose(p, 'stand');
       const tx = p.sd * 2.2;
       const tz = w === 'lunch' ? 12.5 : 17.5;
-      if (this.followNavPath(p, 0, `w-out-${w}-${p.sd}`, tx, tz, dt)) {
+      if (this.followNavPath(p, 0, `w-out-${w}-${p.sd}`, tx, tz, dt, { walkSpeed: 2.75 })) {
         if (w === 'home') {
           p.state = 'away';
           p.g.visible = false;
@@ -2650,7 +3227,15 @@ export class AtriumSimulation {
       } else if (w === 'desk') {
         p.navQueue = undefined;
         p.navKey = undefined;
-        p.state = 'toLift';
+        if (useStairs) {
+          p.stairDir = 1;
+          p.stairLv = 0;
+          p.stairTargetLv = p.d.lv;
+          p.stairQueue = undefined;
+          p.state = 'toStairs';
+        } else {
+          p.state = 'toLift';
+        }
       }
       return;
     }
@@ -2666,18 +3251,59 @@ export class AtriumSimulation {
           setBrainThought(
             p.brain,
             w === 'lunch' ? 'Relaxed' : 'Caffeinated',
-            w === 'lunch' ? 'Heading out for lunch' : 'Wrapping up shift',
+            w === 'lunch' ? 'Taking stairs to lunch' : 'Wrapping up shift',
             w === 'lunch'
-              ? 'Lunch window is open—taking the lift down for a proper meal.'
-              : 'Great day’s work—heading downstairs to catch my ride home.'
+              ? 'Lunch window is open—heading down the East stairs for a proper meal.'
+              : 'Great day’s work—heading down the stairs to catch my ride home.'
           );
         }
         p.navQueue = undefined;
         p.navKey = undefined;
+        p.stairQueue = undefined;
         this.setSafePose(p, 'stand');
-        p.state = 'toLift';
+        if (useStairs) {
+          p.stairDir = -1;
+          p.stairLv = p.d.lv - 1;
+          p.stairTargetLv = 0;
+          p.state = 'toStairs';
+        } else {
+          p.state = 'toLift';
+        }
       } else {
         this.stepFreeAgent(p, dt);
+      }
+      return;
+    }
+
+    if (p.state === 'toStairs') {
+      if (p.pose !== 'stand') this.setSafePose(p, 'stand');
+      const goingUp = (p.stairDir ?? 1) === 1;
+      const fromLv = goingUp ? 0 : p.d.lv;
+      const entryX = (goingUp ? 21.18 : 23.32) + (p.stairJitter || 0);
+      const entryZ = 8.55;
+      if (
+        this.followNavPath(p, fromLv, `w-stairs-${fromLv}-${p.stairDir}`, entryX, entryZ, dt, {
+          walkSpeed: 2.85,
+          useHomeDock: goingUp ? undefined : { homeX: p.seat.x, homeZ: p.seat.z, chairCollider: p.chairCollider },
+        })
+      ) {
+        p.navQueue = undefined;
+        p.navKey = undefined;
+        p.stairLv = goingUp ? 0 : p.d.lv - 1;
+        p.stairTargetLv = goingUp ? p.d.lv : 0;
+        p.stairQueue = undefined;
+        p.state = 'onStairs';
+      }
+      return;
+    }
+
+    if (p.state === 'onStairs') {
+      if (p.pose !== 'stand') this.setSafePose(p, 'stand');
+      const goingUp = (p.stairDir ?? 1) === 1;
+      if (this.stepStairTravel(p, dt)) {
+        p.navQueue = undefined;
+        p.navKey = undefined;
+        p.state = goingUp ? 'toDesk' : 'out';
       }
       return;
     }
@@ -2687,6 +3313,7 @@ export class AtriumSimulation {
       const liftLv = w === 'desk' ? 0 : p.d.lv;
       if (
         this.followNavPath(p, liftLv, `w-lift-${liftLv}-${p.sd}`, gx, LANE, dt, {
+          walkSpeed: 2.7,
           useHomeDock:
             w === 'desk'
               ? undefined
@@ -2705,6 +3332,7 @@ export class AtriumSimulation {
       if (p.pose !== 'stand') this.setSafePose(p, 'stand');
       if (
         this.followNavPath(p, p.d.lv, `w-desk-${p.d.lv}`, p.seat.x, p.seat.z, dt, {
+          walkSpeed: 2.75,
           useHomeDock: { homeX: p.seat.x, homeZ: p.seat.z, chairCollider: p.chairCollider },
           endBeforeDock: true,
         })
@@ -2728,6 +3356,7 @@ export class AtriumSimulation {
     const on = this.simMin >= 480 && this.simMin < 1050;
     const gx = p.sd * GATE_STOP;
     const behindCounter = p.lv === 4 && p.dx < -14.8 && p.dz < 0.72;
+    const useStairs = p.lv > 0 && (p.lv <= 4 || p.dx >= -4);
 
     if (p.state === 'away') {
       if (on) {
@@ -2736,8 +3365,16 @@ export class AtriumSimulation {
         p.g.position.set(sx, this.groundElevationAt(0, sx, 15.2), 15.2);
         p.navQueue = undefined;
         p.navKey = undefined;
+        p.stairQueue = undefined;
         this.setSafePose(p, 'stand');
-        p.state = 'in';
+        if (useStairs) {
+          p.stairDir = 1;
+          p.stairLv = 0;
+          p.stairTargetLv = p.lv;
+          p.state = 'toStairs';
+        } else {
+          p.state = 'in';
+        }
       }
       return;
     }
@@ -2746,6 +3383,7 @@ export class AtriumSimulation {
       if (p.lv === 0) {
         if (
           this.followNavPath(p, 0, `d-in0-${p.dx}-${p.dz}`, p.dx, p.dz, dt, {
+            walkSpeed: 2.65,
             useHomeDock: { homeX: p.dx, homeZ: p.dz, chairCollider: p.chairCollider },
             endBeforeDock: true,
           })
@@ -2758,7 +3396,7 @@ export class AtriumSimulation {
           p.navKey = undefined;
           this.setSafePose(p, p.dpose);
         }
-      } else if (this.followNavPath(p, 0, `d-inlift-${p.sd}`, gx, LANE, dt)) {
+      } else if (this.followNavPath(p, 0, `d-inlift-${p.sd}`, gx, LANE, dt, { walkSpeed: 2.65 })) {
         p.state = 'wait';
         p.tyaw = (p.sd * Math.PI) / 2;
         p.navQueue = undefined;
@@ -2775,10 +3413,58 @@ export class AtriumSimulation {
         }
         p.navQueue = undefined;
         p.navKey = undefined;
+        p.stairQueue = undefined;
         this.setSafePose(p, 'stand');
-        p.state = p.lv === 0 ? 'out' : 'toLift';
+        if (p.lv === 0) {
+          p.state = 'out';
+        } else if (useStairs) {
+          p.stairDir = -1;
+          p.stairLv = p.lv - 1;
+          p.stairTargetLv = 0;
+          p.state = 'toStairs';
+        } else {
+          p.state = 'toLift';
+        }
       } else {
         this.stepFreeAgent(p, dt);
+      }
+      return;
+    }
+    if (p.state === 'toStairs') {
+      if (p.pose !== 'stand') this.setSafePose(p, 'stand');
+      const goingUp = (p.stairDir ?? 1) === 1;
+      const fromLv = goingUp ? 0 : p.lv;
+      const entryX = (goingUp ? 21.18 : 23.32) + (p.stairJitter || 0);
+      const entryZ = 8.55;
+      if (
+        this.followNavPath(p, fromLv, `d-stairs-${fromLv}-${p.stairDir}`, entryX, entryZ, dt, {
+          walkSpeed: 2.8,
+          useHomeDock: goingUp
+            ? undefined
+            : {
+                homeX: p.dx,
+                homeZ: p.dz,
+                chairCollider: p.chairCollider,
+                behindCounter,
+              },
+        })
+      ) {
+        p.navQueue = undefined;
+        p.navKey = undefined;
+        p.stairLv = goingUp ? 0 : p.lv - 1;
+        p.stairTargetLv = goingUp ? p.lv : 0;
+        p.stairQueue = undefined;
+        p.state = 'onStairs';
+      }
+      return;
+    }
+    if (p.state === 'onStairs') {
+      if (p.pose !== 'stand') this.setSafePose(p, 'stand');
+      const goingUp = (p.stairDir ?? 1) === 1;
+      if (this.stepStairTravel(p, dt)) {
+        p.navQueue = undefined;
+        p.navKey = undefined;
+        p.state = goingUp ? 'toDesk' : 'out';
       }
       return;
     }
@@ -2786,6 +3472,7 @@ export class AtriumSimulation {
       if (p.pose !== 'stand') this.setSafePose(p, 'stand');
       if (
         this.followNavPath(p, p.lv, `d-lift-${p.lv}-${p.sd}`, gx, LANE, dt, {
+          walkSpeed: 2.65,
           useHomeDock: {
             homeX: p.dx,
             homeZ: p.dz,
@@ -2805,6 +3492,7 @@ export class AtriumSimulation {
       if (p.pose !== 'stand') this.setSafePose(p, 'stand');
       if (
         this.followNavPath(p, p.lv, `d-desk-${p.lv}`, p.dx, p.dz, dt, {
+          walkSpeed: 2.75,
           useHomeDock: {
             homeX: p.dx,
             homeZ: p.dz,
@@ -2828,6 +3516,7 @@ export class AtriumSimulation {
       if (p.pose !== 'stand') this.setSafePose(p, 'stand');
       if (
         this.followNavPath(p, 0, `d-out-${p.sd}`, p.sd * 2.2, 17, dt, {
+          walkSpeed: 2.75,
           useHomeDock: { homeX: p.dx, homeZ: p.dz, chairCollider: p.chairCollider },
         })
       ) {
@@ -3130,6 +3819,10 @@ export class AtriumSimulation {
       p.want = w;
       p.navQueue = undefined;
       p.navKey = undefined;
+      p.stairQueue = undefined;
+      p.stairLv = undefined;
+      p.stairDir = undefined;
+      p.stairTargetLv = undefined;
       const ag = this.freeAgents.get(p);
       if (ag) {
         ag.mode = 'home';
@@ -3154,6 +3847,10 @@ export class AtriumSimulation {
     for (const p of this.DAYONLY) {
       p.navQueue = undefined;
       p.navKey = undefined;
+      p.stairQueue = undefined;
+      p.stairLv = undefined;
+      p.stairDir = undefined;
+      p.stairTargetLv = undefined;
       const ag = this.freeAgents.get(p);
       if (ag) {
         ag.mode = 'home';
@@ -3250,7 +3947,7 @@ export class AtriumSimulation {
         v.lane = v.bay.gateLane;
         v.dir = v.bay.gateLane === LANE_EAST ? 1 : -1;
         // Start errand fleet cars close to their company road gate so entries happen promptly
-        v.x = v.errand ? v.bay.gateX - v.dir * (10 + (v.bay.gateX & 7)) : (Math.random() - 0.5) * 180;
+        v.x = v.errand ? v.bay.gateX - v.dir * (10 + (Math.abs(v.bay.gateX) & 7)) : (Math.random() - 0.5) * 210;
         v.g.position.set(v.x, -0.62, v.lane);
         v.g.rotation.y = v.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
         updateCarVisualState(v.rig, {
@@ -3308,6 +4005,9 @@ export class AtriumSimulation {
       (s) =>
         s.n === roomName ||
         s.room?.n === roomName ||
+        (roomName === 'Reception Atrium' && s.n === 'Maintenance & Security') ||
+        (roomName === 'Toilets' && s.n === 'Maintenance & Security') ||
+        (roomName === 'Stairwell Core' && s.n === 'Maintenance & Security') ||
         (roomName.startsWith('Head of ') && s.n === 'Heads of Department') ||
         (roomName === 'Chief Executive Officer' && s.n === 'CEO Office') ||
         ((roomName === 'Executive Lounge' || roomName === 'Board Secretary') && s.n === 'Board Room')
@@ -3350,8 +4050,18 @@ export class AtriumSimulation {
     this.tourCab = s.cx < 0 ? -1 : 1;
     this.guideNavQueue = [];
     this.guideNavKey = '';
+    this.guideStairQueue = undefined;
     setPose(this.guideActor, 'stand', this.P_LIB);
-    this.tourSt = this.tourLv === s.lv ? 'toDest' : 'toLift';
+    const floorDiff = Math.abs(s.lv - this.tourLv);
+    if (this.tourLv === s.lv) {
+      this.tourSt = 'toDest';
+    } else if (floorDiff <= 3 && s.lv >= 0 && this.tourLv >= 0) {
+      this.tourSt = 'toStairs';
+      this.guideStairDir = s.lv > this.tourLv ? 1 : -1;
+      this.guideStairLv = this.guideStairDir === 1 ? this.tourLv : this.tourLv - 1;
+    } else {
+      this.tourSt = 'toLift';
+    }
     this.cabs[-1].guide = false;
     this.cabs[1].guide = false;
     this.cabs[-1].gw = false;
@@ -3410,13 +4120,75 @@ export class AtriumSimulation {
       }
       if (this.guideNavQueue.length === 0) return true;
       const wp = this.guideNavQueue[0];
-      if (this.walkPt(this.guideActor, wp.x, wp.z, dt)) {
+      const prevSpd = this.guideActor.speed;
+      this.guideActor.speed = 2.95;
+      const reached = this.walkPt(this.guideActor, wp.x, wp.z, dt);
+      this.guideActor.speed = prevSpd;
+      if (reached) {
         this.guideNavQueue.shift();
       }
       return this.guideNavQueue.length === 0;
     };
 
-    if (this.tourSt === 'toLift') {
+    if (this.tourSt === 'toStairs') {
+      const goingUp = this.guideStairDir === 1;
+      const entryX = goingUp ? 21.18 : 23.32;
+      if (stepGuideAlong(this.tourLv, `g-stairs-${this.tourI}-${this.tourLv}`, entryX, 8.55)) {
+        this.tourSt = 'onStairs';
+        this.guideStairLv = goingUp ? this.tourLv : this.tourLv - 1;
+        this.guideStairQueue = undefined;
+        this.guideNavQueue = [];
+        this.guideNavKey = '';
+      }
+    } else if (this.tourSt === 'onStairs') {
+      if (!this.guideStairQueue || this.guideStairQueue.length === 0) {
+        this.guideStairQueue = this.buildSingleFlightWaypoints(this.guideStairLv, this.guideStairDir, s.lv, 0);
+      }
+      while (
+        this.guideStairQueue.length > 0 &&
+        Math.hypot(this.guideStairQueue[0].x - this.guideActor.g.position.x, this.guideStairQueue[0].z - this.guideActor.g.position.z) < 0.1
+      ) {
+        this.guideStairQueue.shift();
+      }
+      if (this.guideStairQueue.length > 0) {
+        const wp = this.guideStairQueue[0];
+        const prevSpd = this.guideActor.speed;
+        this.guideActor.speed = 3.35;
+        const reached = this.walkPt(this.guideActor, wp.x, wp.z, dt, {
+          elevationLv: this.guideStairLv,
+          radius: 0.14,
+        });
+        this.guideActor.speed = prevSpd;
+        if (reached) this.guideStairQueue.shift();
+      }
+      if (this.guideStairQueue.length === 0) {
+        if (this.guideStairDir === 1) {
+          const arrivedLv = this.guideStairLv + 1;
+          if (arrivedLv < s.lv) {
+            this.guideStairLv = arrivedLv;
+            this.guideStairQueue = undefined;
+          } else {
+            this.tourLv = s.lv;
+            this.guideActor.g.position.y = LV[s.lv];
+            this.tourSt = 'toDest';
+            this.guideNavQueue = [];
+            this.guideNavKey = '';
+          }
+        } else {
+          const arrivedLv = this.guideStairLv;
+          if (arrivedLv > s.lv) {
+            this.guideStairLv = arrivedLv - 1;
+            this.guideStairQueue = undefined;
+          } else {
+            this.tourLv = s.lv;
+            this.guideActor.g.position.y = LV[s.lv];
+            this.tourSt = 'toDest';
+            this.guideNavQueue = [];
+            this.guideNavKey = '';
+          }
+        }
+      }
+    } else if (this.tourSt === 'toLift') {
       const gx = sd * (LIFTX - sd * 1.45);
       if (stepGuideAlong(this.tourLv, `g-lift-${this.tourI}-${this.tourLv}`, gx, LANE)) {
         this.tourSt = 'waitCab';
@@ -3450,7 +4222,7 @@ export class AtriumSimulation {
           }
         } else {
           const destX = s.cx + (s.cx < 0 ? 1.8 : -1.8);
-          const destZ = 8.4;
+          const destZ = 8.95;
           if (stepGuideAlong(s.lv, `g-dest-${this.tourI}`, destX, destZ)) {
             this.tourSt = 'arrived';
             this.tourArr = true;
@@ -3595,6 +4367,25 @@ export class AtriumSimulation {
       chatterWeight: 0,
       hvacWeight: 0.85,
     });
+    // Indices 23..28 (base + 9 .. base + 14): West Wing rooms (Security, HR, Relax, Gym, Strategy, Gallery)
+    [
+      { x: -25, y: LV[0] + 1.5, z: 4.0, t: 0.7, c: 0.4, h: 0.25 },
+      { x: -25, y: LV[1] + 1.5, z: 4.0, t: 0.75, c: 0.65, h: 0.2 },
+      { x: -25, y: LV[2] + 1.5, z: 4.0, t: 0.15, c: 0.9, h: 0.18 },
+      { x: -25, y: LV[3] + 1.5, z: 4.0, t: 0.1, c: 0.55, h: 0.3 },
+      { x: -25, y: LV[4] + 1.5, z: 4.0, t: 0.5, c: 0.85, h: 0.22 },
+      { x: -25, y: LV[5] + 1.5, z: 4.0, t: 0.2, c: 0.6, h: 0.18 },
+    ].forEach((w) =>
+      this.ambientSources.push({
+        x: w.x,
+        y: w.y,
+        z: w.z,
+        activity: 1,
+        typingWeight: w.t,
+        chatterWeight: w.c,
+        hvacWeight: w.h,
+      })
+    );
   }
 
   public getAmbientSources(): readonly AmbientSource[] {
@@ -3624,25 +4415,41 @@ export class AtriumSimulation {
       }
     }
 
-    // Executive & reception day-visitor zones
+    // Executive, reception & West Wing day-visitor zones
     let recAct = 0;
     let boardAct = 0;
     let loungeAct = 0;
     let secrAct = 0;
     let hodAct = 0;
     let ceoAct = 0;
+    let secRoomAct = 0;
+    let hrAct = 0;
+    let relaxAct = 0;
+    let gymAct = 0;
+    let stratAct = 0;
+    let galAct = 0;
     if (this.staffVisible) {
       for (let i = 0; i < this.DAYONLY.length; i++) {
         const d = this.DAYONLY[i];
         if (!d.g.visible || d.state === 'away') continue;
         const w = d.state === 'atDesk' ? 1 : 0.4;
-        if (d.lv === 0) recAct += w;
-        else if (d.lv === 4) {
-          if (Math.abs(d.dx) < 8) boardAct += w;
+        if (d.lv === 0) {
+          if (d.dx < -20) secRoomAct += w;
+          else recAct += w;
+        } else if (d.lv === 1 && d.dx < -20) {
+          hrAct += w;
+        } else if (d.lv === 2 && d.dx < -20) {
+          relaxAct += w;
+        } else if (d.lv === 3 && d.dx < -20) {
+          gymAct += w;
+        } else if (d.lv === 4) {
+          if (d.dx < -20) stratAct += w;
+          else if (Math.abs(d.dx) < 8) boardAct += w;
           else if (d.dx < -10) loungeAct += w;
           else secrAct += w;
         } else if (d.lv === 5) {
-          if (d.dx > 8) ceoAct += w;
+          if (d.dx < -20) galAct += w;
+          else if (d.dx > 8) ceoAct += w;
           else hodAct += w;
         }
       }
@@ -3665,6 +4472,12 @@ export class AtriumSimulation {
     this.ambientSources[base + 6].chatterWeight = b1Count > 0 ? 0.22 : 0;
     this.ambientSources[base + 7].activity = Math.min(1, b2Count / 4);
     this.ambientSources[base + 7].chatterWeight = b2Count > 0 ? 0.22 : 0;
+    this.ambientSources[base + 9].activity = Math.min(1, secRoomAct / 1.5);
+    this.ambientSources[base + 10].activity = Math.min(1, hrAct / 1.5);
+    this.ambientSources[base + 11].activity = Math.min(1, relaxAct / 1.5);
+    this.ambientSources[base + 12].activity = Math.min(1, gymAct / 1.5);
+    this.ambientSources[base + 13].activity = Math.min(1, stratAct / 1.5);
+    this.ambientSources[base + 14].activity = Math.min(1, galAct);
 
     return this.ambientSources;
   }
@@ -3749,7 +4562,7 @@ export class AtriumSimulation {
     if (this.walkFloor === 0) {
       this.walkPos.y = this.groundElevationAt(0, this.walkPos.x, this.walkPos.z, this.walkBuildingId) + 1.65;
     } else if (this.walkBuildingId === 'hub') {
-      this.walkPos.x = Math.max(-19.0, Math.min(19.0, this.walkPos.x));
+      this.walkPos.x = Math.max(-29.0, Math.min(29.0, this.walkPos.x));
       this.walkPos.z = Math.max(0.85, Math.min(DEPTH - 0.65, this.walkPos.z));
       this.walkPos.y = LV[this.walkFloor] + 1.65;
     } else {
@@ -3863,7 +4676,7 @@ export class AtriumSimulation {
 
     // Clamp & collide against active building or full district ground plaza/streets
     if (this.walkFloor === 0) {
-      this.walkPos.x = Math.max(-90.0, Math.min(90.0, this.walkPos.x));
+      this.walkPos.x = Math.max(-104.0, Math.min(104.0, this.walkPos.x));
       this.walkPos.z = Math.max(-37.0, Math.min(105.0, this.walkPos.z));
 
       let extraVehicles: VehicleObb[] | undefined;
@@ -3921,6 +4734,20 @@ export class AtriumSimulation {
       }
       this.walkPos.x = cx;
       this.walkPos.z = cz;
+    }
+
+    // Seamless switchback stairwell floor transitions (walk up/down L0 <-> L5)
+    if (this.walkBuildingId === 'hub' && this.walkPos.x > 22.25 && this.walkPos.x <= 24.36) {
+      if (prevWalkZ <= 7.85 && this.walkPos.z > 7.85) {
+        if (this.walkFloor < 5) {
+          this.walkFloor++;
+        } else {
+          // On L5 stairwell top-out to Roof, keep on upper flight so player doesn't drop 4.2m onto L5 corridor
+          this.walkPos.z = 7.82;
+        }
+      } else if (prevWalkZ > 7.85 && this.walkPos.z <= 7.85 && this.walkFloor > 0) {
+        this.walkFloor--;
+      }
     }
 
     // Collide against active standing/walking staff, district NPCs & guide on current floor
@@ -4011,12 +4838,16 @@ export class AtriumSimulation {
     }
     return show;
   }
+  public setWeatherTimeMultiplier(mult: number) {
+    this.weatherTimeMultiplier = Math.max(0.25, Math.min(2.0, mult));
+  }
+
   /* =========================================================
      PER-FRAME SIMULATION TICK
      ========================================================= */
   public update(dt: number, t: number, camera: THREE.Camera, controls: OrbitControls) {
     if (this.simRate > 0) {
-      this.simMin = (this.simMin + (dt * this.simRate) / 4) % 1440;
+      this.simMin = (this.simMin + (dt * this.simRate * this.weatherTimeMultiplier) / 4) % 1440;
     }
 
     // Staff fade in/out
@@ -4041,7 +4872,16 @@ export class AtriumSimulation {
       this.stepFreeAgent(this.secOffActor, dt);
     }
     for (const b of this.BASEMENT_STAFF) {
-      if (b.g.visible) this.stepFreeAgent(b, dt);
+      if (!b.g.visible) continue;
+      this.stepFreeAgent(b, dt);
+      const ag = this.freeAgents.get(b);
+      if (ag && ag.mode === 'home' && b.modes && ag.queue.length === 0) {
+        b.timer -= dt;
+        if (b.timer <= 0) {
+          b.timer = 5 + Math.random() * 6;
+          this.setSafePose(b, pickMode(b.modes));
+        }
+      }
     }
     this.updateChairs(dt);
     this.districtSim.update(dt, t, this.simMin, camera);
@@ -4236,8 +5076,10 @@ export class AtriumSimulation {
         if (!this.staffVisible) return 'Staff hidden (Staff OFF)';
         if (list.length === 0) return 'Off duty';
         const walking = list.filter((b) => b.moving).length;
-        const inspecting = list.length - walking;
+        const seated = list.filter((b) => !b.moving && SEATED_POSES.has(b.pose)).length;
+        const inspecting = list.length - walking - seated;
         const parts: string[] = [];
+        if (seated > 0) parts.push(`${seated} analyzing telemetry at desk`);
         if (inspecting > 0) parts.push(`${inspecting} ${fallback}`);
         if (walking > 0) parts.push(`${walking} patrolling bay`);
         return parts.join(' · ');
@@ -4285,6 +5127,10 @@ export class AtriumSimulation {
 
     if (!this.staffVisible) {
       if (lv <= 3) {
+        if (lv === 0) zones.push({ zone: 'Security Room', color: '#38bdf8', count: 0, status: 'Staff hidden (Staff OFF)' });
+        if (lv === 1) zones.push({ zone: 'HR Room', color: '#34d399', count: 0, status: 'Staff hidden (Staff OFF)' });
+        if (lv === 2) zones.push({ zone: 'Relax Room', color: '#f59e0b', count: 0, status: 'Staff hidden (Staff OFF)' });
+        if (lv === 3) zones.push({ zone: 'Gym Room', color: '#f87171', count: 0, status: 'Staff hidden (Staff OFF)' });
         ROOMS.filter((r) => r.lv === lv).forEach((r) => {
           zones.push({
             zone: r.n,
@@ -4293,17 +5139,24 @@ export class AtriumSimulation {
             status: 'Staff hidden (Staff OFF)',
           });
         });
+        zones.push({ zone: 'Toilets', color: '#94a3b8', count: 0, status: 'East Wing · Restrooms open' });
       } else if (lv === 4) {
         zones.push(
+          { zone: 'Strategy Room', color: '#818cf8', count: 0, status: 'Staff hidden' },
           { zone: 'Board Room', color: '#c9a24b', count: 0, status: 'Staff hidden' },
           { zone: 'Executive Lounge', color: '#7a5c3a', count: 0, status: 'Staff hidden' },
-          { zone: 'Board Secretary', color: '#5d6b7a', count: 0, status: 'Staff hidden' }
+          { zone: 'Board Secretary', color: '#5d6b7a', count: 0, status: 'Staff hidden' },
+          { zone: 'Toilets', color: '#94a3b8', count: 0, status: 'East Wing · Restrooms open' }
         );
       } else {
-        zones.push({ zone: 'Executive Suite', color: '#8a1f2e', count: 0, status: 'Staff hidden' });
+        zones.push(
+          { zone: 'Executive Gallery', color: '#b08452', count: 0, status: 'Staff hidden' },
+          { zone: 'Executive Suite', color: '#8a1f2e', count: 0, status: 'Staff hidden' },
+          { zone: 'Toilets', color: '#94a3b8', count: 0, status: 'East Wing · Restrooms open' }
+        );
       }
       return {
-        levelTitle: lv === 0 ? 'Ground Floor (G) · Lobby & Bays' : `Level ${lv}`,
+        levelTitle: lv === 0 ? 'Ground Floor (G) · Lobby, Security & Bays' : `Level ${lv}`,
         activeCount: 0,
         zones,
       };
@@ -4311,13 +5164,14 @@ export class AtriumSimulation {
 
     if (lv <= 3) {
       if (lv === 0) {
-        const lobbyActors = this.DAYONLY.filter((d) => d.lv === 0 && d.g.visible && d.state !== 'away');
+        const lobbyActors = this.DAYONLY.filter((d) => d.lv === 0 && d.dx > -20 && d.g.visible && d.state !== 'away');
+        const secRoomActors = this.DAYONLY.filter((d) => d.lv === 0 && d.dx < -20 && d.g.visible && d.state !== 'away');
         const secVisible =
           Boolean(this.secOffActor) &&
           this.secOffActor.g.visible &&
           Math.abs(this.secOffActor.g.position.y) < 0.5;
         const lobbyCount = lobbyActors.length + (secVisible ? 1 : 0);
-        activeCount += lobbyCount;
+        activeCount += lobbyCount + secRoomActors.length;
         const lobbyParts: string[] = [];
         const recOn = lobbyActors.some((d) => d.dx < 0);
         const visOn = lobbyActors.some((d) => d.dx > 0);
@@ -4329,6 +5183,39 @@ export class AtriumSimulation {
           color: '#4ea8ff',
           count: lobbyCount,
           status: lobbyParts.join(' · ') || 'Lobby clear',
+        });
+        zones.push({
+          zone: 'Security Room',
+          color: '#38bdf8',
+          count: secRoomActors.length,
+          status: secRoomActors.length > 0 ? `${this.describePoseBucket(secRoomActors)} · CCTV live` : 'CCTV auto-armed',
+        });
+      } else if (lv === 1) {
+        const hrActors = this.DAYONLY.filter((d) => d.lv === 1 && d.dx < -20 && d.g.visible && d.state !== 'away');
+        activeCount += hrActors.length;
+        zones.push({
+          zone: 'HR Room',
+          color: '#34d399',
+          count: hrActors.length,
+          status: hrActors.length > 0 ? this.describePoseBucket(hrActors) : 'HR office closed',
+        });
+      } else if (lv === 2) {
+        const relaxActors = this.DAYONLY.filter((d) => d.lv === 2 && d.dx < -20 && d.g.visible && d.state !== 'away');
+        activeCount += relaxActors.length;
+        zones.push({
+          zone: 'Relax Room',
+          color: '#f59e0b',
+          count: relaxActors.length,
+          status: relaxActors.length > 0 ? `${this.describePoseBucket(relaxActors)} · Ping-pong & espresso` : 'Lounge open',
+        });
+      } else if (lv === 3) {
+        const gymActors = this.DAYONLY.filter((d) => d.lv === 3 && d.dx < -20 && d.g.visible && d.state !== 'away');
+        activeCount += gymActors.length;
+        zones.push({
+          zone: 'Gym Room',
+          color: '#f87171',
+          count: gymActors.length,
+          status: gymActors.length > 0 ? `${gymActors.length} active · Cardio & weights` : 'Gym studio open',
         });
       }
 
@@ -4343,8 +5230,21 @@ export class AtriumSimulation {
         });
       });
 
+      zones.push({
+        zone: 'Toilets',
+        color: '#94a3b8',
+        count: 0,
+        status: 'Ladies & Gents · East Core Stairs',
+      });
+
+      const levelTitles: Record<number, string> = {
+        0: 'Ground Floor (G) · Security, Lobby & Bays',
+        1: 'Level 1 · HR Room & Department Bays',
+        2: 'Level 2 · Relax Room & Department Bays',
+        3: 'Level 3 · Gym Room & Department Bays',
+      };
       return {
-        levelTitle: lv === 0 ? 'Ground Floor (G) · Lobby & Bays' : `Level ${lv} · Department Bays`,
+        levelTitle: levelTitles[lv] || `Level ${lv} · Department Bays`,
         activeCount,
         zones,
       };
@@ -4352,11 +5252,18 @@ export class AtriumSimulation {
 
     if (lv === 4) {
       const l4 = this.DAYONLY.filter((d) => d.lv === 4 && d.g.visible && d.state !== 'away');
+      const strategy = l4.filter((d) => d.dx < -20);
       const directors = l4.filter((d) => Math.abs(d.dx) < 8);
-      const barista = l4.filter((d) => d.dx < -10);
+      const barista = l4.filter((d) => d.dx >= -20 && d.dx < -10);
       const secr = l4.filter((d) => d.dx > 10);
       activeCount = l4.length;
       zones.push(
+        {
+          zone: 'Strategy Room',
+          color: '#818cf8',
+          count: strategy.length,
+          status: strategy.length > 0 ? `${this.describePoseBucket(strategy)} · OKR review` : 'War room clear',
+        },
         {
           zone: 'Board Room',
           color: '#c9a24b',
@@ -4382,18 +5289,31 @@ export class AtriumSimulation {
           color: '#5d6b7a',
           count: secr.length,
           status: secr.length > 0 ? this.describePoseBucket(secr) : 'Off shift',
+        },
+        {
+          zone: 'Toilets',
+          color: '#94a3b8',
+          count: 0,
+          status: 'Ladies & Gents · East Core Stairs',
         }
       );
       return {
-        levelTitle: 'Level 4 · Board & Executive Lounge',
+        levelTitle: 'Level 4 · Strategy, Board & Executive Lounge',
         activeCount,
         zones,
       };
     }
 
-    // Level 5 · CEO & Heads of Department
+    // Level 5 · Executive Gallery, CEO & Heads of Department
     const l5 = this.DAYONLY.filter((d) => d.lv === 5 && d.g.visible && d.state !== 'away');
     activeCount = l5.length;
+    const gallery = l5.filter((d) => d.dx < -20);
+    zones.push({
+      zone: EXEC.gallery.n,
+      color: '#b08452',
+      count: gallery.length,
+      status: gallery.length > 0 ? 'Hosting partner model briefing' : 'Gallery ready',
+    });
     const execDefs = [
       { key: EXEC.tech, x: -17.5 },
       { key: EXEC.mkt, x: -12.5 },
@@ -4418,9 +5338,15 @@ export class AtriumSimulation {
             : 'Working at desk',
       });
     }
+    zones.push({
+      zone: 'Toilets',
+      color: '#94a3b8',
+      count: 0,
+      status: 'Ladies & Gents · East Core Stairs',
+    });
 
     return {
-      levelTitle: 'Level 5 · CEO & Heads of Department',
+      levelTitle: 'Level 5 · Gallery, CEO & Heads of Department',
       activeCount,
       zones,
     };
@@ -4496,6 +5422,24 @@ export class AtriumSimulation {
       };
     }
 
+    const baseActor = this.BASEMENT_STAFF.find((b) => {
+      if (b.lv !== lv || !b.g.visible || !b.brain) return false;
+      return Math.hypot(b.brain.identity.homeX - seatX, b.brain.identity.homeZ - seatZ) < 1.2;
+    });
+    if (baseActor) {
+      const ag = this.freeAgents.get(baseActor);
+      if (ag && ag.mode !== 'home' && baseActor.brain) {
+        return {
+          workerActivity: baseActor.brain.actionLabel,
+          isOccupied: false,
+        };
+      }
+      return {
+        workerActivity: describePose(baseActor.pose, 'atDesk'),
+        isOccupied: true,
+      };
+    }
+
     return {
       workerActivity: 'Workstation idle · off shift',
       isOccupied: false,
@@ -4536,6 +5480,10 @@ export class AtriumSimulation {
       timeText: `${hh}:${mm}`,
       shiftLabel,
       statsLabel: `${activeStaff} people in district · ${activeCars} street vehicles`,
+      weatherMode: 'auto',
+      activeWeather: 'clear',
+      weatherLabel: 'Clear',
+      weatherTimeFactor: this.weatherTimeMultiplier,
       activeBuilding,
       activeBuildingName: bSpec.name,
       activeBuildingNiche: bSpec.niche,

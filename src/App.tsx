@@ -10,6 +10,10 @@ const INITIAL_HUD: HudSnapshot = {
   timeText: '09:25',
   shiftLabel: 'Morning shift',
   statsLabel: 'Initializing office scene…',
+  weatherMode: 'auto',
+  activeWeather: 'clear',
+  weatherLabel: 'Clear',
+  weatherTimeFactor: 1,
   activeBuilding: 'hub',
   activeBuildingName: 'DomainTechHub Office',
   activeBuildingNiche: 'Software & Digital Agency',
@@ -93,6 +97,7 @@ export default function App() {
         onToggleAudio={() => engineRef.current?.toggleAudio()}
         onSetRate={(r) => engineRef.current?.setRate(r)}
         onJumpToTime={(m) => engineRef.current?.jumpToTime(m)}
+        onSetWeatherMode={(mode) => engineRef.current?.setWeatherMode(mode)}
         onCloseMonitor={() => engineRef.current?.closeMonitorInspector()}
         getInspectedScreenCanvas={() => engineRef.current?.getInspectedScreenCanvas() ?? null}
         onCloseCharacter={() => engineRef.current?.closeCharacterInspector()}

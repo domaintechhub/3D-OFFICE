@@ -1928,6 +1928,306 @@ const PROFILES: Record<string, WorkstationProfile> = {
       ],
     },
   },
+
+  // Security Control Room (Level 0 West Wing)
+  security: {
+    stationKey: 'security',
+    projectTitle: 'Campus Access Control & 24/7 CCTV Command',
+    clientName: 'DomainTechHub Physical Security',
+    primaryMode: 'project',
+    browserSessions: [
+      {
+        tabTitle: 'NVR Camera Stream Health & Biometrics',
+        url: 'https://sec.domaintechhub.internal/nvr-health',
+        searchQuery: 'campus biometric turnstile access logs nairobi',
+        articleTitle: 'Turnstile & Perimeter NVR Health Console',
+        articleDomain: 'sec.domaintechhub.internal',
+        sections: [
+          {
+            heading: 'Badge Gate Synchronization',
+            excerpt: 'East & West RFID turnstile gates syncing real-time entry logs with HR directory and Visitor Reception check-ins.',
+            highlight: 'Zero forced-entry alerts · 24/24 IP cameras online at 30fps.',
+          },
+        ],
+        researchNote: 'Completed perimeter night sweep verification and server room door seal audit.',
+      },
+    ],
+    dataEntry: {
+      sheetTitle: 'Visitor Pass & Perimeter Patrol Log',
+      columns: ['Gate / Zone', 'Badge Event', 'Officer', 'Status'],
+      initialRows: [
+        ['Main Lobby Gate W', '42 Staff Check-ins', 'M. Odhiambo', '▲ Clear'],
+        ['B1 Server Vestibule', 'Biometric Auth OK', 'D. Kiprop', '▲ Locked'],
+        ['East Stairwell Core', 'Motion Check L0-L5', 'M. Odhiambo', '▲ Clear'],
+        ['Forecourt Loading', 'Courier Verified', 'D. Kiprop', '▲ Logged'],
+      ],
+      incomingQueue: [
+        ['Roof PV Hatch', 'Sensor Sealed', 'Automated', '▲ Armed'],
+        ['Parking Bay #04', 'Plate Recognized', 'LPR Cam 02', '▲ Verified'],
+      ],
+    },
+    projectWork: {
+      fileName: 'ops/security-incident-watch.yml',
+      language: 'SOC Watch',
+      accent: '#60a5fa',
+      codeLines: [
+        'CAM_01_LOBBY: ONLINE 1080p | MOTION: NORMAL',
+        'CAM_02_WEST_WING: ONLINE 1080p | DOOR: SECURED',
+        'CAM_03_SERVER_B1: ONLINE 1080p | TEMP: 18.4C',
+        'CAM_04_ROOF_PV: ONLINE 1080p | HATCH: SEALED',
+      ],
+      terminalOutput: 'All 24 campus sensors green · Next perimeter walk at :30 past hour',
+      deliverables: [
+        { label: 'B1 & B2 biometric access audit', done: true },
+        { label: 'Visitor badge QR sync with Lobby Desk', done: true },
+        { label: 'Stairwell emergency lighting test L0-L5', done: true },
+      ],
+    },
+    jobApp: {
+      appType: 'security',
+      appTabLabel: 'CCTV NOC',
+      appName: 'Campus CCTV & Turnstile Matrix',
+      kpis: [
+        { label: 'Cameras Live', value: '24 / 24', delta: '100% Up' },
+        { label: 'Active Badges', value: '86 In', delta: 'On Site' },
+        { label: 'Incidents', value: '0 Open', delta: 'All Clear' },
+      ],
+      chartBars: [0.95, 0.98, 0.96, 1.0, 0.99, 1.0],
+      chartLabels: ['Lobby', 'Gate', 'B1', 'B2', 'Stairs', 'Roof'],
+      visualHeadline: 'Perimeter Guard Live Matrix · 0 Active Alerts',
+      visualSubline: 'Turnstiles Armed · Biometrics Synced · L0-L5 Stairwell Patrol Clear',
+      visualItems: [
+        { title: 'Lobby & Reception Cam', meta: '30 fps · Main Atrium', status: 'Live' },
+        { title: 'B1 Server Vault Lock', meta: 'Dual-factor active', status: 'Secured' },
+        { title: 'Forecourt LPR Gate', meta: 'Plate capture active', status: 'Online' },
+      ],
+    },
+  },
+
+  // HR Room (Level 1 West Wing)
+  hr: {
+    stationKey: 'hr',
+    projectTitle: 'Talent Acquisition, Onboarding & People Ops',
+    clientName: 'People & Culture Department',
+    primaryMode: 'dataEntry',
+    browserSessions: [
+      {
+        tabTitle: 'East Africa Tech Compensation Benchmark',
+        url: 'https://people.domaintechhub.internal/comp-bands',
+        searchQuery: 'nairobi senior fullstack engineer compensation benchmark 2026',
+        articleTitle: '2026 East Africa Engineering & Design Compensation Bands',
+        articleDomain: 'people.domaintechhub.internal',
+        sections: [
+          {
+            heading: 'Retention & Wellness Benefits',
+            excerpt: 'On-site Gym Room, Level 2 Relax Room, and flexible career ladders raised engineering retention to 96%.',
+            highlight: 'Updated Q2 offer letters with wellness & learning stipends.',
+          },
+        ],
+        researchNote: 'Shortlisted 4 Senior React/Node candidates for Friday interviews in HR Room.',
+      },
+    ],
+    dataEntry: {
+      sheetTitle: 'Active Hiring Pipeline & Staff Onboarding Tracker',
+      columns: ['Role', 'Stage', 'Interviewer', 'Target Start'],
+      initialRows: [
+        ['Senior TypeScript Eng.', 'Final Panel', 'L. Mutua', '1st Next Mo'],
+        ['Product Designer UI/UX', 'Portfolio Rev', 'D. Kiprop', '15th Next Mo'],
+        ['Cloud DevOps Lead', 'Offer Sent', 'L. Mutua', '▲ Accepted'],
+        ['Performance Mkt Spec.', 'Tech Screen', 'D. Kiprop', 'Open'],
+      ],
+      incomingQueue: [
+        ['AI Prompt Engineer', '2nd Interview', 'L. Mutua', 'Shortlist'],
+        ['Grad Intern Cohort', 'Badge Issued', 'HR Ops', '▲ Onboarded'],
+      ],
+    },
+    projectWork: {
+      fileName: 'people/Q2-Hiring-Onboarding-Plan.md',
+      language: 'People Ops',
+      accent: '#34d399',
+      codeLines: [
+        '# DomainTechHub People & Culture Sprint',
+        '- Headcount: 68 Active Staff · 98% eNPS Satisfaction',
+        '- New Hire Perks: L3 Gym Membership + L2 Lounge Coffee',
+        '- Next Onboarding Orientation: Monday 09:30 in HR Room',
+      ],
+      terminalOutput: '6 active requisitions · 3 offers signed · Zero overdue reviews',
+      deliverables: [
+        { label: 'Q2 salary band calibration sign-off', done: true },
+        { label: 'New hire workstation & badge provisioning', done: true },
+        { label: 'Mid-year performance 360 cycle prep', done: false },
+      ],
+    },
+    jobApp: {
+      appType: 'executive',
+      appTabLabel: 'People CRM',
+      appName: 'DomainTechHub Talent & Culture Portal',
+      kpis: [
+        { label: 'Active Staff', value: '68', delta: '+6 Q2' },
+        { label: 'eNPS Score', value: '98%', delta: '+4 pts' },
+        { label: 'Open Roles', value: '6', delta: '14 Final' },
+      ],
+      chartBars: [0.62, 0.71, 0.78, 0.86, 0.92, 0.98],
+      chartLabels: ['Eng', 'Design', 'Mkt', 'AI', 'Ops', 'eNPS'],
+      visualHeadline: 'Talent Pipeline & Wellness Program Scorecard',
+      visualSubline: 'Mon 09:30 Onboarding Cohort · L3 Gym Participation: 78%',
+      visualItems: [
+        { title: 'Cloud DevOps Lead', meta: 'Offer signed by candidate', status: 'Hired' },
+        { title: 'Senior TypeScript Eng.', meta: '4 shortlisted portfolios', status: 'Final' },
+        { title: 'Wellness & Gym Survey', meta: '78% weekly gym usage', status: 'Active' },
+      ],
+    },
+  },
+
+  // Strategy Room (Level 4 West Wing)
+  strategy: {
+    stationKey: 'strategy',
+    projectTitle: '2026 Corporate OKRs & East Africa Market Expansion',
+    clientName: 'Corporate Strategy & Growth',
+    primaryMode: 'project',
+    browserSessions: [
+      {
+        tabTitle: 'Nairobi–Kigali–Kampala Enterprise Pipeline',
+        url: 'https://strategy.domaintechhub.internal/eac-roadmap',
+        searchQuery: 'east africa fintech enterprise saas tam expansion 2026',
+        articleTitle: 'Regional Enterprise SaaS Expansion & Unit Economics',
+        articleDomain: 'strategy.domaintechhub.internal',
+        sections: [
+          {
+            heading: '2026 Strategic Pillars',
+            excerpt: 'Expand managed AI & Fintech integrations from Nairobi HQ into Kigali Innovation City and Kampala enterprise banking.',
+            highlight: 'OKR Target: +24% ARR & 3 regional anchor enterprise retainers.',
+          },
+        ],
+        researchNote: 'Aligned Q3 enterprise expansion OKRs ahead of Board Room sign-off.',
+      },
+    ],
+    dataEntry: {
+      sheetTitle: 'Corporate OKR & Strategic Initiative Tracker',
+      columns: ['Strategic Pillar', 'Owner', 'Progress', 'Confidence'],
+      initialRows: [
+        ['KES 120M ARR Target', 'P. Barasa', '84% Done', '▲ On Track'],
+        ['Swahili Voice AI Launch', 'K. Ouko', '76% Done', '▲ On Track'],
+        ['Kigali Partner Desk', 'P. Barasa', '62% Done', 'At Risk'],
+        ['Enterprise ISO-27001', 'CTO & Sec', '92% Done', '▲ Verified'],
+      ],
+      incomingQueue: [
+        ['M-Pesa B2B Accelerator', 'Web Eng', '88% Done', '▲ Ahead'],
+        ['Agency Retainer Tier', 'Growth', '79% Done', '▲ On Track'],
+      ],
+    },
+    projectWork: {
+      fileName: 'strategy/2026-EAC-Expansion-OKRs.md',
+      language: 'Strategy',
+      accent: '#818cf8',
+      codeLines: [
+        '# DomainTechHub · Strategy War Room (L4)',
+        'O1: Scale Enterprise Fintech ARR +24% YoY across EAC',
+        'O2: Ship Multilingual AI & WhatsApp Commerce Stack',
+        'O3: Maintain 96%+ Gross Client Retention & NPS > 72',
+      ],
+      terminalOutput: 'Board Strategy Deck synced with L4 Board Room display',
+      deliverables: [
+        { label: 'East Africa TAM & competitor teardown', done: true },
+        { label: 'Q3 resource allocation & capex plan', done: true },
+        { label: 'Regional partner SLA framework', done: false },
+      ],
+    },
+    jobApp: {
+      appType: 'executive',
+      appTabLabel: 'OKR Matrix',
+      appName: 'Strategic Planning & Market Scenario Modeler',
+      kpis: [
+        { label: 'OKR Score', value: '0.84', delta: '+0.12' },
+        { label: 'ARR Growth', value: '+24%', delta: 'EAC HQ' },
+        { label: 'Retention', value: '96.4%', delta: 'Tier-1' },
+      ],
+      chartBars: [0.58, 0.67, 0.74, 0.84, 0.89, 0.96],
+      chartLabels: ['NBO', 'MBA', 'KGL', 'KLA', 'AI', 'Ret'],
+      visualHeadline: 'East Africa Expansion & Enterprise OKR Command',
+      visualSubline: 'Synced with Board Room Q4 Review · 4 Strategic Workstreams Active',
+      visualItems: [
+        { title: 'Enterprise Fintech ARR', meta: 'KES 120M annual target', status: '84%' },
+        { title: 'Swahili AI Voice Stack', meta: 'Pilot with 3 banks', status: 'Beta' },
+        { title: 'Kigali Delivery Pod', meta: 'Partner MOU in legal', status: 'Q3' },
+      ],
+    },
+  },
+
+  // B2 Power & Battery Room Analytics Workstation
+  power: {
+    stationKey: 'power',
+    projectTitle: 'Solar Microgrid, HV Switchgear & LiFePO4 Battery Analytics',
+    clientName: 'Facility Power & Energy Engineering',
+    primaryMode: 'project',
+    browserSessions: [
+      {
+        tabTitle: 'B2 Battery BMS Cell Balance & Inverter Load',
+        url: 'https://scada.domaintechhub.internal/b2/power-battery',
+        searchQuery: 'lifepo4 rack cell balance voltage solar pv mppt inverter b2',
+        articleTitle: 'B2 Microgrid: 18.4 kW Solar PV + 3-Row LiFePO4 Storage Diagnostics',
+        articleDomain: 'scada.domaintechhub.internal',
+        sections: [
+          {
+            heading: 'Battery Bank Health & Cell Balancing',
+            excerpt: 'All 15 LiFePO4 rack modules are balanced within 6 mV delta at 94.2% state-of-charge, delivering 48h islanded campus autonomy.',
+            highlight: 'MPPT Inverters #1–#3 operating at 98.1% conversion efficiency.',
+          },
+        ],
+        researchNote: 'Verified zero harmonic distortion on HV transformer Phase B prior to afternoon battery load test.',
+      },
+    ],
+    dataEntry: {
+      sheetTitle: 'LiFePO4 Battery Bank & HV Switchgear Telemetry Log',
+      columns: ['Bank / Unit', 'Voltage / Load', 'SoC / Temp', 'Status'],
+      initialRows: [
+        ['LiFePO4 Row A', '53.4 V · 12 mV Δ', '95% · 24.1°C', '▲ Balanced'],
+        ['LiFePO4 Row B', '53.3 V · 14 mV Δ', '94% · 24.4°C', '▲ Balanced'],
+        ['LiFePO4 Row C', '53.4 V · 11 mV Δ', '94% · 23.9°C', '▲ Balanced'],
+        ['Solar Inverter #1–3', '18.4 kW PV → AC', '98.1% eff.', '▲ Zero Grid'],
+      ],
+      incomingQueue: [
+        ['HV Transformer B', '415 V · 0.99 PF', '41.2°C Oil', '▲ Nominal'],
+        ['B1 UPS Bus Feed', '14.2 kW Draw', '100% Redund.', '▲ Locked'],
+      ],
+    },
+    projectWork: {
+      fileName: 'b2/battery-load-analysis.ts',
+      language: 'Power SCADA',
+      accent: '#ffb14a',
+      codeLines: [
+        'const pvOutputKw = 18.4; // Roof 80-panel array MPPT feed',
+        'const batterySocPct = 94.2; // 3x5 LiFePO4 rack banks',
+        'const maxCellDeltaMv = Math.max(...cells.map(c => c.deltaMv));',
+        'if (maxCellDeltaMv < 15) status = "BALANCED_ISLAND_READY";',
+      ],
+      terminalOutput: 'PV 18.4 kW · Load 17.9 kW · Grid Draw 0.0 kW · Battery Autonomy 48.2h',
+      deliverables: [
+        { label: 'Log cell balance voltages across Rows A–C', done: true },
+        { label: 'Audit HV switchgear interlocks & Phase B THD', done: true },
+        { label: 'Verify inverter thermal curve for afternoon peak', done: false },
+      ],
+    },
+    jobApp: {
+      appType: 'security',
+      appTabLabel: 'Power & BMS',
+      appName: 'B2 SCADA · Power & Battery Analytics',
+      kpis: [
+        { label: 'Solar PV', value: '18.4 kW', delta: '98% Eff' },
+        { label: 'Battery SoC', value: '94.2%', delta: '12mV Δ' },
+        { label: 'Grid Draw', value: '0.0 kW', delta: 'Island OK' },
+      ],
+      chartBars: [0.95, 0.94, 0.94, 0.98, 0.89, 0.99],
+      chartLabels: ['Row A', 'Row B', 'Row C', 'Inv 1-3', 'HV Tx', 'UPS'],
+      visualHeadline: 'B2 Energy Matrix · 100% Solar-Battery Campus Autonomy',
+      visualSubline: '15 Battery Modules Balanced · HV Transformer Nominal · B1 NOC Fed',
+      visualItems: [
+        { title: 'LiFePO4 Battery Rows A–C', meta: '53.4V · Max 14 mV cell delta', status: 'Balanced' },
+        { title: 'Roof Solar MPPT Array', meta: '18.4 kW live generation', status: 'Peak' },
+        { title: 'HV Switchgear & Tx', meta: 'Interlocks verified · 41.2°C', status: 'Nominal' },
+      ],
+    },
+  },
 };
 
 export function getWorkstationProfile(stationKey: string): WorkstationProfile {
@@ -1940,8 +2240,17 @@ export function getModeForDesk(stationKey: string, seatIndex: number): Workstati
   if (stationKey === 'reception-1') return 'project';
   if (stationKey === 'ceo-0') return 'project';
   if (stationKey === 'ceo-1') return 'browser';
-  if (stationKey === 'pa' || stationKey === 'fin') return 'dataEntry';
-  if (stationKey === 'tech' || stationKey === 'mkt_head' || stationKey === 'ops') return 'project';
+  if (stationKey === 'pa' || stationKey === 'fin' || stationKey === 'hr') return seatIndex === 0 ? 'dataEntry' : 'project';
+  if (
+    stationKey === 'tech' ||
+    stationKey === 'mkt_head' ||
+    stationKey === 'ops' ||
+    stationKey === 'security' ||
+    stationKey === 'strategy' ||
+    stationKey === 'power'
+  ) {
+    return seatIndex === 1 ? 'dataEntry' : 'project';
+  }
 
   // Department 3-desk bays:
   // Seat 0 = Browser & Web Research
