@@ -96,6 +96,18 @@ const { chromium } = require('/usr/local/share/bun-global/node_modules/playwrigh
   await page.waitForTimeout(1600);
   await snap('studio_amina_seated.png');
 
+  // Drag OrbitControls horizontally ~90deg to inspect exact right side profile
+  const canvasBox = await page.locator('canvas').nth(1).boundingBox().catch(() => null);
+  const targetBox = canvasBox || { x: 640, y: 450, width: 400, height: 400 };
+  const cx = targetBox.x + targetBox.width * 0.5;
+  const cy = targetBox.y + targetBox.height * 0.5;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx - 210, cy, { steps: 18 });
+  await page.mouse.up();
+  await page.waitForTimeout(1200);
+  await snap('studio_amina_side.png');
+
   await domClick('Kamau Njoroge');
   await page.waitForTimeout(800);
   await domClick('Face & Hair');

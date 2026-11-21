@@ -536,7 +536,7 @@ function initFurnitureGeos() {
     curveSegments: 10,
   });
   officeSeatGeo.translate(0, 0, -0.24);
-  officeSeatGeo.rotateY(Math.PI / 2);
+  officeSeatGeo.rotateY(-Math.PI / 2);
 
   // Curved ergonomic lumbar backrest hoop
   const backCurve = new THREE.Shape();

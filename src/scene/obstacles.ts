@@ -47,9 +47,12 @@ function buildCollidersForLevel(lv: number): FloorColliderSet {
     addBox(boxes, 5.65, 5.6, 7.6, 0.96);
     [-6.5, -2.5, 1.5].forEach((x) => addBox(boxes, x, 1.0, 1.52, 0.94));
     circles.push({ x: -12.9, z: 7.8, r: 0.22 }, { x: -12.3, z: 7.8, r: 0.22 });
+    // Glazed lift security vestibule enclosures & shafts
     boxes.push(
       { minX: -19.6, maxX: -15.5, minZ: 8.9, maxZ: 11.1 },
-      { minX: 15.5, maxX: 19.6, minZ: 8.9, maxZ: 11.1 }
+      { minX: 15.5, maxX: 19.6, minZ: 8.9, maxZ: 11.1 },
+      { minX: -17.6, maxX: -15.48, minZ: 6.94, maxZ: 7.14 },
+      { minX: 15.48, maxX: 17.6, minZ: 6.94, maxZ: 7.14 }
     );
     return { boxes, circles, minX: -19.2, maxX: 19.2, minZ: 0.72, maxZ: 10.15 };
   }
@@ -64,7 +67,9 @@ function buildCollidersForLevel(lv: number): FloorColliderSet {
     circles.push({ x: 18, z: 0.5, r: 0.25 });
     boxes.push(
       { minX: -19.6, maxX: -15.5, minZ: 8.9, maxZ: 11.1 },
-      { minX: 15.5, maxX: 19.6, minZ: 8.9, maxZ: 11.1 }
+      { minX: 15.5, maxX: 19.6, minZ: 8.9, maxZ: 11.1 },
+      { minX: -17.6, maxX: -15.48, minZ: 6.94, maxZ: 7.14 },
+      { minX: 15.48, maxX: 17.6, minZ: 6.94, maxZ: 7.14 }
     );
     return { boxes, circles, minX: -19.2, maxX: 19.2, minZ: 0.72, maxZ: 10.15 };
   }
@@ -87,22 +92,23 @@ function buildCollidersForLevel(lv: number): FloorColliderSet {
     const x0 = COLX[d.col];
     addBox(boxes, x0 + 4.94, 3.4, 0.2, 6.44);
     addBox(boxes, x0, 3.95, 6.3, 1.44);
+    [-2.05, 0, 2.05].forEach((ox) => circles.push({ x: x0 + ox, z: 4.78, r: 0.34 }));
     addBox(boxes, x0 + (d.col % 2 ? -1 : 1) * 4.15, 0.95, 1.58, 0.56);
     circles.push({ x: x0 + (d.col % 2 ? 1 : -1) * 4.05, z: 1.25, r: 0.42 });
     circles.push({ x: x0 + (d.col % 2 ? -1 : 1) * 4.55, z: 8.9, r: 0.46 });
     if (idx === 1 || idx === 9) {
-      circles.push({ x: x0 + 3.5, z: 6.6, r: 0.54 });
+      circles.push({ x: x0 + 3.5, z: 6.6, r: 0.68 });
     }
     if (idx === 11) {
-      addBox(boxes, x0 + 2.4, 7.2, 2.05, 0.95);
+      addBox(boxes, x0 + 2.4, 7.2, 2.86, 1.12);
     }
   });
 
   if (lv === 0) {
     // Ground Reception Lobby furnishings & Plaza planters
     circles.push(
-      { x: -2.55, z: 8.5, r: 0.56 },
-      { x: 2.55, z: 8.5, r: 0.56 },
+      { x: -2.55, z: 8.5, r: 0.68 },
+      { x: 2.55, z: 8.5, r: 0.68 },
       { x: 0, z: 8.55, r: 0.84 },
       { x: -8.4, z: 1.3, r: 0.52 },
       { x: -8.6, z: 9.0, r: 0.5 },
@@ -111,10 +117,19 @@ function buildCollidersForLevel(lv: number): FloorColliderSet {
     );
     addBox(boxes, -9.3, 7.6, 0.94, 3.65);
     addBox(boxes, 9.3, 7.6, 0.94, 3.65);
-    addBox(boxes, -13, 11.2, 3.65, 2.25);
-    addBox(boxes, 13, 11.2, 3.65, 2.25);
-    addBox(boxes, -16.5, 13.4, 3.65, 2.25);
-    addBox(boxes, 16.5, 13.4, 3.65, 2.25);
+    addBox(boxes, -13, 11.2, 3.7, 2.3);
+    addBox(boxes, 13, 11.2, 3.7, 2.3);
+    addBox(boxes, -16.5, 13.4, 3.7, 2.3);
+    addBox(boxes, 16.5, 13.4, 3.7, 2.3);
+    // Approach planting beds along front plaza (y_plaza = -0.61)
+    [
+      [-13, 20],
+      [13, 20],
+      [-13, 30],
+      [13, 30],
+      [-13, 40],
+      [13, 40],
+    ].forEach(([bx, bz]) => addBox(boxes, bx, bz, 4.28, 4.28));
 
     return {
       boxes,
@@ -122,8 +137,8 @@ function buildCollidersForLevel(lv: number): FloorColliderSet {
       minX: -19.2,
       maxX: 19.2,
       minZ: 0.72,
-      maxZ: 18.8,
-      curvedCounter: { cx: 0, cz: -2.5, rIn: 7.98, rOut: 9.16, halfX: 3.55, minZ: 5.3 },
+      maxZ: 54.0,
+      curvedCounter: { cx: 0, cz: -2.5, rIn: 8.14, rOut: 9.14, halfX: 3.55, minZ: 5.3 },
     };
   }
 
@@ -133,25 +148,31 @@ function buildCollidersForLevel(lv: number): FloorColliderSet {
       boxes.push({ minX: px - 0.08, maxX: px + 0.08, minZ: 0.35, maxZ: 3.96 });
       boxes.push({ minX: px - 0.08, maxX: px + 0.08, minZ: 5.44, maxZ: 9.38 });
     });
-    // Board Room credenza & boat conference table
+    // Board Room credenza & boat conference table + all 16 board chairs
     addBox(boxes, 0, 0.62, 8.05, 0.54);
     boxes.push({ minX: -6.12, maxX: 6.12, minZ: 3.65, maxZ: 6.15 });
-    // Executive Lounge espresso bar, sofa, coffee table & armchairs
+    for (let i = 0; i < 7; i++) {
+      const cx = -5.4 + i * 1.8;
+      circles.push({ x: cx, z: 3.26, r: 0.35 }, { x: cx, z: 6.54, r: 0.35 });
+    }
+    circles.push({ x: -6.58, z: 4.9, r: 0.36 }, { x: 6.58, z: 4.9, r: 0.36 });
+    // Executive Lounge espresso bar, stools, sofa, coffee table & armchairs
     boxes.push({ minX: -20.0, maxX: -15.15, minZ: 0.7, maxZ: 1.42 });
     [-18.8, -17.6, -16.4].forEach((sx) => circles.push({ x: sx, z: 2.1, r: 0.28 }));
-    addBox(boxes, -12.6, 3.0, 2.15, 0.95);
+    addBox(boxes, -12.6, 3.0, 2.86, 1.12);
     addBox(boxes, -12.6, 5.0, 1.74, 0.98);
     circles.push(
-      { x: -14.3, z: 5.0, r: 0.52 },
-      { x: -11.0, z: 5.0, r: 0.52 },
+      { x: -14.3, z: 5.0, r: 0.68 },
+      { x: -11.0, z: 5.0, r: 0.68 },
       { x: -19.2, z: 8.6, r: 0.5 },
       { x: -10.8, z: 1.2, r: 0.42 }
     );
-    // Board Secretary desk, armchairs, side table & plants
+    // Board Secretary desk, chair, armchairs, side table & plants
     addBox(boxes, 15, 3.4, 2.24, 1.24);
     circles.push(
-      { x: 13.1, z: 6.6, r: 0.52 },
-      { x: 16.9, z: 6.6, r: 0.52 },
+      { x: 15, z: 2.58, r: 0.34 },
+      { x: 13.1, z: 6.6, r: 0.68 },
+      { x: 16.9, z: 6.6, r: 0.68 },
       { x: 15, z: 6.7, r: 0.38 },
       { x: 19.1, z: 1.1, r: 0.44 },
       { x: 10.9, z: 8.9, r: 0.46 }
@@ -167,30 +188,42 @@ function buildCollidersForLevel(lv: number): FloorColliderSet {
       boxes.push({ minX: px - 0.08, maxX: px + 0.08, minZ: 0.35, maxZ: 3.96 });
       boxes.push({ minX: px - 0.08, maxX: px + 0.08, minZ: 5.44, maxZ: 9.38 });
     });
-    // 4 HoD suites
+    // 4 HoD suites (desks, shelves, plants, main chairs & visitor chairs)
     [-17.5, -12.5, -7.5, -2.5].forEach((cx) => {
       addBox(boxes, cx, 3.5, 2.24, 1.24);
       addBox(boxes, cx + 1.7, 0.55, 1.12, 0.55);
-      circles.push({ x: cx - 1.9, z: 1.0, r: 0.38 });
+      circles.push(
+        { x: cx, z: 2.66, r: 0.35 },
+        { x: cx - 0.8, z: 5.4, r: 0.33 },
+        { x: cx + 0.8, z: 5.4, r: 0.33 },
+        { x: cx - 1.9, z: 1.0, r: 0.38 }
+      );
     });
     // Executive Assistant (x = 3)
     addBox(boxes, 3, 3.4, 2.24, 1.24);
     circles.push(
-      { x: 1.1, z: 6.6, r: 0.52 },
-      { x: 4.9, z: 6.6, r: 0.52 },
+      { x: 3, z: 2.58, r: 0.34 },
+      { x: 1.1, z: 6.6, r: 0.68 },
+      { x: 4.9, z: 6.6, r: 0.68 },
       { x: 3, z: 6.7, r: 0.38 },
       { x: 5.1, z: 1.1, r: 0.42 },
       { x: 0.9, z: 8.9, r: 0.46 }
     );
-    // CEO suite (cx = 13)
+    // CEO suite (cx = 13) including chair, visitor chairs, floor lamps, lounge sofa & armchairs
     addBox(boxes, 13, 3.4, 3.44, 1.24);
     addBox(boxes, 7.7, 0.55, 1.32, 0.55);
     addBox(boxes, 19.0, 0.55, 1.32, 0.55);
-    addBox(boxes, 17.8, 1.95, 2.15, 0.95);
+    addBox(boxes, 17.8, 1.95, 2.86, 1.12);
     addBox(boxes, 17.8, 3.9, 1.74, 0.98);
     circles.push(
-      { x: 16.0, z: 3.9, r: 0.52 },
-      { x: 17.8, z: 5.8, r: 0.52 },
+      { x: 13, z: 2.58, r: 0.36 },
+      { x: 12.0, z: 5.5, r: 0.35 },
+      { x: 14.0, z: 5.5, r: 0.35 },
+      { x: 14.4, z: 3.05, r: 0.25 },
+      { x: 11.6, z: 3.05, r: 0.25 },
+      { x: 19.3, z: 3.9, r: 0.25 },
+      { x: 16.0, z: 3.9, r: 0.68 },
+      { x: 17.8, z: 5.8, r: 0.68 },
       { x: 9.6, z: 6.2, r: 0.48 },
       { x: 19.2, z: 8.6, r: 0.5 },
       { x: 7.0, z: 1.7, r: 0.25 },
@@ -212,11 +245,17 @@ export function getFloorColliders(lv: number): FloorColliderSet {
   return set;
 }
 
+export interface IgnoreChairCircle {
+  x: number;
+  z: number;
+  r?: number;
+}
+
 export function resolveObstaclePosition(
   lv: number,
   x: number,
   z: number,
-  options?: { allowLiftShaft?: boolean; radius?: number }
+  options?: { allowLiftShaft?: boolean; radius?: number; ignoreCircle?: IgnoreChairCircle }
 ): { x: number; z: number; blocked: boolean } {
   const col = getFloorColliders(lv);
   const baseR = options?.radius ?? CHAR_RADIUS;
@@ -224,6 +263,8 @@ export function resolveObstaclePosition(
   let nx = Math.max(col.minX, Math.min(col.maxX, x));
   let nz = Math.max(col.minZ, Math.min(col.maxZ, z));
   let blocked = nx !== x || nz !== z;
+  const ign = options?.ignoreCircle;
+  const ignR = ign?.r ?? 0.44;
 
   for (let pass = 0; pass < 3; pass++) {
     for (let i = 0; i < col.boxes.length; i++) {
@@ -251,6 +292,9 @@ export function resolveObstaclePosition(
 
     for (let i = 0; i < col.circles.length; i++) {
       const c = col.circles[i];
+      if (ign && Math.hypot(c.x - ign.x, c.z - ign.z) <= ignR) {
+        continue;
+      }
       const minD = c.r + r;
       const dx = nx - c.x;
       const dz = nz - c.z;
@@ -292,32 +336,102 @@ export function resolveObstaclePosition(
   return { x: nx, z: nz, blocked };
 }
 
+export function hasLineOfSight(
+  lv: number,
+  x0: number,
+  z0: number,
+  x1: number,
+  z1: number,
+  ignoreCircle?: IgnoreChairCircle
+): boolean {
+  const dist = Math.hypot(x1 - x0, z1 - z0);
+  if (dist < 0.05) return true;
+  const steps = Math.ceil(dist / 0.22);
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const px = x0 + (x1 - x0) * t;
+    const pz = z0 + (z1 - z0) * t;
+    const res = resolveObstaclePosition(lv, px, pz, { ignoreCircle });
+    if (res.blocked) return false;
+  }
+  return true;
+}
+
+/**
+ * Returns a clean collision-free step-out / dock point right outside a seated chair or behind a counter,
+ * so actors step squarely off a chair before turning down aisles (never through backrests or desks).
+ */
+export function getChairDockPoint(lv: number, homeX: number, homeZ: number): { x: number; z: number } | null {
+  if (lv === 0 && Math.abs(homeX) < 3.7 && homeZ < 5.7) {
+    // Receptionist behind curved counter steps out past the counter edge cleanly
+    return { x: homeX < 0 ? -4.3 : 4.3, z: 4.4 };
+  }
+  if (lv >= 0 && lv <= 3 && homeZ >= 4.5 && homeZ <= 5.1) {
+    // Department bay chair facing -Z: step clear behind backrest at z = 5.56
+    return { x: homeX, z: 5.56 };
+  }
+  if (lv === 4) {
+    if (homeX < -14.8 && homeZ < 0.75) {
+      return { x: -14.55, z: 0.52 };
+    }
+    if (Math.abs(homeX) <= 6.2 && homeZ >= 3.0 && homeZ <= 3.6) {
+      // North side Board Room chair -> step north behind chair
+      return { x: homeX, z: 2.35 };
+    }
+    if (Math.abs(homeX) <= 6.2 && homeZ >= 6.2 && homeZ <= 6.8) {
+      // South side Board Room chair -> step south behind chair
+      return { x: homeX, z: 7.45 };
+    }
+    if (Math.abs(homeX) >= 6.3 && Math.abs(homeX) <= 7.0 && Math.abs(homeZ - 4.9) < 0.5) {
+      return { x: homeX < 0 ? -7.48 : 7.48, z: 4.9 };
+    }
+    if (homeX > 13.5 && homeX < 16.5 && homeZ < 3.0) {
+      return { x: 15, z: 1.78 };
+    }
+  }
+  if (lv === 5 && homeZ >= 2.2 && homeZ <= 3.0) {
+    // HoD, EA, or CEO executive chair facing +Z: step back behind chair into clear aisle
+    return { x: homeX, z: 1.82 };
+  }
+  return null;
+}
+
 function findDeskBypassX(lv: number, x: number, z: number): number {
-  if (lv >= 0 && lv <= 3 && z < 4.7) {
-    for (const cx of COLX) {
-      if (Math.abs(x - cx) < 3.45) {
-        return x < cx ? cx - 3.65 : cx + 3.65;
+  if (lv >= 0 && lv <= 3 && z < 4.95) {
+    for (const d of ROOMS) {
+      if (d.lv !== lv) continue;
+      const cx = COLX[d.col];
+      if (Math.abs(x - cx) < 3.55) {
+        return x < cx ? cx - 3.68 : cx + 3.68;
       }
     }
   }
   if (lv === 4) {
-    // Board table [-6.12..6.12, 3.65..6.15]
-    if (Math.abs(x) < 6.4 && z < 6.3) {
-      return x < 0 ? -6.85 : 6.85;
+    // Board table [-6.12..6.12, 3.65..6.15] & north/south chairs
+    if (Math.abs(x) < 6.8 && z < 6.9) {
+      return x < 0 ? -7.45 : 7.45;
     }
-    // Board Secretary desk [13.88..16.12, 2.78..4.02]
-    if (x > 13.4 && x < 16.6 && z < 4.1) {
-      return x < 15 ? 13.2 : 16.8;
+    // Board Secretary suite (cx=15): clear corridor west of desk & armchairs at x = 12.0
+    if (x > 12.1 && x < 17.5 && z < 7.6) {
+      return 12.0;
     }
   }
   if (lv === 5) {
-    for (const cx of [-17.5, -12.5, -7.5, -2.5, 3]) {
-      if (Math.abs(x - cx) < 1.35 && z < 4.15) {
-        return x < cx ? cx - 1.58 : cx + 1.58;
+    for (const cx of [-17.5, -12.5, -7.5, -2.5]) {
+      if (Math.abs(x - cx) < 1.45 && z < 4.2) {
+        return x < cx ? cx - 1.6 : cx + 1.6;
       }
     }
-    if (x > 10.9 && x < 15.1 && z < 4.15) {
-      return x < 13 ? 10.75 : 15.25;
+    // Executive Assistant (cx=3): route west around desk then between left armchair & side table (x = 2.2)
+    if (x > 1.3 && x < 4.7 && z < 5.2) {
+      return 1.55;
+    }
+    if (x > 1.3 && x < 4.7 && z >= 5.2 && z < 7.6) {
+      return 2.2;
+    }
+    // CEO desk + flanking floor lamps at 11.6 & 14.4 + lounge armchair at (16.0, 3.9)
+    if (x > 10.6 && x < 15.4 && z < 5.5) {
+      return x <= 13.5 ? 10.65 : 14.98;
     }
   }
   return x;
@@ -328,11 +442,20 @@ export function buildObstacleAwarePath(
   fromX: number,
   fromZ: number,
   toX: number,
-  toZ: number
+  toZ: number,
+  options?: { ignoreCircle?: IgnoreChairCircle }
 ): Array<{ x: number; z: number }> {
-  const safeDest = resolveObstaclePosition(lv, toX, toZ);
+  const safeDest = resolveObstaclePosition(lv, toX, toZ, { ignoreCircle: options?.ignoreCircle });
   const dx = safeDest.x;
   const dz = safeDest.z;
+
+  if (Math.hypot(dx - fromX, dz - fromZ) < 0.08) {
+    return [{ x: dx, z: dz }];
+  }
+
+  if (hasLineOfSight(lv, fromX, fromZ, dx, dz, options?.ignoreCircle)) {
+    return [{ x: dx, z: dz }];
+  }
 
   if (lv === 0) {
     const pts: Array<{ x: number; z: number }> = [];
@@ -340,44 +463,58 @@ export function buildObstacleAwarePath(
     const behindCounterTo = Math.abs(dx) < 3.7 && dz < 5.7;
     if (behindCounterFrom && !behindCounterTo) {
       const exitX = fromX < 0 ? -4.3 : 4.3;
-      pts.push({ x: exitX, z: 4.8 }, { x: exitX, z: 7.4 });
+      pts.push({ x: exitX, z: 4.4 }, { x: exitX, z: 7.4 });
+      if (dz > 11.0) {
+        pts.push({ x: exitX, z: 10.2 });
+        const apronX = Math.max(-9.0, Math.min(9.0, dx));
+        if (Math.abs(apronX - exitX) > 0.4) pts.push({ x: apronX, z: 10.2 });
+        if (dz > 18.2) {
+          pts.push({ x: Math.max(-3.4, Math.min(3.4, dx)), z: 16.5 });
+        }
+      }
+      pts.push({ x: dx, z: dz });
+      return pts;
     } else if (!behindCounterFrom && behindCounterTo) {
       const entryX = dx < 0 ? -4.3 : 4.3;
-      pts.push({ x: entryX, z: 7.4 }, { x: entryX, z: 4.8 });
-    } else {
-      const sameBay =
-        (fromX < -10 && dx < -10) || (fromX > 10 && dx > 10) || (Math.abs(fromX) < 8.5 && Math.abs(dx) < 8.5);
-      if (sameBay && Math.abs(fromZ - dz) < 2.2) {
-        return [{ x: dx, z: dz }];
+      if (fromZ > 11.0) {
+        if (fromZ > 18.2 && Math.abs(fromX) > 3.6) {
+          pts.push({ x: Math.max(-3.4, Math.min(3.4, fromX)), z: 16.5 });
+        }
+        pts.push({ x: entryX, z: 10.2 });
       }
-      // Route plaza entries/exits cleanly through central courtyard (|x| <= 10.2)
-      const corrZ = fromZ > 10.6 && dz > 10.6 ? 15.6 : 9.8;
-      if (fromZ > 10.6 && Math.abs(fromX) > 10.4 && dz <= 10.6) {
-        pts.push({ x: fromX < 0 ? -9.5 : 9.5, z: fromZ });
-      }
-      const startBypassX = findDeskBypassX(0, fromX, fromZ);
-      if (Math.abs(startBypassX - fromX) > 0.25) {
-        pts.push({ x: startBypassX, z: fromZ });
-      }
-      if (Math.abs(fromZ - corrZ) > 0.7) pts.push({ x: startBypassX, z: corrZ });
-      const endBypassX = findDeskBypassX(0, dx, dz);
-      if (Math.abs(endBypassX - startBypassX) > 0.7) pts.push({ x: endBypassX, z: corrZ });
-      if (Math.abs(endBypassX - dx) > 0.25) pts.push({ x: endBypassX, z: dz });
+      pts.push({ x: entryX, z: 7.4 }, { x: entryX, z: 4.4 }, { x: dx, z: dz });
+      return pts;
     }
+
+    // Standard lobby / plaza routing
+    let curX = fromX;
+    let curZ = fromZ;
+    if (curZ > 18.2 && dz <= 18.2 && Math.abs(curX) > 3.6) {
+      curX = Math.max(-3.4, Math.min(3.4, curX));
+      pts.push({ x: curX, z: Math.min(curZ, 20.5) });
+    }
+    if (curZ > 10.6 && dz <= 10.6 && Math.abs(curX) > 10.0) {
+      curX = curX < 0 ? -9.5 : 9.5;
+      pts.push({ x: curX, z: Math.min(curZ, 15.5) });
+    }
+
+    const corrZ = curZ > 10.6 && dz > 10.6 ? 15.6 : 9.8;
+    const startBypassX = findDeskBypassX(0, curX, curZ);
+    if (Math.abs(startBypassX - curX) > 0.25) {
+      pts.push({ x: startBypassX, z: curZ });
+    }
+    if (Math.abs(curZ - corrZ) > 0.7) pts.push({ x: startBypassX, z: corrZ });
+    const endBypassX = findDeskBypassX(0, dx, dz);
+    if (Math.abs(endBypassX - startBypassX) > 0.7) pts.push({ x: endBypassX, z: corrZ });
+    if (dz > 18.2 && Math.abs(dx) > 3.6) {
+      pts.push({ x: Math.max(-3.4, Math.min(3.4, dx)), z: 16.5 });
+    }
+    if (Math.abs(endBypassX - dx) > 0.25) pts.push({ x: endBypassX, z: dz });
     pts.push({ x: dx, z: dz });
     return pts;
   }
 
   if (lv >= 1) {
-    const sameBay =
-      lv === 4 || lv === 5
-        ? Math.abs(fromX - dx) < 2.2 && Math.abs(fromZ - dz) < 2.4
-        : Math.floor((fromX + 20) / 10) === Math.floor((dx + 20) / 10);
-
-    if (sameBay && Math.abs(fromZ - dz) < 1.8 && fromZ > 4.2 && dz > 4.2) {
-      return [{ x: dx, z: dz }];
-    }
-
     const pts: Array<{ x: number; z: number }> = [];
     let curX = fromX;
     let curZ = fromZ;
@@ -405,34 +542,45 @@ export function buildObstacleAwarePath(
 
     // Main front atrium corridor z = 9.82 clears both glass partitions (maxZ=9.38) and columns (z=10.5)
     const corridorZ = 9.82;
-    const startBypassX = findDeskBypassX(lv, curX, curZ);
+    let startBypassX = findDeskBypassX(lv, curX, curZ);
+    if (lv === 1 && curX > 15.65 && curZ < 7.8) {
+      // Bay Consultancy sofa occupies [15.97..18.83, 6.64..7.76]
+      startBypassX = 15.5;
+    }
     if (Math.abs(startBypassX - curX) > 0.25) {
       pts.push({ x: startBypassX, z: curZ });
     }
-
-    if (!sameBay || Math.abs(curZ - dz) >= 1.8 || startBypassX !== curX) {
-      if (Math.abs(curZ - corridorZ) > 0.55) {
-        const sCorr = resolveObstaclePosition(lv, startBypassX, corridorZ);
-        pts.push({ x: sCorr.x, z: sCorr.z });
-      }
-      const endBypassX = findDeskBypassX(lv, dx, dz);
-      const eCorr = resolveObstaclePosition(lv, endBypassX, corridorZ);
-      pts.push({ x: eCorr.x, z: eCorr.z });
-      if (Math.abs(endBypassX - dx) > 0.25) {
-        pts.push({ x: endBypassX, z: dz });
-      }
+    if (lv === 5 && startBypassX < 2.0 && curX > 1.2 && curZ < 5.2 && Math.abs(dx - startBypassX) > 0.5) {
+      // EA room: transition horizontally along clear z = 5.0 lane between desk and armchairs
+      pts.push({ x: startBypassX, z: 5.0 });
+      startBypassX = 2.2;
+      pts.push({ x: startBypassX, z: 5.0 });
     }
-
+    if (Math.abs(curZ - corridorZ) > 0.55) {
+      const sCorr = resolveObstaclePosition(lv, startBypassX, corridorZ);
+      pts.push({ x: sCorr.x, z: sCorr.z });
+    }
+    const endBypassX =
+      lv === 5 && dx > 1.3 && dx < 4.7 && dz < 5.2
+        ? 2.2
+        : lv === 1 && dx > 15.65 && dz < 7.8
+          ? 15.5
+          : findDeskBypassX(lv, dx, dz);
+    const eCorr = resolveObstaclePosition(lv, endBypassX, corridorZ);
+    pts.push({ x: eCorr.x, z: eCorr.z });
+    if (lv === 5 && dx > 1.3 && dx < 4.7 && dz < 5.2) {
+      pts.push({ x: 2.2, z: 5.0 }, { x: 1.55, z: 5.0 }, { x: 1.55, z: dz });
+    } else if (lv === 1 && dx > 15.65 && dz < 7.8) {
+      pts.push({ x: 15.5, z: dz });
+    } else if (Math.abs(endBypassX - dx) > 0.25) {
+      pts.push({ x: endBypassX, z: dz });
+    }
     pts.push({ x: dx, z: dz });
     return pts;
   }
 
   if (lv === -1) {
     // B1 Server Room: clear aisles z = 2.15, z = 4.35, z = 7.35, and center corridors x = -1.6 / 1.0
-    if (fromZ < 2.6 && dz < 2.6) {
-      return Math.abs(fromX - dx) > 0.6 ? [{ x: dx, z: 2.15 }, { x: dx, z: dz }] : [{ x: dx, z: dz }];
-    }
-    if (Math.abs(fromZ - dz) < 0.65 && Math.abs(fromX - dx) < 5.5) return [{ x: dx, z: dz }];
     const aisleX = fromX > 0.5 && dx > 0.5 ? 1.0 : -1.6;
     const exitZ = fromZ < 2.9 ? 2.15 : fromZ < 5.0 ? 4.35 : 7.35;
     const enterZ = dz < 2.9 ? 2.15 : dz < 5.0 ? 4.35 : 7.35;
@@ -445,13 +593,18 @@ export function buildObstacleAwarePath(
     return pts;
   }
 
-  // B2 Power Room: north aisle z = 2.25, aisles x = 0.4 or x = 5.2, open bay z = 3.7 or 7.8
-  if (fromZ < 2.7 && dz < 2.7) {
-    return Math.abs(fromX - dx) > 0.6 ? [{ x: dx, z: 2.25 }, { x: dx, z: dz }] : [{ x: dx, z: dz }];
-  }
+  // B2 Power Room: north aisle z = 2.25, open corridors x = 0.4 / 5.2, battery-row aisles 3.75 / 5.9 / 7.8 / 9.55
+  const pickB2AisleZ = (px: number, pz: number) => {
+    if (px >= 7.6 && pz >= 4.25) return 5.2;
+    if (pz < 2.7) return 2.25;
+    if (pz < 4.9) return 3.75;
+    if (pz < 6.9) return 5.9;
+    if (pz < 8.7) return 7.8;
+    return 9.55;
+  };
   const safeX = fromX > 3.2 || dx > 3.2 ? 5.2 : 0.4;
-  const exitZ = fromZ < 2.7 ? 2.25 : fromZ < 6.0 ? 3.7 : 7.8;
-  const enterZ = dz < 2.7 ? 2.25 : dz < 6.0 ? 3.7 : 7.8;
+  const exitZ = pickB2AisleZ(fromX, fromZ);
+  const enterZ = pickB2AisleZ(dx, dz);
   const pts: Array<{ x: number; z: number }> = [];
   if (Math.abs(fromZ - exitZ) > 0.35) pts.push({ x: fromX, z: exitZ });
   if (Math.abs(fromX - safeX) > 0.45) pts.push({ x: safeX, z: exitZ });
@@ -460,4 +613,5 @@ export function buildObstacleAwarePath(
   pts.push({ x: dx, z: dz });
   return pts;
 }
+
 

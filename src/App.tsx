@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { CharacterStudioModal } from './components/CharacterStudioModal';
 import { HudOverlay } from './components/HudOverlay';
 import { AtriumEngine } from './scene/AtriumEngine';
 import type { HudSnapshot } from './scene/constants';
@@ -36,6 +37,7 @@ export default function App() {
   const engineRef = useRef<AtriumEngine | null>(null);
   const [hud, setHud] = useState<HudSnapshot>(INITIAL_HUD);
   const [webglError, setWebglError] = useState<string | null>(null);
+  const [studioOpen, setStudioOpen] = useState(false);
 
   useEffect(() => {
     const el = mountRef.current;
@@ -91,7 +93,9 @@ export default function App() {
         onFocusCharacter={() => engineRef.current?.focusSelectedCharacter()}
         onToggleFollowCharacter={() => engineRef.current?.toggleFollowCharacter()}
         onNudgeCharacter={() => engineRef.current?.nudgeSelectedCharacter()}
+        onOpenCharacters={() => setStudioOpen(true)}
       />
+      <CharacterStudioModal isOpen={studioOpen} onClose={() => setStudioOpen(false)} />
     </div>
   );
 }

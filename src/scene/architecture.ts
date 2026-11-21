@@ -742,7 +742,7 @@ export function buildSceneArchitecture(
           role: roles[k],
           color: `#${d.c.toString(16).padStart(6, '0')}`,
           seatX: x0 + ox,
-          seatZ: dz + 0.83,
+          seatZ: dz + 0.87,
           monPos: [x0 + ox, y0 + 1.16, dz + 0.12],
           rotY: 0,
           screenRef: d._ws[k],
@@ -1061,7 +1061,7 @@ export function buildSceneArchitecture(
     zone: 'DomainTechHub Reception',
     role: 'Front Desk Receptionist',
     color: '#4ea8ff',
-    seatX: -1.32,
+    seatX: -1.26,
     seatZ: 5.26,
     screenTask: 'Managing today’s visitor check-ins & lobby arrivals',
   });
@@ -1070,7 +1070,7 @@ export function buildSceneArchitecture(
     zone: 'DomainTechHub Reception',
     role: 'Front Desk Concierge',
     color: '#4ea8ff',
-    seatX: -1.32,
+    seatX: -1.26,
     seatZ: 5.26,
     screenTask: 'Notifying department teams in #front-desk-arrivals',
   });
@@ -1579,7 +1579,7 @@ export function buildSceneArchitecture(
     });
 
     exDesk(cx, 3.4, 3.4, y0);
-    exChair(cx, y0, 2.58, 0, 1.3, true, 0.5, 1);
+    exChair(cx, y0, 2.58, 0, 1.12, true, 0.5, 1);
     exMon(ex5, cx - 0.75, y0 + 0.8, 3.3, Math.PI, 'ceo', 0, {
       lv: 5,
       zone: EXEC.ceo.n,

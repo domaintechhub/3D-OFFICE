@@ -22,7 +22,9 @@ import {
   type HumanPalette,
   type PersonActor,
 } from '../scene/human';
+import { getHumanMicroMaps } from '../scene/humanTextures';
 import { createMaterials, type MaterialLibrary } from '../scene/materials';
+import { getRoundedBox } from '../scene/props';
 
 interface CharacterStudioModalProps {
   isOpen: boolean;
@@ -45,7 +47,7 @@ const SEATED_POSES = new Set([
 
 const FRAMING_TARGETS: Record<CameraFraming, { pos: [number, number, number]; target: [number, number, number] }> = {
   full: { pos: [0.65, 1.28, 2.55], target: [0, 0.92, 0] },
-  portrait: { pos: [0.18, 1.62, 0.78], target: [0, 1.57, 0.02] },
+  portrait: { pos: [0.18, 1.67, 0.84], target: [0, 1.60, 0.02] },
   tailoring: { pos: [0.58, 1.12, 1.32], target: [0, 1.05, 0.04] },
 };
 
@@ -71,38 +73,163 @@ function disposeObjectSubtree(root: THREE.Object3D): void {
 
 function buildStudioChairProp(): THREE.Group {
   const grp = new THREE.Group();
-  const frameMat = new THREE.MeshStandardMaterial({ color: 0x2a313d, roughness: 0.45, metalness: 0.55 });
+  const micro = getHumanMicroMaps();
+
+  const shellMat = new THREE.MeshStandardMaterial({ color: 0x161a21, roughness: 0.62, metalness: 0.14 });
+  const chromeMat = new THREE.MeshStandardMaterial({ color: 0xd0d6de, roughness: 0.2, metalness: 0.88 });
   const cushionMat = new THREE.MeshPhysicalMaterial({
-    color: 0x202632,
-    roughness: 0.85,
+    color: 0x1c2028,
+    normalMap: micro.leatherNormalTex,
+    normalScale: new THREE.Vector2(0.32, 0.32),
+    roughness: 0.72,
     metalness: 0.02,
-    sheen: 0.35,
+    sheen: 0.24,
+    sheenRoughness: 0.78,
+    envMapIntensity: 0.35,
   });
 
-  // Ergonomic seat pan top at y = 0.44m, centered around z = -0.04m matching hipY=0.526, hipZ=-0.04
-  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.05, 0.44), cushionMat);
-  seat.position.set(0, 0.415, -0.04);
+  // Waterfall ergonomic leather seat cushion (top surface ~0.428m, bottom ~0.342m, centered at z=-0.04m)
+  const seatProf = new THREE.Shape();
+  seatProf.moveTo(-0.22, -0.014);
+  seatProf.quadraticCurveTo(-0.24, 0.036, -0.17, 0.044);
+  seatProf.quadraticCurveTo(0.02, 0.036, 0.19, 0.042);
+  seatProf.quadraticCurveTo(0.245, 0.038, 0.25, -0.008);
+  seatProf.quadraticCurveTo(0.235, -0.026, 0.18, -0.024);
+  seatProf.lineTo(-0.20, -0.024);
+  seatProf.closePath();
+
+  const seatGeo = new THREE.ExtrudeGeometry(seatProf, {
+    depth: 0.44,
+    bevelEnabled: true,
+    bevelThickness: 0.024,
+    bevelSize: 0.022,
+    bevelSegments: 4,
+    curveSegments: 12,
+  });
+  seatGeo.translate(0, 0, -0.22);
+  seatGeo.rotateY(Math.PI / 2);
+
+  const seat = new THREE.Mesh(seatGeo, cushionMat);
+  seat.position.set(0, 0.386, -0.03);
   seat.receiveShadow = true;
   seat.castShadow = true;
   grp.add(seat);
 
-  const back = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.45, 0.042), cushionMat);
-  back.position.set(0, 0.68, -0.23);
-  back.rotation.x = -0.08;
-  back.castShadow = true;
-  grp.add(back);
+  // Under-seat pan & synchronous tilt housing + height adjustment lever
+  const underPan = new THREE.Mesh(getRoundedBox(0.34, 0.028, 0.34, 0.012, 2), shellMat);
+  underPan.position.set(0, 0.335, -0.04);
+  grp.add(underPan);
 
-  const spineBar = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.24, 0.028), frameMat);
-  spineBar.position.set(0, 0.48, -0.22);
-  grp.add(spineBar);
+  const hub = new THREE.Mesh(getRoundedBox(0.16, 0.056, 0.20, 0.014, 2), shellMat);
+  hub.position.set(0, 0.302, -0.05);
+  grp.add(hub);
 
-  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.028, 0.34, 12), frameMat);
-  stem.position.set(0, 0.22, -0.05);
-  grp.add(stem);
+  const paddle = new THREE.Mesh(getRoundedBox(0.12, 0.012, 0.028, 0.004, 1), shellMat);
+  paddle.position.set(0.15, 0.312, 0.01);
+  grp.add(paddle);
 
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.02, 24), frameMat);
-  base.position.set(0, 0.035, -0.05);
-  grp.add(base);
+  // Tall contoured upholstered backrest (side-profile ergonomic lumbar curve)
+  const backFrontShape = new THREE.Shape();
+  backFrontShape.moveTo(-0.20, 0);
+  backFrontShape.quadraticCurveTo(-0.22, 0.24, -0.17, 0.48);
+  backFrontShape.quadraticCurveTo(0, 0.53, 0.17, 0.48);
+  backFrontShape.quadraticCurveTo(0.22, 0.24, 0.20, 0);
+  backFrontShape.quadraticCurveTo(0, -0.025, -0.20, 0);
+
+  const backGeo = new THREE.ExtrudeGeometry(backFrontShape, {
+    depth: 0.036,
+    bevelEnabled: true,
+    bevelThickness: 0.02,
+    bevelSize: 0.018,
+    bevelSegments: 3,
+    curveSegments: 12,
+  });
+  backGeo.computeVertexNormals();
+
+  const backGroup = new THREE.Group();
+  backGroup.position.set(0, 0.47, -0.26);
+  backGroup.rotation.x = -0.10;
+  grp.add(backGroup);
+
+  const backCushion = new THREE.Mesh(backGeo, cushionMat);
+  backCushion.castShadow = true;
+  backCushion.receiveShadow = true;
+  backGroup.add(backCushion);
+
+  // Molded rear polymer outer shell backing
+  const rearShellGeo = new THREE.ExtrudeGeometry(backFrontShape, {
+    depth: 0.018,
+    bevelEnabled: true,
+    bevelThickness: 0.014,
+    bevelSize: 0.014,
+    bevelSegments: 2,
+    curveSegments: 10,
+  });
+  const rearShell = new THREE.Mesh(rearShellGeo, shellMat);
+  rearShell.position.set(0, 0, -0.016);
+  rearShell.scale.set(0.98, 0.99, 1);
+  rearShell.castShadow = true;
+  backGroup.add(rearShell);
+
+  // Curved rear L-spine bracket connecting backrest to under-seat tilt hub
+  const spineGeo = new THREE.TubeGeometry(
+    new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0, 0.305, -0.07),
+      new THREE.Vector3(0, 0.315, -0.25),
+      new THREE.Vector3(0, 0.46, -0.295),
+      new THREE.Vector3(0, 0.68, -0.305),
+    ]),
+    14,
+    0.021,
+    10,
+    false
+  );
+  const spine = new THREE.Mesh(spineGeo, shellMat);
+  spine.castShadow = true;
+  grp.add(spine);
+
+  // Chrome pneumatic gas lift cylinder + telescoping dark shroud collar
+  const gasCylinder = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.024, 0.22, 16), chromeMat);
+  gasCylinder.position.set(0, 0.20, -0.05);
+  grp.add(gasCylinder);
+
+  const shroud = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.036, 0.11, 16), shellMat);
+  shroud.position.set(0, 0.145, -0.05);
+  grp.add(shroud);
+
+  // 5-star sculpted base with twin-wheel hooded casters resting at y = 0.000
+  for (let k = 0; k < 5; k++) {
+    const a = (k * Math.PI * 2) / 5 + 0.25;
+    const cx = Math.cos(a) * 0.26;
+    const cz = -0.05 + Math.sin(a) * 0.26;
+    const leg = new THREE.Mesh(
+      new THREE.TubeGeometry(
+        new THREE.CatmullRomCurve3([
+          new THREE.Vector3(Math.cos(a) * 0.03, 0.11, -0.05 + Math.sin(a) * 0.03),
+          new THREE.Vector3(cx * 0.56, 0.088, -0.05 + Math.sin(a) * 0.26 * 0.56),
+          new THREE.Vector3(cx, 0.054, cz),
+        ]),
+        8,
+        0.016,
+        8,
+        false
+      ),
+      shellMat
+    );
+    grp.add(leg);
+
+    const casterPost = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.014, 0.028, 8), shellMat);
+    casterPost.position.set(cx, 0.04, cz);
+    grp.add(casterPost);
+
+    for (const side of [-1, 1]) {
+      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.011, 12), shellMat);
+      wheel.rotation.z = Math.PI / 2;
+      wheel.rotation.y = a;
+      wheel.position.set(cx + side * Math.sin(a) * 0.01, 0.024, cz - side * Math.cos(a) * 0.01);
+      grp.add(wheel);
+    }
+  }
 
   return grp;
 }
@@ -205,11 +332,11 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
     controls.target.set(...FRAMING_TARGETS.full.target);
     controls.update();
 
-    // Architectural 3-Point Studio Portrait Lighting
-    const hemi = new THREE.HemisphereLight(0xdce8ff, 0x262933, 0.72);
+    // Architectural 3-Point Studio Portrait Lighting (balanced soft key to keep dermal tones matte and natural)
+    const hemi = new THREE.HemisphereLight(0xdce8ff, 0x262933, 0.84);
     scene.add(hemi);
 
-    const keyLight = new THREE.DirectionalLight(0xfff1e0, 2.25);
+    const keyLight = new THREE.DirectionalLight(0xfff1e0, 1.85);
     keyLight.position.set(2.3, 3.2, 2.7);
     keyLight.castShadow = true;
     keyLight.shadow.mapSize.set(1024, 1024);
@@ -223,11 +350,11 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
     keyLight.shadow.normalBias = 0.015;
     scene.add(keyLight);
 
-    const rimLight = new THREE.DirectionalLight(0xc4ddff, 1.35);
+    const rimLight = new THREE.DirectionalLight(0xc4ddff, 0.95);
     rimLight.position.set(-2.2, 2.5, -2.4);
     scene.add(rimLight);
 
-    const fillLight = new THREE.DirectionalLight(0xeef3ff, 0.45);
+    const fillLight = new THREE.DirectionalLight(0xeef3ff, 0.55);
     fillLight.position.set(-2.4, 1.3, 1.8);
     scene.add(fillLight);
 

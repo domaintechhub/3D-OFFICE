@@ -41,6 +41,7 @@ interface HudOverlayProps {
   onFocusCharacter: () => void;
   onToggleFollowCharacter: () => void;
   onNudgeCharacter: () => void;
+  onOpenCharacters: () => void;
 }
 
 const LEVELS: Array<{ key: string; label: string }> = [
@@ -92,6 +93,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
   onFocusCharacter,
   onToggleFollowCharacter,
   onNudgeCharacter,
+  onOpenCharacters,
 }) => {
   const [dockOpen, setDockOpen] = useState(true);
   const joyRef = useRef<HTMLDivElement | null>(null);
@@ -155,16 +157,27 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
 
         <div className="flex items-center gap-2">
           {!hud.walking && (
-            <button
-              type="button"
-              onClick={() => setDockOpen((v) => !v)}
-              title="Toggle Controls (H)"
-              className="pointer-events-auto flex items-center gap-1.5 border border-white/12 bg-[#0d121a]/92 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-800/95 hover:text-white rounded-md transition-colors cursor-pointer"
-            >
-              <span>Controls</span>
-              <span className="font-mono-tabular text-[10px] text-slate-400">[H]</span>
-              {dockOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={onOpenCharacters}
+                title="Open 3D Character Studio"
+                className="pointer-events-auto flex items-center gap-1.5 border border-emerald-400/35 bg-[#0d121a]/92 px-3 py-2 text-xs font-medium text-emerald-200 hover:bg-emerald-500/20 hover:text-white rounded-md transition-colors cursor-pointer"
+              >
+                <Users className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Characters</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDockOpen((v) => !v)}
+                title="Toggle Controls (H)"
+                className="pointer-events-auto flex items-center gap-1.5 border border-white/12 bg-[#0d121a]/92 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-800/95 hover:text-white rounded-md transition-colors cursor-pointer"
+              >
+                <span>Controls</span>
+                <span className="font-mono-tabular text-[10px] text-slate-400">[H]</span>
+                {dockOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+              </button>
+            </>
           )}
         </div>
       </div>

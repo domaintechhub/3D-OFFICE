@@ -47,7 +47,12 @@ import {
 } from './characterMind';
 import type { MaterialLibrary } from './materials';
 import { getRoundedBox, makeCar } from './props';
-import { buildObstacleAwarePath, resolveObstaclePosition } from './obstacles';
+import {
+  buildObstacleAwarePath,
+  getChairDockPoint,
+  resolveObstaclePosition,
+  type IgnoreChairCircle,
+} from './obstacles';
 import { plateTex } from './textures';
 
 type WorkerActor = PersonActor & {
@@ -62,6 +67,8 @@ type WorkerActor = PersonActor & {
   lunch?: number;
   _arr?: number;
   _w2?: number;
+  navQueue?: Array<{ x: number; z: number }>;
+  navKey?: string;
 };
 
 type DayVisitorActor = PersonActor & {
@@ -75,6 +82,8 @@ type DayVisitorActor = PersonActor & {
   cab: number;
   _arr?: number;
   _w2?: number;
+  navQueue?: Array<{ x: number; z: number }>;
+  navKey?: string;
 };
 
 type BasementCrewActor = PersonActor & {
@@ -195,6 +204,8 @@ export class AtriumSimulation {
   private tourCab = 1;
   private tourSnap: { cam: THREE.Vector3; tgt: THREE.Vector3 } | null = null;
   private tourCam = { on: false, pos: new THREE.Vector3(), tgt: new THREE.Vector3() };
+  private guideNavQueue: Array<{ x: number; z: number }> = [];
+  private guideNavKey = '';
 
   // First-person walk state
   public walkOn = false;
@@ -393,7 +404,7 @@ export class AtriumSimulation {
           const p = this.addPerson(
             d.lv,
             cx + ox,
-            5.15,
+            4.82,
             Math.PI,
             pickMode(modes),
             {
@@ -418,7 +429,7 @@ export class AtriumSimulation {
           p.d = d;
           p.sh_shift = sh;
           p.sd = cx < 0 ? -1 : 1;
-          p.seat = { x: cx + ox, z: 5.15 };
+          p.seat = { x: cx + ox, z: 4.82 };
           p.state = sh === 0 ? 'atDesk' : 'away';
           p.cab = 0;
           p.ex = 0;
@@ -438,7 +449,7 @@ export class AtriumSimulation {
               topicKey: d.t,
               homeLv: d.lv,
               homeX: cx + ox,
-              homeZ: 5.15,
+              homeZ: 4.82,
               homeFace: Math.PI,
               homePose: p.pose,
             },
@@ -504,9 +515,9 @@ export class AtriumSimulation {
     // Receptionist (emerald/navy tailored blazer, low chignon bun & warm smile)
     addDayVisitor(
       0,
-      -1.2,
-      4.9,
-      0,
+      -1.26,
+      5.26,
+      -0.14,
       'standType',
       {
         skin: P_LIB.skins[0],
@@ -533,8 +544,8 @@ export class AtriumSimulation {
     // Ground lobby visitor in tailored dark coat checking smartphone / reading briefs
     addDayVisitor(
       0,
-      1.85,
-      9.05,
+      1.8,
+      9.15,
       -Math.PI / 2 - 0.3,
       'hold',
       {
@@ -644,7 +655,7 @@ export class AtriumSimulation {
       -17.6,
       0.45,
       0,
-      'standType',
+      'standCounter',
       {
         skin: P_LIB.skins[2],
         shirt: sMat(0x2a2d34),
@@ -731,11 +742,11 @@ export class AtriumSimulation {
     const dirCol = [0x1c2838, 0x3a2434, 0x283630, 0x24262e, 0x363024];
     const dirNames = ['Salma Ndegwa', 'Peter Mwangi', 'Gideon Omondi', 'Chebet Koech', 'Baraka Mutiso'];
     const execSeats: Array<[number, number, number, string, number, number]> = [
-      [-6.9, 4.9, Math.PI / 2, 'talk', 1, 0x9c282e],
-      [-1.8, 3.0, 0, 'meeting', 0, 0x284e86],
-      [1.8, 3.0, 0, 'writeNotes', 0, 0x326a5a],
-      [-3.6, 6.8, Math.PI, 'meeting', 1, 0],
-      [3.6, 6.8, Math.PI, 'collaborate', 0, 0x5c3670],
+      [-6.58, 4.9, Math.PI / 2, 'sitTalk', 1, 0x9c282e],
+      [-1.8, 3.26, 0, 'meeting', 0, 0x284e86],
+      [1.8, 3.26, 0, 'writeNotes', 0, 0x326a5a],
+      [-3.6, 6.54, Math.PI, 'meeting', 1, 0],
+      [3.6, 6.54, Math.PI, 'sitCollaborate', 0, 0x5c3670],
     ];
     execSeats.forEach(([x, z, rot, pose, fem, tie], i) => {
       addDayVisitor(
@@ -758,7 +769,7 @@ export class AtriumSimulation {
           skirt: fem && i === 0 ? 'short' : 'none',
           shoeStyle: fem ? 'heel' : 'oxford',
           blazer: true,
-          gest: pose === 'talk' || pose === 'collaborate',
+          gest: pose === 'sitTalk' || pose === 'sitCollaborate',
           look: 0.35,
           tie: fem ? undefined : tie,
         },
@@ -776,13 +787,13 @@ export class AtriumSimulation {
     // Heads of Department & Board Secretary & EA & CEO
     (
       [
-        [4, 15, 2.2, 0, 'readDoc', 0x165e4c, 1, 0, 'dress', 'braids', 'Faith Nyambura', 'Board Secretary', 'Level 4 · Secretariat', 'secr', '#64748b'],
-        [5, -17.5, 2.2, 0, 'type', 0x1e2c44, 0, 0x2e64b8, 'suit', 'fade', 'Kelvin Ochieng', 'Head of Technology', 'Level 5 · Executive Suite', 'hod', '#34598f'],
-        [5, -12.5, 2.2, 0, 'phone', 0x422238, 1, 0, 'suit', 'puff', 'Zawadi Kimani', 'Head of Marketing', 'Level 5 · Executive Suite', 'hod', '#7a2f5a'],
-        [5, -7.5, 2.2, 0, 'think', 0x2b303a, 0, 0, 'knit', 'twists', 'Collins Kioko', 'Head of Finance', 'Level 5 · Executive Suite', 'hod', '#2d7a5a'],
-        [5, -2.5, 2.2, 0, 'writeNotes', 0x3c2e22, 1, 0, 'blouseSkirt', 'bob', 'Makena Chege', 'Head of Operations', 'Level 5 · Executive Suite', 'hod', '#c9762e'],
-        [5, 3, 2.2, 0, 'sit', 0x181a20, 1, 0, 'dress', 'pixie', 'Sifa Wambui', 'Executive Assistant', 'Level 5 · Executive Suite', 'secr', '#5d6b7a'],
-        [5, 13, 2.2, 0, 'phone', 0x141a26, 0, 0x8a1f2e, 'suit', 'fade', 'Samuel Njoroge', 'Chief Executive Officer', 'Level 5 · CEO Office', 'ceo', '#c9a24b'],
+        [4, 15, 2.58, 0, 'sitReadDoc', 0x165e4c, 1, 0, 'dress', 'braids', 'Faith Nyambura', 'Board Secretary', 'Level 4 · Secretariat', 'secr', '#64748b'],
+        [5, -17.5, 2.64, 0, 'type', 0x1e2c44, 0, 0x2e64b8, 'suit', 'fade', 'Kelvin Ochieng', 'Head of Technology', 'Level 5 · Executive Suite', 'hod', '#34598f'],
+        [5, -12.5, 2.64, 0, 'phone', 0x422238, 1, 0, 'suit', 'puff', 'Zawadi Kimani', 'Head of Marketing', 'Level 5 · Executive Suite', 'hod', '#7a2f5a'],
+        [5, -7.5, 2.64, 0, 'think', 0x2b303a, 0, 0, 'knit', 'twists', 'Collins Kioko', 'Head of Finance', 'Level 5 · Executive Suite', 'hod', '#2d7a5a'],
+        [5, -2.5, 2.64, 0, 'writeNotes', 0x3c2e22, 1, 0, 'blouseSkirt', 'bob', 'Makena Chege', 'Head of Operations', 'Level 5 · Executive Suite', 'hod', '#c9762e'],
+        [5, 3, 2.56, 0, 'sit', 0x181a20, 1, 0, 'dress', 'pixie', 'Sifa Wambui', 'Executive Assistant', 'Level 5 · Executive Suite', 'secr', '#5d6b7a'],
+        [5, 13, 2.56, 0, 'phone', 0x141a26, 0, 0x8a1f2e, 'suit', 'fade', 'Samuel Njoroge', 'Chief Executive Officer', 'Level 5 · CEO Office', 'ceo', '#c9a24b'],
       ] as const
     ).forEach(([lv, x, z, rot, pose, col, fem, tie, outfit, hairStyle, name, role, dept, topicKey, acc], i) => {
       addDayVisitor(
@@ -897,7 +908,7 @@ export class AtriumSimulation {
       glasses: true,
       s: 1.06,
       startX: -2.5,
-      startZ: 2.15,
+      startZ: 1.88,
       startFace: Math.PI,
       startPose: 'readDoc',
     });
@@ -931,9 +942,9 @@ export class AtriumSimulation {
       sneakers: true,
       s: 0.96,
       startX: -8.5,
-      startZ: 4.35,
+      startZ: 3.96,
       startFace: Math.PI,
-      startPose: 'standType',
+      startPose: 'inspectPanel',
     });
     addBasementCrew(-1, 'junior', 'Wanjiku Wafula', 'Junior Rack Maintenance Tech', {
       skin: P_LIB.skins[0],
@@ -947,9 +958,9 @@ export class AtriumSimulation {
       sneakers: true,
       s: 0.94,
       startX: 5.6,
-      startZ: 4.35,
+      startZ: 6.48,
       startFace: Math.PI,
-      startPose: 'point',
+      startPose: 'inspectPanel',
     });
 
     // B2 · Power Room (2 Senior Power Engineers in white hard hats, 2 Junior Technicians in yellow hard hats)
@@ -966,7 +977,7 @@ export class AtriumSimulation {
       glasses: true,
       hardHat: 0xf4f6f9,
       s: 1.07,
-      startX: 7.1,
+      startX: 7.55,
       startZ: 3.4,
       startFace: Math.PI / 2,
       startPose: 'readDoc',
@@ -986,9 +997,9 @@ export class AtriumSimulation {
       hardHat: 0xf4f6f9,
       s: 1.01,
       startX: 2.8,
-      startZ: 2.25,
+      startZ: 1.8,
       startFace: Math.PI,
-      startPose: 'point',
+      startPose: 'inspectPanel',
     });
     addBasementCrew(-2, 'junior', 'Dennis Langat', 'Junior Battery & Storage Tech', {
       skin: P_LIB.skins[6],
@@ -1003,7 +1014,7 @@ export class AtriumSimulation {
       hardHat: 0xf2b705,
       s: 0.96,
       startX: -3.5,
-      startZ: 3.75,
+      startZ: 4.02,
       startFace: 0,
       startPose: 'hold',
     });
@@ -1019,10 +1030,10 @@ export class AtriumSimulation {
       shoeStyle: 'flat',
       hardHat: 0xf2b705,
       s: 0.94,
-      startX: 3.7,
-      startZ: 8.7,
+      startX: 3.24,
+      startZ: 8.9,
       startFace: -Math.PI / 2,
-      startPose: 'standType',
+      startPose: 'standLowCounter',
     });
   }
 
@@ -1183,7 +1194,26 @@ export class AtriumSimulation {
     return bestLv;
   }
 
-  private resolveCharacterSeparation(actor: PersonActor, lv: number, nx: number, nz: number, allowLiftShaft?: boolean): { x: number; z: number } {
+  private groundElevationAt(lv: number, x: number, z: number): number {
+    if (lv !== 0) return liftY(lv);
+    if (z <= 11.025) return 0;
+    if (Math.abs(x) <= 15.0 && z <= 13.975) {
+      if (z <= 12.025) return 0;
+      if (z <= 12.975) return -0.2;
+      return -0.4;
+    }
+    return -0.608;
+  }
+
+  private resolveCharacterSeparation(
+    actor: PersonActor,
+    lv: number,
+    nx: number,
+    nz: number,
+    allowLiftShaft?: boolean,
+    ignoreCircle?: IgnoreChairCircle,
+    radius?: number
+  ): { x: number; z: number } {
     const minDist = 0.48;
     const minDistSq = minDist * minDist;
     const py = actor.g.position.y;
@@ -1194,7 +1224,7 @@ export class AtriumSimulation {
       if (other === actor || !other.g.visible) return;
       const st = (other as { state?: string }).state;
       if (st === 'inCab' || st === 'away') return;
-      if (Math.abs(other.g.position.y - py) > 0.6) return;
+      if (Math.abs(other.g.position.y - py) > 0.65) return;
       const dx = rx - other.g.position.x;
       const dz = rz - other.g.position.z;
       const dSq = dx * dx + dz * dz;
@@ -1212,17 +1242,27 @@ export class AtriumSimulation {
     for (let i = 0; i < this.STAFF.length; i++) pushFrom(this.STAFF[i]);
     pushFrom(this.guideActor);
 
-    const safe = resolveObstaclePosition(lv, rx, rz, { allowLiftShaft });
+    const safe = resolveObstaclePosition(lv, rx, rz, { allowLiftShaft, ignoreCircle, radius });
     return { x: safe.x, z: safe.z };
   }
 
-  private walkPt(P: PersonActor, gx: number, gz: number, dt: number, opts?: { allowLiftShaft?: boolean }): boolean {
+  private walkPt(
+    P: PersonActor,
+    gx: number,
+    gz: number,
+    dt: number,
+    opts?: { allowLiftShaft?: boolean; ignoreCircle?: IgnoreChairCircle; radius?: number }
+  ): boolean {
     const dx = gx - P.g.position.x;
     const dz = gz - P.g.position.z;
     const dist = Math.hypot(dx, dz);
     if (dist < 0.09) {
       P.g.position.x = gx;
       P.g.position.z = gz;
+      const actorState = (P as { state?: string }).state;
+      if (actorState !== 'inCab' && this.levelFromY(P.g.position.y) === 0) {
+        P.g.position.y = this.groundElevationAt(0, gx, gz);
+      }
       P.moving = false;
       return true;
     }
@@ -1234,10 +1274,25 @@ export class AtriumSimulation {
     const actorState = (P as { state?: string }).state;
     if (actorState !== 'inCab') {
       const lv = this.levelFromY(P.g.position.y);
-      const safe = resolveObstaclePosition(lv, nx, nz, { allowLiftShaft: opts?.allowLiftShaft });
-      const sep = this.resolveCharacterSeparation(P, lv, safe.x, safe.z, opts?.allowLiftShaft);
+      const safe = resolveObstaclePosition(lv, nx, nz, {
+        allowLiftShaft: opts?.allowLiftShaft,
+        ignoreCircle: opts?.ignoreCircle,
+        radius: opts?.radius,
+      });
+      const sep = this.resolveCharacterSeparation(
+        P,
+        lv,
+        safe.x,
+        safe.z,
+        opts?.allowLiftShaft,
+        opts?.ignoreCircle,
+        opts?.radius
+      );
       nx = sep.x;
       nz = sep.z;
+      if (lv === 0) {
+        P.g.position.y = this.groundElevationAt(0, nx, nz);
+      }
     }
 
     P.g.position.x = nx;
@@ -1246,6 +1301,74 @@ export class AtriumSimulation {
     P.moving = true;
 
     if (Math.hypot(gx - nx, gz - nz) < 0.11) {
+      P.moving = false;
+      return true;
+    }
+    return false;
+  }
+
+  private followNavPath(
+    P: PersonActor & { navQueue?: Array<{ x: number; z: number }>; navKey?: string },
+    lv: number,
+    key: string,
+    toX: number,
+    toZ: number,
+    dt: number,
+    options?: {
+      useHomeDock?: { homeX: number; homeZ: number };
+      endBeforeDock?: boolean;
+      allowLiftShaftAtEnd?: boolean;
+    }
+  ): boolean {
+    if (P.navKey !== key || !P.navQueue) {
+      let fromX = P.g.position.x;
+      let fromZ = P.g.position.z;
+      const prefix: Array<{ x: number; z: number }> = [];
+      const dock = options?.useHomeDock
+        ? getChairDockPoint(lv, options.useHomeDock.homeX, options.useHomeDock.homeZ)
+        : null;
+      if (dock && Math.hypot(fromX - options!.useHomeDock!.homeX, fromZ - options!.useHomeDock!.homeZ) < 0.72) {
+        prefix.push(dock);
+        fromX = dock.x;
+        fromZ = dock.z;
+      }
+      const targetDock = options?.endBeforeDock && dock ? dock : { x: toX, z: toZ };
+      const body = buildObstacleAwarePath(lv, fromX, fromZ, targetDock.x, targetDock.z);
+      if (options?.endBeforeDock && dock) {
+        body.push({ x: toX, z: toZ });
+      }
+      P.navQueue = [...prefix, ...body];
+      P.navKey = key;
+    }
+
+    while (P.navQueue.length > 0 && Math.hypot(P.navQueue[0].x - P.g.position.x, P.navQueue[0].z - P.g.position.z) < 0.1) {
+      P.navQueue.shift();
+    }
+    if (P.navQueue.length === 0) {
+      P.moving = false;
+      return true;
+    }
+
+    const wp = P.navQueue[0];
+    const isLast = P.navQueue.length === 1;
+    const nearHomeChair = options?.useHomeDock
+      ? Math.hypot(P.g.position.x - options.useHomeDock.homeX, P.g.position.z - options.useHomeDock.homeZ) < 0.85 ||
+        Math.hypot(wp.x - options.useHomeDock.homeX, wp.z - options.useHomeDock.homeZ) < 0.25
+      : false;
+    const ignoreCircle =
+      nearHomeChair && options?.useHomeDock
+        ? { x: options.useHomeDock.homeX, z: options.useHomeDock.homeZ, r: 0.45 }
+        : undefined;
+
+    const reached = this.walkPt(P, wp.x, wp.z, dt, {
+      allowLiftShaft: isLast && options?.allowLiftShaftAtEnd,
+      ignoreCircle,
+      radius: ignoreCircle ? 0.14 : undefined,
+    });
+    if (reached) {
+      P.navQueue.shift();
+    }
+    if (P.navQueue.length === 0) {
       P.moving = false;
       return true;
     }
@@ -1336,6 +1459,8 @@ export class AtriumSimulation {
             slots[i] = null;
             p.cab = 0;
             p.g.position.y = c.y;
+            p.navQueue = undefined;
+            p.navKey = undefined;
             p.state = tgt === 0 ? 'out' : 'toDesk';
             c.ex = (c.ex || 0) + 1;
           }
@@ -1481,6 +1606,14 @@ export class AtriumSimulation {
 
     const curX = actor.g.position.x;
     const curZ = actor.g.position.z;
+    const homeDock = getChairDockPoint(ag.lv, ag.homeX, ag.homeZ);
+    const leaveWithDock = (destX: number, destZ: number) => {
+      if (homeDock && Math.hypot(curX - ag.homeX, curZ - ag.homeZ) < 0.72) {
+        return [homeDock, ...buildObstacleAwarePath(ag.lv, homeDock.x, homeDock.z, destX, destZ)];
+      }
+      return buildObstacleAwarePath(ag.lv, curX, curZ, destX, destZ);
+    };
+
     ag.stuckTime = 0;
     ag.lastX = curX;
     ag.lastZ = curZ;
@@ -1493,13 +1626,19 @@ export class AtriumSimulation {
       const distHome = Math.hypot(curX - ag.homeX, curZ - ag.homeZ);
       if (distHome > 0.35) {
         ag.mode = 'toHome';
-        ag.queue = buildObstacleAwarePath(ag.lv, curX, curZ, ag.homeX, ag.homeZ);
+        if (homeDock) {
+          ag.queue = [...buildObstacleAwarePath(ag.lv, curX, curZ, homeDock.x, homeDock.z), { x: ag.homeX, z: ag.homeZ }];
+        } else {
+          ag.queue = buildObstacleAwarePath(ag.lv, curX, curZ, ag.homeX, ag.homeZ);
+        }
         ag.targetPose = actor.modes ? pickMode(actor.modes) : ag.homePose;
         ag.targetFace = ag.homeFace;
         setPose(actor, 'stand', this.P_LIB);
       } else {
         ag.mode = 'home';
         ag.queue = [];
+        actor.g.position.x = ag.homeX;
+        actor.g.position.z = ag.homeZ;
         actor.tyaw = ag.homeFace;
         setPose(actor, actor.modes ? pickMode(actor.modes) : ag.homePose, this.P_LIB);
       }
@@ -1511,19 +1650,17 @@ export class AtriumSimulation {
       const thoughtPack = pickThoughtForGoal(brain, 'stretch');
       setBrainThought(brain, thoughtPack.mood, thoughtPack.actionLabel, thoughtPack.thought);
       brain.nextDecisionIn = 8 + Math.random() * 8;
-      const rawSx =
-        ag.lv < 0
+      const rawSx = homeDock
+        ? homeDock.x + (Math.random() - 0.5) * 0.4
+        : ag.lv < 0
           ? curX
-          : Math.max(-17.5, Math.min(17.5, ag.homeX + (Math.random() - 0.5) * 0.9));
-      const rawSz =
-        ag.lv < 0
-          ? curZ
-          : Math.min(9.4, Math.max(2.0, ag.homeZ + (ag.homeZ < 3.5 ? 1.1 : 1.0)));
+          : Math.max(-17.5, Math.min(17.5, curX + (Math.random() - 0.5) * 0.9));
+      const rawSz = homeDock ? homeDock.z : ag.lv < 0 ? curZ : Math.min(9.4, Math.max(2.0, curZ));
       const safeStretch = resolveObstaclePosition(ag.lv, rawSx, rawSz);
       ag.mode = 'toGoal';
       ag.queue =
         Math.hypot(curX - safeStretch.x, curZ - safeStretch.z) > 0.25
-          ? buildObstacleAwarePath(ag.lv, curX, curZ, safeStretch.x, safeStretch.z)
+          ? leaveWithDock(safeStretch.x, safeStretch.z)
           : [];
       ag.targetPose = Math.random() < 0.5 ? 'hold' : 'stand';
       ag.targetFace = (Math.random() - 0.5) * 1.4;
@@ -1547,23 +1684,39 @@ export class AtriumSimulation {
           Math.hypot(other.g.position.x - curX, other.g.position.z - curZ) > 0.8
       );
       if (peers.length > 0) {
-        brain.goal = 'socialize';
         const peer = peers[Math.floor(Math.random() * peers.length)];
         const px = peer.g.position.x;
         const pz = peer.g.position.z;
-        const rawStandZ = ag.lv >= 0 ? Math.min(9.8, Math.max(2.2, pz + (pz > 8.0 ? -0.75 : 0.9))) : pz;
-        const rawStandX = Math.max(-16.8, Math.min(16.8, px + (px > curX ? -0.78 : 0.78)));
-        const safeStand = resolveObstaclePosition(ag.lv, rawStandX, rawStandZ);
-        const faceToPeer = Math.atan2(px - safeStand.x, pz - safeStand.z);
-        const thoughtPack = pickThoughtForGoal(brain, 'socialize', peer.brain!.identity.name);
-        setBrainThought(brain, thoughtPack.mood, thoughtPack.actionLabel, thoughtPack.thought);
-        brain.nextDecisionIn = 10 + Math.random() * 9;
-        ag.mode = 'toGoal';
-        ag.queue = buildObstacleAwarePath(ag.lv, curX, curZ, safeStand.x, safeStand.z);
-        ag.targetPose = Math.random() < 0.55 ? 'talk' : 'collaborate';
-        ag.targetFace = faceToPeer;
-        setPose(actor, 'stand', this.P_LIB);
-        return;
+        const peerDock = getChairDockPoint(ag.lv, px, pz);
+        const candidates = peerDock
+          ? [peerDock]
+          : [
+              { x: px + 0.85, z: pz },
+              { x: px - 0.85, z: pz },
+              { x: px, z: pz + 0.85 },
+              { x: px, z: pz - 0.85 },
+            ];
+        let pickedStand: { x: number; z: number } | null = null;
+        for (const c of candidates) {
+          const check = resolveObstaclePosition(ag.lv, c.x, c.z);
+          if (!check.blocked && Math.hypot(check.x - px, check.z - pz) >= 0.65) {
+            pickedStand = { x: check.x, z: check.z };
+            break;
+          }
+        }
+        if (pickedStand) {
+          brain.goal = 'socialize';
+          const faceToPeer = Math.atan2(px - pickedStand.x, pz - pickedStand.z);
+          const thoughtPack = pickThoughtForGoal(brain, 'socialize', peer.brain!.identity.name);
+          setBrainThought(brain, thoughtPack.mood, thoughtPack.actionLabel, thoughtPack.thought);
+          brain.nextDecisionIn = 10 + Math.random() * 9;
+          ag.mode = 'toGoal';
+          ag.queue = leaveWithDock(pickedStand.x, pickedStand.z);
+          ag.targetPose = Math.random() < 0.55 ? 'talk' : 'collaborate';
+          ag.targetFace = faceToPeer;
+          setPose(actor, 'stand', this.P_LIB);
+          return;
+        }
       }
       goal = ag.lv < 0 ? 'inspect' : 'balcony';
     }
@@ -1574,16 +1727,16 @@ export class AtriumSimulation {
       setBrainThought(brain, thoughtPack.mood, thoughtPack.actionLabel, thoughtPack.thought);
       brain.nextDecisionIn = 10 + Math.random() * 10;
       let gx = Math.max(-15.5, Math.min(15.5, ag.homeX + (Math.random() - 0.5) * 14));
-      let gz = ag.lv === 0 && Math.random() < 0.45 ? 12.2 + Math.random() * 2.5 : 9.85;
+      let gz = ag.lv === 0 ? 9.55 + Math.random() * 0.75 : 9.85;
       let gFace = Math.random() < 0.7 ? 0 : (Math.random() - 0.5) * 0.8;
       if (goal === 'coffeeBreak') {
         if (ag.lv === 4) {
-          gx = -14.8 + Math.random() * 1.4;
-          gz = 3.8 + Math.random() * 0.4;
-          gFace = -Math.PI / 2;
+          gx = -16.8 + Math.random() * 1.4;
+          gz = 3.1 + Math.random() * 0.4;
+          gFace = Math.PI;
         } else if (ag.lv === 0) {
           gx = (Math.random() < 0.5 ? -1 : 1) * (4.8 + Math.random() * 2.4);
-          gz = 9.4 + Math.random() * 1.0;
+          gz = 9.4 + Math.random() * 0.9;
           gFace = 0;
         } else {
           gx = (ag.homeX < 0 ? -1 : 1) * (13.2 + Math.random() * 1.6);
@@ -1593,7 +1746,7 @@ export class AtriumSimulation {
       }
       const safeGoal = resolveObstaclePosition(ag.lv, gx, gz);
       ag.mode = 'toGoal';
-      ag.queue = buildObstacleAwarePath(ag.lv, curX, curZ, safeGoal.x, safeGoal.z);
+      ag.queue = leaveWithDock(safeGoal.x, safeGoal.z);
       ag.targetPose = goal === 'coffeeBreak' || Math.random() < 0.35 ? 'coffee' : 'stand';
       ag.targetFace = gFace;
       setPose(actor, 'stand', this.P_LIB);
@@ -1609,41 +1762,44 @@ export class AtriumSimulation {
     const stations: Array<{ x: number; z: number; face: number; pose: string }> =
       ag.lv === -1
         ? [
-            { x: -6.5, z: 2.15, face: Math.PI, pose: 'point' },
-            { x: -2.5, z: 2.15, face: Math.PI, pose: 'readDoc' },
-            { x: 1.5, z: 2.15, face: Math.PI, pose: 'hold' },
+            { x: -6.5, z: 1.88, face: Math.PI, pose: 'inspectPanel' },
+            { x: -2.5, z: 1.88, face: Math.PI, pose: 'readDoc' },
+            { x: 1.5, z: 1.88, face: Math.PI, pose: 'hold' },
             { x: -1.6, z: 4.35, face: -Math.PI / 2, pose: 'hold' },
-            { x: -8.5, z: 4.35, face: Math.PI, pose: 'standType' },
-            { x: -5.4, z: 4.35, face: 0, pose: 'point' },
-            { x: 5.6, z: 4.35, face: Math.PI, pose: 'standType' },
+            { x: -8.5, z: 3.96, face: Math.PI, pose: 'inspectPanel' },
+            { x: -5.4, z: 3.96, face: Math.PI, pose: 'readDoc' },
+            { x: 5.6, z: 3.96, face: Math.PI, pose: 'inspectPanel' },
+            { x: 5.6, z: 6.48, face: Math.PI, pose: 'inspectPanel' },
+            { x: -8.5, z: 6.48, face: Math.PI, pose: 'inspectPanel' },
+            { x: -11.82, z: 7.8, face: -Math.PI / 2, pose: 'inspectPanel' },
             { x: 8.6, z: 7.3, face: -Math.PI / 2, pose: 'carry' },
-            { x: -10.8, z: 7.3, face: Math.PI, pose: 'readDoc' },
             { x: 0.6, z: 7.4, face: Math.PI, pose: 'radio' },
           ]
         : ag.lv === -2
           ? [
-              { x: 7.1, z: 3.4, face: Math.PI / 2, pose: 'readDoc' },
+              { x: 7.55, z: 3.4, face: Math.PI / 2, pose: 'readDoc' },
               { x: 7.1, z: 5.3, face: 0, pose: 'radio' },
-              { x: 9.2, z: 5.3, face: Math.PI, pose: 'point' },
-              { x: 2.8, z: 2.25, face: Math.PI, pose: 'point' },
-              { x: -3.5, z: 2.25, face: Math.PI, pose: 'readDoc' },
-              { x: -7.5, z: 2.25, face: Math.PI, pose: 'hold' },
-              { x: -3.5, z: 3.75, face: 0, pose: 'hold' },
+              { x: 9.2, z: 4.62, face: Math.PI, pose: 'inspectPanel' },
+              { x: 2.8, z: 1.8, face: Math.PI, pose: 'inspectPanel' },
+              { x: -3.5, z: 1.86, face: Math.PI, pose: 'inspectPanel' },
+              { x: -7.5, z: 1.86, face: Math.PI, pose: 'readDoc' },
+              { x: -3.5, z: 4.02, face: 0, pose: 'hold' },
+              { x: -3.5, z: 5.82, face: Math.PI, pose: 'inspectPanel' },
               { x: 0.4, z: 7.4, face: -Math.PI / 2, pose: 'readDoc' },
-              { x: 3.7, z: 8.7, face: -Math.PI / 2, pose: 'standType' },
+              { x: 3.24, z: 8.9, face: -Math.PI / 2, pose: 'standLowCounter' },
               { x: 4.4, z: 5.8, face: Math.PI, pose: 'carry' },
             ]
           : [
               { x: -5.2, z: 9.4, face: 0.15, pose: 'radio' },
               { x: 5.2, z: 9.4, face: -0.15, pose: 'stand' },
-              { x: 3.6, z: 7.2, face: 0, pose: 'readDoc' },
-              { x: -3.6, z: 7.4, face: 0.3, pose: 'hold' },
-              { x: 0.2, z: 12.2, face: 0, pose: 'stand' },
+              { x: 4.6, z: 7.2, face: 0, pose: 'readDoc' },
+              { x: -4.6, z: 7.4, face: 0.3, pose: 'hold' },
+              { x: 0.2, z: 10.2, face: 0, pose: 'stand' },
             ];
 
     const pick = stations[Math.floor(Math.random() * stations.length)];
     ag.mode = 'toGoal';
-    ag.queue = buildObstacleAwarePath(ag.lv, curX, curZ, pick.x, pick.z);
+    ag.queue = leaveWithDock(pick.x, pick.z);
     ag.targetPose = pick.pose;
     ag.targetFace = pick.face;
     setPose(actor, ag.targetPose === 'carry' ? 'carry' : 'stand', this.P_LIB);
@@ -1656,9 +1812,17 @@ export class AtriumSimulation {
 
     if (ag.queue.length > 0) {
       const next = ag.queue[0];
+      const dock = getChairDockPoint(ag.lv, ag.homeX, ag.homeZ);
+      const distHome = Math.hypot(actor.g.position.x - ag.homeX, actor.g.position.z - ag.homeZ);
+      const nearDockTarget = Math.hypot(next.x - ag.homeX, next.z - ag.homeZ) < 0.25;
+      const ignoreCircle =
+        dock && (distHome < 0.85 || nearDockTarget) ? { x: ag.homeX, z: ag.homeZ, r: 0.45 } : undefined;
       const prevSpd = actor.speed;
       actor.speed = ag.walkSpeed;
-      const reached = this.walkPt(actor, next.x, next.z, dt);
+      const reached = this.walkPt(actor, next.x, next.z, dt, {
+        ignoreCircle,
+        radius: ignoreCircle ? 0.14 : undefined,
+      });
       actor.speed = prevSpd;
 
       const moved = Math.hypot(actor.g.position.x - ag.lastX, actor.g.position.z - ag.lastZ);
@@ -1678,6 +1842,10 @@ export class AtriumSimulation {
         }
         ag.queue.shift();
         if (ag.queue.length === 0) {
+          if (ag.mode === 'toHome') {
+            actor.g.position.x = ag.homeX;
+            actor.g.position.z = ag.homeZ;
+          }
           actor.tyaw = ag.targetFace;
           setPose(actor, ag.targetPose, this.P_LIB);
           ag.mode = ag.mode === 'toHome' ? 'home' : 'atGoal';
@@ -1714,8 +1882,12 @@ export class AtriumSimulation {
 
     if (p.state === 'away') {
       if (w === 'desk') {
+        const sx = p.sd * (1.2 + Math.random() * 2.0);
+        const sz = 15.0 + Math.random() * 3.0;
         p.g.visible = true;
-        p.g.position.set(p.sd * (Math.random() * 3 + 2), 0, 14.5 + Math.random() * 4);
+        p.g.position.set(sx, this.groundElevationAt(0, sx, sz), sz);
+        p.navQueue = undefined;
+        p.navKey = undefined;
         p.state = 'toLift';
         if (p.brain) {
           setBrainThought(
@@ -1730,14 +1902,18 @@ export class AtriumSimulation {
     }
 
     if (p.state === 'out') {
-      const tx = p.sd * (2 + Math.random() * 2);
+      const tx = p.sd * 2.2;
       const tz = w === 'lunch' ? 12.5 : 17.5;
-      if (this.walkPt(p, tx, tz, dt)) {
+      if (this.followNavPath(p, 0, `w-out-${w}-${p.sd}`, tx, tz, dt)) {
         if (w === 'home') {
           p.state = 'away';
           p.g.visible = false;
+          p.navQueue = undefined;
+          p.navKey = undefined;
         }
       } else if (w === 'desk') {
+        p.navQueue = undefined;
+        p.navKey = undefined;
         p.state = 'toLift';
       }
       return;
@@ -1760,6 +1936,8 @@ export class AtriumSimulation {
               : 'Great day’s work—heading downstairs to catch my ride home.'
           );
         }
+        p.navQueue = undefined;
+        p.navKey = undefined;
         p.state = 'toLift';
       } else {
         this.stepFreeAgent(p, dt);
@@ -1769,39 +1947,34 @@ export class AtriumSimulation {
 
     if (p.state === 'toLift') {
       if (p.pose !== 'stand') setPose(p, 'stand', this.P_LIB);
-      if (w === 'desk') {
-        if (p.g.position.z > 10.6 && Math.abs(p.g.position.x) < 10.5) {
-          this.walkPt(p, p.sd * 8.5, 9.8, dt);
-        } else if (Math.abs(p.g.position.x - gx) > 1.2 && Math.abs(p.g.position.z - 9.8) > 0.35) {
-          this.walkPt(p, p.g.position.x, 9.8, dt);
-        } else if (Math.abs(p.g.position.x - gx) > 0.65) {
-          this.walkPt(p, gx, 9.8, dt);
-        } else if (this.walkPt(p, gx, LANE, dt, { allowLiftShaft: true })) {
-          p.state = 'wait';
-          p.tyaw = p.sd * Math.PI / 2;
-        }
-      } else {
-        if (Math.abs(p.g.position.x - gx) > 1.2 && Math.abs(p.g.position.z - 9.8) > 0.3) {
-          this.walkPt(p, p.g.position.x, 9.8, dt);
-        } else if (Math.abs(p.g.position.x - gx) > 0.65) {
-          this.walkPt(p, gx, 9.8, dt);
-        } else if (this.walkPt(p, gx, LANE, dt, { allowLiftShaft: true })) {
-          p.state = 'wait';
-          p.tyaw = p.sd * Math.PI / 2;
-        }
+      const liftLv = w === 'desk' ? 0 : p.d.lv;
+      if (
+        this.followNavPath(p, liftLv, `w-lift-${liftLv}-${p.sd}`, gx, LANE, dt, {
+          useHomeDock: w === 'desk' ? undefined : { homeX: p.seat.x, homeZ: p.seat.z },
+        })
+      ) {
+        p.state = 'wait';
+        p.tyaw = (p.sd * Math.PI) / 2;
+        p.navQueue = undefined;
+        p.navKey = undefined;
       }
       return;
     }
 
     if (p.state === 'toDesk') {
       if (p.pose !== 'stand') setPose(p, 'stand', this.P_LIB);
-      if (Math.abs(p.g.position.x - p.seat.x) > 0.5 && Math.abs(p.g.position.z - 9.8) > 0.35) {
-        this.walkPt(p, p.g.position.x, 9.8, dt, { allowLiftShaft: Math.abs(p.g.position.x) > 16.5 });
-      } else if (Math.abs(p.g.position.x - p.seat.x) > 0.2) {
-        this.walkPt(p, p.seat.x, 9.8, dt, { allowLiftShaft: Math.abs(p.g.position.x) > 16.5 });
-      } else if (this.walkPt(p, p.seat.x, p.seat.z, dt)) {
+      if (
+        this.followNavPath(p, p.d.lv, `w-desk-${p.d.lv}`, p.seat.x, p.seat.z, dt, {
+          useHomeDock: { homeX: p.seat.x, homeZ: p.seat.z },
+          endBeforeDock: true,
+        })
+      ) {
+        p.g.position.x = p.seat.x;
+        p.g.position.z = p.seat.z;
         p.state = 'atDesk';
         p.tyaw = Math.PI;
+        p.navQueue = undefined;
+        p.navKey = undefined;
         setPose(p, p.modes ? pickMode(p.modes) : 'type', this.P_LIB);
         if (p.brain) {
           const tp = pickThoughtForGoal(p.brain, 'work');
@@ -1817,28 +1990,36 @@ export class AtriumSimulation {
 
     if (p.state === 'away') {
       if (on) {
+        const sx = p.sd * 2.2;
         p.g.visible = true;
-        p.g.position.set(p.sd * 3, 0, 15);
+        p.g.position.set(sx, this.groundElevationAt(0, sx, 15.2), 15.2);
+        p.navQueue = undefined;
+        p.navKey = undefined;
         p.state = 'in';
       }
       return;
     }
     if (p.state === 'in') {
       if (p.lv === 0) {
-        if (Math.abs(p.dx) < 3.7 && p.dz < 5.7 && p.g.position.z > 6.5) {
-          this.walkPt(p, p.sd * 4.3, 6.2, dt);
-        } else if (this.walkPt(p, p.dx, p.dz, dt)) {
+        if (
+          this.followNavPath(p, 0, `d-in0-${p.dx}-${p.dz}`, p.dx, p.dz, dt, {
+            useHomeDock: { homeX: p.dx, homeZ: p.dz },
+            endBeforeDock: true,
+          })
+        ) {
+          p.g.position.x = p.dx;
+          p.g.position.z = p.dz;
           p.state = 'atDesk';
           p.tyaw = p.df;
+          p.navQueue = undefined;
+          p.navKey = undefined;
           setPose(p, p.dpose, this.P_LIB);
         }
-      } else if (p.g.position.z > 10.6 && Math.abs(p.g.position.x) < 10.5) {
-        this.walkPt(p, p.sd * 8.5, 9.8, dt);
-      } else if (Math.abs(p.g.position.x - gx) > 0.65) {
-        this.walkPt(p, gx, 9.8, dt);
-      } else if (this.walkPt(p, gx, LANE, dt, { allowLiftShaft: true })) {
+      } else if (this.followNavPath(p, 0, `d-inlift-${p.sd}`, gx, LANE, dt)) {
         p.state = 'wait';
-        p.tyaw = p.sd * Math.PI / 2;
+        p.tyaw = (p.sd * Math.PI) / 2;
+        p.navQueue = undefined;
+        p.navKey = undefined;
       }
       return;
     }
@@ -1849,6 +2030,8 @@ export class AtriumSimulation {
           ag.mode = 'home';
           ag.queue = [];
         }
+        p.navQueue = undefined;
+        p.navKey = undefined;
         p.state = p.lv === 0 ? 'out' : 'toLift';
       } else {
         this.stepFreeAgent(p, dt);
@@ -1857,41 +2040,46 @@ export class AtriumSimulation {
     }
     if (p.state === 'toLift') {
       if (p.pose !== 'stand') setPose(p, 'stand', this.P_LIB);
-      if (p.lv >= 4 && p.g.position.z < 3.6 && Math.abs(p.g.position.x - p.dx) < 1.8) {
-        const sideX = p.dx >= 12 ? p.dx - 2.15 : p.dx < -16 ? -14.55 : p.dx - 1.55;
-        this.walkPt(p, sideX, p.g.position.z, dt);
-      } else if (Math.abs(p.g.position.x - gx) > 1.2 && Math.abs(p.g.position.z - 9.8) > 0.3) {
-        this.walkPt(p, p.g.position.x, 9.8, dt);
-      } else if (Math.abs(p.g.position.x - gx) > 0.65) {
-        this.walkPt(p, gx, 9.8, dt);
-      } else if (this.walkPt(p, gx, LANE, dt, { allowLiftShaft: true })) {
+      if (
+        this.followNavPath(p, p.lv, `d-lift-${p.lv}-${p.sd}`, gx, LANE, dt, {
+          useHomeDock: { homeX: p.dx, homeZ: p.dz },
+        })
+      ) {
         p.state = 'wait';
-        p.tyaw = p.sd * Math.PI / 2;
+        p.tyaw = (p.sd * Math.PI) / 2;
+        p.navQueue = undefined;
+        p.navKey = undefined;
       }
       return;
     }
     if (p.state === 'toDesk') {
       if (p.pose !== 'stand') setPose(p, 'stand', this.P_LIB);
-      const bypassX = p.lv >= 4 && p.dz < 3.2 ? (p.dx >= 12 ? p.dx - 2.15 : p.dx < -16 ? -14.55 : p.dx - 1.55) : p.dx;
-      if (Math.abs(p.g.position.x - bypassX) > 0.45 && Math.abs(p.g.position.z - 9.8) > 0.35) {
-        this.walkPt(p, p.g.position.x, 9.8, dt, { allowLiftShaft: Math.abs(p.g.position.x) > 16.5 });
-      } else if (Math.abs(p.g.position.x - bypassX) > 0.25 && p.g.position.z > 8.5) {
-        this.walkPt(p, bypassX, 9.8, dt, { allowLiftShaft: Math.abs(p.g.position.x) > 16.5 });
-      } else if (Math.abs(p.g.position.z - p.dz) > 0.35 && Math.abs(p.g.position.x - bypassX) < 0.45 && bypassX !== p.dx) {
-        this.walkPt(p, bypassX, p.dz, dt);
-      } else if (this.walkPt(p, p.dx, p.dz, dt)) {
+      if (
+        this.followNavPath(p, p.lv, `d-desk-${p.lv}`, p.dx, p.dz, dt, {
+          useHomeDock: { homeX: p.dx, homeZ: p.dz },
+          endBeforeDock: true,
+        })
+      ) {
+        p.g.position.x = p.dx;
+        p.g.position.z = p.dz;
         p.state = 'atDesk';
         p.tyaw = p.df;
+        p.navQueue = undefined;
+        p.navKey = undefined;
         setPose(p, p.dpose, this.P_LIB);
       }
       return;
     }
     if (p.state === 'out') {
-      if (Math.abs(p.g.position.x) < 3.7 && p.g.position.z < 5.7) {
-        this.walkPt(p, p.sd * 4.3, 6.2, dt);
-      } else if (this.walkPt(p, p.sd * 2.5, 17, dt)) {
+      if (
+        this.followNavPath(p, 0, `d-out-${p.sd}`, p.sd * 2.2, 17, dt, {
+          useHomeDock: { homeX: p.dx, homeZ: p.dz },
+        })
+      ) {
         p.state = 'away';
         p.g.visible = false;
+        p.navQueue = undefined;
+        p.navKey = undefined;
       }
     }
   }
@@ -1968,9 +2156,13 @@ export class AtriumSimulation {
 
   public snapAll() {
     const m = this.simMin;
+    this.guideNavQueue = [];
+    this.guideNavKey = '';
     for (const p of this.WORKERS) {
       const w = this.wantOf(p, m);
       p.want = w;
+      p.navQueue = undefined;
+      p.navKey = undefined;
       const ag = this.freeAgents.get(p);
       if (ag) {
         ag.mode = 'home';
@@ -1990,6 +2182,8 @@ export class AtriumSimulation {
     }
     const dayOn = m >= 480 && m < 1050;
     for (const p of this.DAYONLY) {
+      p.navQueue = undefined;
+      p.navKey = undefined;
       const ag = this.freeAgents.get(p);
       if (ag) {
         ag.mode = 'home';
@@ -2065,6 +2259,8 @@ export class AtriumSimulation {
     this.tourArr = false;
     this.tourHold = 0;
     this.guideActor.g.visible = true;
+    this.guideNavQueue = [];
+    this.guideNavKey = '';
     const gag = this.freeAgents.get(this.guideActor);
     if (gag) {
       gag.mode = 'home';
@@ -2090,6 +2286,8 @@ export class AtriumSimulation {
     this.tourPlay = false;
     this.tourSt = 'idle';
     this.tourCam.on = false;
+    this.guideNavQueue = [];
+    this.guideNavKey = '';
     this.cabs[-1].guide = false;
     this.cabs[1].guide = false;
     this.cabs[-1].gw = false;
@@ -2116,6 +2314,8 @@ export class AtriumSimulation {
     this.tourArr = false;
     this.tourHold = 0;
     this.tourCab = s.cx < 0 ? -1 : 1;
+    this.guideNavQueue = [];
+    this.guideNavKey = '';
     setPose(this.guideActor, 'stand', this.P_LIB);
     this.tourSt = this.tourLv === s.lv ? 'toDest' : 'toLift';
     this.cabs[-1].guide = false;
@@ -2163,13 +2363,28 @@ export class AtriumSimulation {
     const cx = sd * LIFTX;
     const c = this.cabs[sd];
 
+    const stepGuideAlong = (lv: number, key: string, toX: number, toZ: number): boolean => {
+      if (this.guideNavKey !== key) {
+        this.guideNavQueue = buildObstacleAwarePath(lv, this.guideActor.g.position.x, this.guideActor.g.position.z, toX, toZ);
+        this.guideNavKey = key;
+      }
+      while (
+        this.guideNavQueue.length > 0 &&
+        Math.hypot(this.guideNavQueue[0].x - this.guideActor.g.position.x, this.guideNavQueue[0].z - this.guideActor.g.position.z) < 0.1
+      ) {
+        this.guideNavQueue.shift();
+      }
+      if (this.guideNavQueue.length === 0) return true;
+      const wp = this.guideNavQueue[0];
+      if (this.walkPt(this.guideActor, wp.x, wp.z, dt)) {
+        this.guideNavQueue.shift();
+      }
+      return this.guideNavQueue.length === 0;
+    };
+
     if (this.tourSt === 'toLift') {
       const gx = sd * (LIFTX - sd * 1.45);
-      if (Math.abs(this.guideActor.g.position.x - gx) > 0.8 && Math.abs(this.guideActor.g.position.z - 9.8) > 0.35) {
-        this.walkPt(this.guideActor, this.guideActor.g.position.x, 9.8, dt);
-      } else if (Math.abs(this.guideActor.g.position.x - gx) > 0.65) {
-        this.walkPt(this.guideActor, gx, 9.8, dt);
-      } else if (this.walkPt(this.guideActor, gx, LANE, dt, { allowLiftShaft: true })) {
+      if (stepGuideAlong(this.tourLv, `g-lift-${this.tourI}-${this.tourLv}`, gx, LANE)) {
         this.tourSt = 'waitCab';
         this.guideActor.tyaw = (sd * Math.PI) / 2;
         c.guide = true;
@@ -2180,6 +2395,8 @@ export class AtriumSimulation {
         if (this.walkPt(this.guideActor, cx, LANE, dt, { allowLiftShaft: true })) {
           this.tourSt = 'toDest';
           this.tourLv = s.lv;
+          this.guideNavQueue = [];
+          this.guideNavKey = '';
           this.guideActor.tyaw = (-sd * Math.PI) / 2;
           c.gw = false;
         }
@@ -2200,11 +2417,7 @@ export class AtriumSimulation {
         } else {
           const destX = s.cx + (s.cx < 0 ? 1.8 : -1.8);
           const destZ = 8.4;
-          if (Math.abs(this.guideActor.g.position.x - destX) > 0.4 && Math.abs(this.guideActor.g.position.z - 9.8) > 0.35) {
-            this.walkPt(this.guideActor, this.guideActor.g.position.x, 9.8, dt);
-          } else if (Math.abs(this.guideActor.g.position.x - destX) > 0.2) {
-            this.walkPt(this.guideActor, destX, 9.8, dt);
-          } else if (this.walkPt(this.guideActor, destX, destZ, dt)) {
+          if (stepGuideAlong(s.lv, `g-dest-${this.tourI}`, destX, destZ)) {
             this.tourSt = 'arrived';
             this.tourArr = true;
             this.tourHold = 0;
@@ -2567,26 +2780,11 @@ export class AtriumSimulation {
       this.walkPos.z = Math.max(0.85, Math.min(54, this.walkPos.z));
     }
 
-    // Solid collision against architectural walls, partitions, desks, counters, planters & props
-    if (this.walkFloor > 0 || this.walkPos.z <= 18.6) {
+    // Solid collision against architectural walls, partitions, desks, counters, planters & props on active floor
+    if (this.walkFloor > 0 || this.walkPos.z <= 54.0) {
       const safeWalk = resolveObstaclePosition(this.walkFloor, this.walkPos.x, this.walkPos.z, { radius: 0.38 });
       this.walkPos.x = safeWalk.x;
       this.walkPos.z = safeWalk.z;
-    }
-
-    // Soft collision against furnishings & seated staff
-    for (const p of this.PLOCK) {
-      const dx = this.walkPos.x - p.x;
-      const dz = this.walkPos.z - p.z;
-      const d = Math.hypot(dx, dz);
-      if (d < p.r) {
-        if (d > 0.001) {
-          this.walkPos.x = p.x + (dx / d) * p.r;
-          this.walkPos.z = p.z + (dz / d) * p.r;
-        } else {
-          this.walkPos.z = p.z + p.r;
-        }
-      }
     }
 
     // Collide against active standing/walking staff & guide on the current floor
@@ -2622,7 +2820,7 @@ export class AtriumSimulation {
       }
     }
 
-    const baseY = LV[this.walkFloor] + 1.65;
+    const baseY = this.groundElevationAt(this.walkFloor, this.walkPos.x, this.walkPos.z) + 1.65;
     const bob = mag > 0.05 ? Math.sin(this.walkStep) * 0.042 : 0;
     camera.position.set(this.walkPos.x, baseY + bob, this.walkPos.z);
     camera.rotation.order = 'YXZ';
@@ -2819,11 +3017,11 @@ export class AtriumSimulation {
     for (const a of actors) {
       if (a.state && a.state !== 'atDesk') {
         transit++;
-      } else if (a.pose === 'type' || a.pose === 'standType' || a.pose === 'writeNotes') {
+      } else if (a.pose === 'type' || a.pose === 'standType' || a.pose === 'standCounter' || a.pose === 'standLowCounter' || a.pose === 'writeNotes') {
         typing++;
-      } else if (a.pose === 'talk' || a.pose === 'collaborate' || a.pose === 'meeting') {
+      } else if (a.pose === 'talk' || a.pose === 'sitTalk' || a.pose === 'collaborate' || a.pose === 'sitCollaborate' || a.pose === 'meeting') {
         talking++;
-      } else if (a.pose === 'phone') {
+      } else if (a.pose === 'phone' || a.pose === 'standPhone') {
         phone++;
       } else if (a.pose === 'coffee') {
         coffee++;
@@ -2832,7 +3030,9 @@ export class AtriumSimulation {
         a.pose === 'think' ||
         a.pose === 'monitorLook' ||
         a.pose === 'leanScreen' ||
-        a.pose === 'readDoc'
+        a.pose === 'readDoc' ||
+        a.pose === 'sitReadDoc' ||
+        a.pose === 'inspectPanel'
       ) {
         seated++;
       } else {
@@ -3102,16 +3302,18 @@ export class AtriumSimulation {
         return 'Temporarily away from desk';
       }
       if (pose === 'type') return 'Actively typing at desk';
-      if (pose === 'standType') return 'Working at standing counter';
-      if (pose === 'phone') return 'On a live client / team call';
+      if (pose === 'standType' || pose === 'standCounter') return 'Working at standing counter';
+      if (pose === 'standLowCounter') return 'Servicing hardware at maintenance trolley';
+      if (pose === 'inspectPanel') return 'Inspecting equipment control panel';
+      if (pose === 'phone' || pose === 'standPhone') return 'On a live client / team call';
       if (pose === 'point') return 'Reviewing & pointing on screen';
-      if (pose === 'talk' || pose === 'collaborate') return 'Collaborating with colleague';
+      if (pose === 'talk' || pose === 'sitTalk' || pose === 'collaborate' || pose === 'sitCollaborate') return 'Collaborating with colleague';
       if (pose === 'sit') return 'Working on laptop in ergonomic chair';
       if (pose === 'monitorLook') return 'Examining computer monitor';
       if (pose === 'leanScreen') return 'Leaning forward inspecting screen';
       if (pose === 'think') return 'Thinking through architecture at desk';
       if (pose === 'writeNotes') return 'Writing notes in notebook';
-      if (pose === 'readDoc') return 'Reviewing printed documents';
+      if (pose === 'readDoc' || pose === 'sitReadDoc') return 'Reviewing printed documents';
       if (pose === 'meeting') return 'Participating in conference meeting';
       return 'Working at workstation';
     };

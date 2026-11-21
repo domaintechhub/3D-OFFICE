@@ -171,16 +171,16 @@ export function getHumanMicroMaps(): HumanMicroMaps {
   skinNormalTex.repeat.set(4, 4);
 
   const skinRoughTex = makeGreyTex(
-    'skin_rough_v4',
+    'skin_rough_v5',
     256,
     256,
     (g, W, H) => {
-      g.fillStyle = '#b0b0b0';
+      g.fillStyle = '#d4d4d4';
       g.fillRect(0, 0, W, H);
       for (let i = 0; i < 3600; i++) {
         const px = (((i * 4973) % 997) / 997) * W;
         const py = (((i * 8191) % 997) / 997) * H;
-        const v = 152 + (i % 56);
+        const v = 198 + (i % 44);
         g.fillStyle = `rgb(${v},${v},${v})`;
         g.fillRect(px, py, 2.2, 2.2);
       }
@@ -299,22 +299,22 @@ export function getHumanMicroMaps(): HumanMicroMaps {
 
   // 5. Hair strand & curl maps
   const hairStrandTex = makeColorTex(
-    'hair_strand_v4',
+    'hair_strand_v6',
     256,
     256,
     (g, W, H) => {
-      g.fillStyle = '#d4d4d4';
+      g.fillStyle = '#c8c8c8';
       g.fillRect(0, 0, W, H);
       for (let x = 0; x < W; x += 2) {
-        const v = 160 + ((x * 37) % 82);
+        const v = 186 + ((x * 29) % 36);
         g.fillStyle = `rgb(${v},${v},${v})`;
         g.fillRect(x, 0, 1.4, H);
       }
-      for (let i = 0; i < 500; i++) {
+      for (let i = 0; i < 400; i++) {
         const px = (((i * 1933) % 997) / 997) * W;
         const py = (((i * 4447) % 997) / 997) * H;
-        g.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.09)' : 'rgba(18,18,18,0.1)';
-        g.fillRect(px, py, 1.5, 18);
+        g.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.04)' : 'rgba(18,18,18,0.06)';
+        g.fillRect(px, py, 1.4, 14);
       }
     },
     4,
@@ -455,7 +455,7 @@ function shadeHex(hex: number, lumShift: number, satShift = 0): string {
  * limbal ring, radially striated iris, golden collarette, pupil) mapped around +Z pole.
  */
 export function getEyeIrisTexture(irisHex: number): THREE.CanvasTexture {
-  const key = `eyev4_${irisHex.toString(16)}`;
+  const key = `eyev5_${irisHex.toString(16)}`;
   const existing = EYE_TEX_CACHE.get(key);
   if (existing) return existing;
 
@@ -463,24 +463,24 @@ export function getEyeIrisTexture(irisHex: number): THREE.CanvasTexture {
   const H = 256;
   const [cv, g] = makeCanvas(W, H);
   const irisCss = `#${irisHex.toString(16).padStart(6, '0')}`;
-  const irisBright = shadeHex(irisHex, 0.14, 0.08);
+  const irisBright = shadeHex(irisHex, 0.12, 0.08);
   const irisDark = shadeHex(irisHex, -0.1, 0.04);
 
   // Equirectangular map where +Z front pole sits at u=0.5, v=0.5
-  const bg = g.createRadialGradient(W * 0.5, H * 0.5, 22, W * 0.5, H * 0.5, W * 0.45);
-  bg.addColorStop(0, '#f3eee7');
-  bg.addColorStop(0.55, '#e8dfd5');
-  bg.addColorStop(1, '#c9b4a8');
+  const bg = g.createRadialGradient(W * 0.5, H * 0.5, 25, W * 0.5, H * 0.5, W * 0.45);
+  bg.addColorStop(0, '#efe9e1');
+  bg.addColorStop(0.55, '#e2d7cc');
+  bg.addColorStop(1, '#c2aca0');
   g.fillStyle = bg;
   g.fillRect(0, 0, W, H);
 
   // Subtle natural sclera micro-veins toward outer edges
-  g.strokeStyle = 'rgba(175, 82, 74, 0.16)';
+  g.strokeStyle = 'rgba(175, 82, 74, 0.14)';
   g.lineWidth = 0.85;
   for (let i = 0; i < 18; i++) {
     const a = (i / 18) * Math.PI * 2;
     g.beginPath();
-    g.moveTo(W * 0.5 + Math.cos(a) * 32, H * 0.5 + Math.sin(a) * 32);
+    g.moveTo(W * 0.5 + Math.cos(a) * 35, H * 0.5 + Math.sin(a) * 35);
     g.quadraticCurveTo(
       W * 0.5 + Math.cos(a + 0.18) * 58,
       H * 0.5 + Math.sin(a + 0.18) * 58,
@@ -492,12 +492,12 @@ export function getEyeIrisTexture(irisHex: number): THREE.CanvasTexture {
 
   const cx = W * 0.5;
   const cy = H * 0.5;
-  const irisR = 23; // ~32 deg cone on front of 12mm eyeball
+  const irisR = 26.5;
 
   // Dark limbal ring
   g.fillStyle = '#120d0a';
   g.beginPath();
-  g.arc(cx, cy, irisR + 2.2, 0, Math.PI * 2);
+  g.arc(cx, cy, irisR + 2.4, 0, Math.PI * 2);
   g.fill();
 
   // Iris base gradient
@@ -513,10 +513,10 @@ export function getEyeIrisTexture(irisHex: number): THREE.CanvasTexture {
   // Radial iris crypts & fibers
   for (let r = 0; r < 48; r++) {
     const a = (r / 48) * Math.PI * 2;
-    g.strokeStyle = r % 2 === 0 ? 'rgba(255,220,175,0.22)' : 'rgba(18,10,6,0.25)';
+    g.strokeStyle = r % 2 === 0 ? 'rgba(255,220,175,0.2)' : 'rgba(18,10,6,0.25)';
     g.lineWidth = 0.8;
     g.beginPath();
-    g.moveTo(cx + Math.cos(a) * 8.5, cy + Math.sin(a) * 8.5);
+    g.moveTo(cx + Math.cos(a) * 9.5, cy + Math.sin(a) * 9.5);
     g.lineTo(cx + Math.cos(a) * (irisR - 1.5), cy + Math.sin(a) * (irisR - 1.5));
     g.stroke();
   }
@@ -524,7 +524,7 @@ export function getEyeIrisTexture(irisHex: number): THREE.CanvasTexture {
   // Pupil
   g.fillStyle = '#060608';
   g.beginPath();
-  g.arc(cx, cy, 8.2, 0, Math.PI * 2);
+  g.arc(cx, cy, 9.2, 0, Math.PI * 2);
   g.fill();
 
   const tex = new THREE.CanvasTexture(cv);
@@ -554,7 +554,7 @@ export interface FaceTextureOptions {
 export function getPhotorealFaceTexture(opts: FaceTextureOptions): THREE.CanvasTexture {
   const size = opts.size || 512;
   const key = [
-    'facev5',
+    'facev6',
     size,
     opts.skinHex.toString(16),
     opts.hairHex.toString(16),
@@ -574,19 +574,19 @@ export function getPhotorealFaceTexture(opts: FaceTextureOptions): THREE.CanvasT
   const [cv, g] = makeCanvas(W, H);
 
   const baseCss = `#${opts.skinHex.toString(16).padStart(6, '0')}`;
-  const shadowCss = shadeHex(opts.skinHex, -0.12, 0.04);
-  const deepShadowCss = shadeHex(opts.skinHex, -0.22, 0.05);
-  const warmSubsurfaceCss = shadeHex(opts.skinHex, -0.015, 0.17);
-  const highlightCss = shadeHex(opts.skinHex, 0.065, -0.02);
+  const shadowCss = shadeHex(opts.skinHex, -0.1, 0.04);
+  const deepShadowCss = shadeHex(opts.skinHex, -0.2, 0.05);
+  const warmSubsurfaceCss = shadeHex(opts.skinHex, -0.01, 0.14);
+  const highlightCss = shadeHex(opts.skinHex, 0.038, -0.01);
   const hairCss = `#${opts.hairHex.toString(16).padStart(6, '0')}`;
 
-  // 1. Base dermal tone + natural organic melanin mottling
+  // 1. Base dermal tone + subtle organic melanin mottling
   g.fillStyle = baseCss;
   g.fillRect(0, 0, W, H);
 
   const prng = (i: number) => ((i * 9301 + 49297 + opts.freckleSeed * 233) % 233280) / 233280;
   for (let i = 0; i < 820; i++) {
-    g.globalAlpha = 0.036;
+    g.globalAlpha = 0.025;
     g.fillStyle = i % 2 === 0 ? highlightCss : shadowCss;
     g.beginPath();
     g.arc(prng(i * 2) * W, prng(i * 2 + 1) * H, (3.2 + prng(i + 99) * 14) * sc, 0, Math.PI * 2);
@@ -610,12 +610,12 @@ export function getPhotorealFaceTexture(opts: FaceTextureOptions): THREE.CanvasT
   };
 
   // Forehead, nasal bridge, cheekbone flush, chin warmth
-  addRadial(W * 0.5, H * 0.34, 52 * sc, 28 * sc, highlightCss, 0.28);
-  addRadial(W * 0.5, H * 0.49, 9 * sc, 28 * sc, highlightCss, 0.28);
-  addRadial(W * 0.415, H * 0.555, 28 * sc, 18 * sc, warmSubsurfaceCss, opts.fem ? 0.34 : 0.22);
-  addRadial(W * 0.585, H * 0.555, 28 * sc, 18 * sc, warmSubsurfaceCss, opts.fem ? 0.34 : 0.22);
-  addRadial(W * 0.5, H * 0.568, 12 * sc, 9 * sc, warmSubsurfaceCss, 0.24); // warm nose tip subsurface
-  addRadial(W * 0.5, H * 0.725, 16 * sc, 11 * sc, highlightCss, 0.2);
+  addRadial(W * 0.5, H * 0.34, 52 * sc, 28 * sc, highlightCss, 0.22);
+  addRadial(W * 0.5, H * 0.49, 9 * sc, 28 * sc, highlightCss, 0.22);
+  addRadial(W * 0.415, H * 0.555, 28 * sc, 18 * sc, warmSubsurfaceCss, opts.fem ? 0.28 : 0.2);
+  addRadial(W * 0.585, H * 0.555, 28 * sc, 18 * sc, warmSubsurfaceCss, opts.fem ? 0.28 : 0.2);
+  addRadial(W * 0.5, H * 0.568, 12 * sc, 9 * sc, warmSubsurfaceCss, 0.2);
+  addRadial(W * 0.5, H * 0.725, 16 * sc, 11 * sc, highlightCss, 0.16);
 
   // Subtle forehead expression lines & nasolabial crease cues
   for (const side of [-1, 1]) {
@@ -646,17 +646,27 @@ export function getPhotorealFaceTexture(opts: FaceTextureOptions): THREE.CanvasT
     }
   }
 
-  // Tapered barber fade & sideburn temple hairline
+  // Natural hairline edge feathering + temple sideburn taper
   if (opts.hasFadeHairline) {
-    const fadeGrd = g.createLinearGradient(0, H * 0.26, 0, H * 0.385);
+    const fadeGrd = g.createLinearGradient(0, H * 0.25, 0, H * 0.375);
     fadeGrd.addColorStop(0, hairCss);
     fadeGrd.addColorStop(0.55, hairCss);
     fadeGrd.addColorStop(1, 'rgba(0,0,0,0)');
-    g.globalAlpha = 0.62;
+    g.globalAlpha = 0.68;
     g.fillStyle = fadeGrd;
-    g.fillRect(0, 0, W, H * 0.385);
+    g.fillRect(0, 0, W, H * 0.375);
     addRadial(W * 0.305, H * 0.48, 28 * sc, 54 * sc, hairCss, 0.46);
     addRadial(W * 0.695, H * 0.48, 28 * sc, 54 * sc, hairCss, 0.46);
+    g.globalAlpha = 1;
+  } else {
+    // Subtle baby-hair / edge transition along upper forehead & nape so scalp cap blends seamlessly
+    const edgeGrd = g.createLinearGradient(0, H * 0.12, 0, H * 0.285);
+    edgeGrd.addColorStop(0, hairCss);
+    edgeGrd.addColorStop(0.65, hairCss);
+    edgeGrd.addColorStop(1, 'rgba(0,0,0,0)');
+    g.globalAlpha = 0.72;
+    g.fillStyle = edgeGrd;
+    g.fillRect(0, 0, W, H * 0.285);
     g.globalAlpha = 1;
   }
 
@@ -733,17 +743,17 @@ export function getPhotorealFaceTexture(opts: FaceTextureOptions): THREE.CanvasT
     g.quadraticCurveTo(ex, ey - eh * 1.16, ex + ew * 0.94, ey);
     g.stroke();
 
-    // Feathered individual eyebrow strokes (by = H * 0.422)
+    // Feathered individual eyebrow strokes (by = H * 0.402)
     const bx = ex;
-    const by = H * 0.422;
+    const by = H * 0.402;
     g.strokeStyle = hairCss;
     g.lineCap = 'round';
     for (let h = 0; h < 28; h++) {
       const k = h / 27;
       const sx = THREE.MathUtils.lerp(bx - side * 12.8 * sc, bx + side * 13.8 * sc, k);
       const sy = by + 2.2 * sc - Math.sin(k * Math.PI) * (opts.fem ? 4.3 : 2.5) * sc;
-      g.globalAlpha = 0.48 + Math.sin(k * Math.PI) * 0.42;
-      g.lineWidth = (opts.fem ? 1.1 : 1.45) * sc;
+      g.globalAlpha = 0.56 + Math.sin(k * Math.PI) * 0.38;
+      g.lineWidth = (opts.fem ? 1.15 : 1.45) * sc;
       g.beginPath();
       g.moveTo(sx, sy + 1.4 * sc);
       g.lineTo(sx + side * 2.2 * sc, sy - 2.2 * sc);
@@ -756,8 +766,8 @@ export function getPhotorealFaceTexture(opts: FaceTextureOptions): THREE.CanvasT
   const mx = W * 0.5;
   const my = H * 0.659;
   const lipColor = new THREE.Color(opts.skinHex).lerp(
-    new THREE.Color(opts.fem ? 0x7d3531 : 0x6b3b35),
-    opts.fem ? 0.42 : 0.3
+    new THREE.Color(opts.fem ? 0x5c2623 : 0x592f2a),
+    opts.fem ? 0.52 : 0.36
   );
   const lipUpperCss = `#${lipColor.clone().multiplyScalar(0.82).getHexString()}`;
   const lipLowerCss = `#${lipColor.getHexString()}`;
@@ -799,15 +809,15 @@ export function getPhotorealFaceTexture(opts: FaceTextureOptions): THREE.CanvasT
   g.stroke();
 
   g.strokeStyle = deepShadowCss;
-  g.globalAlpha = 0.22;
-  g.lineWidth = 0.8 * sc;
+  g.globalAlpha = 0.09;
+  g.lineWidth = 0.7 * sc;
   for (let l = -4; l <= 4; l++) {
     g.beginPath();
     g.moveTo(mx + l * 3.1 * sc, my + 2.1 * sc);
-    g.lineTo(mx + l * 2.8 * sc, my + 5.8 * sc);
+    g.lineTo(mx + l * 2.8 * sc, my + 5.4 * sc);
     g.stroke();
   }
-  addRadial(mx, my + 9.2 * sc, 14 * sc, 5 * sc, deepShadowCss, 0.3);
+  addRadial(mx, my + 9.2 * sc, 14 * sc, 5 * sc, deepShadowCss, 0.12);
   g.globalAlpha = 1;
 
   const tex = new THREE.CanvasTexture(cv);

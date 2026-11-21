@@ -221,7 +221,6 @@ export class AtriumEngine {
       this.scene,
       M,
       this.arch.cabs,
-      this.arch.officeChairs,
       () => this.audio.playFootstep()
     );
     this.unwireWalk = this.sim.wireWalk(this.renderer.domElement, this.camera, this.controls);
@@ -288,6 +287,7 @@ export class AtriumEngine {
     this.lastRenderTs = now;
     this.lastInteractionTs = now;
     this.scheduleNextTick();
+    (window as unknown as { __atrium?: AtriumEngine }).__atrium = this;
   }
 
   private markInteraction() {

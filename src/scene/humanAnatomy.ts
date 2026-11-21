@@ -191,190 +191,200 @@ export function buildUnifiedHeadNeckGeo(
   detail: DetailLevel = 'office'
 ): THREE.BufferGeometry {
   const segs = detail === 'studio' ? 56 : 40;
-  const rows = detail === 'studio' ? 48 : 34;
+  const headRows = detail === 'studio' ? 44 : 32;
+  const neckRows = detail === 'studio' ? 16 : 12;
 
-  const jawMod = [1.0, 0.94, 1.06, 0.98][variant % 4];
-  const cheekMod = [1.0, 1.12, 0.92, 1.06][(variant >> 1) % 4];
-  const noseMod = [1.0, 1.08, 0.93, 1.04][(variant >> 2) % 4];
+  const jawMod = [1.0, 0.95, 1.05, 0.98][variant % 4];
+  const cheekMod = [1.0, 1.1, 0.93, 1.05][(variant >> 1) % 4];
+  const noseMod = [1.0, 1.06, 0.94, 1.02][(variant >> 2) % 4];
 
-  const rxHead = (fem ? 0.0725 : 0.077) * (0.98 + (variant % 3) * 0.02);
-  const ryHead = (fem ? 0.104 : 0.108) * (0.985 + ((variant + 1) % 3) * 0.015);
-  const rzHead = fem ? 0.090 : 0.094;
+  const rxHead = (fem ? 0.0725 : 0.0775) * (0.985 + (variant % 3) * 0.015);
+  const ryHead = (fem ? 0.105 : 0.1085) * (0.99 + ((variant + 1) % 3) * 0.012);
+  const rzHead = fem ? 0.094 : 0.0975;
   const faceCenterY = 1.651;
 
-  const rings: LoftRingPoint[][] = [];
+  // 1. Continuous anatomical neck rising from upper clavicle/chest (y=1.445) cleanly up INSIDE skull base (y=1.592)
+  const neckRings: LoftRingPoint[][] = [];
+  for (let r = 0; r <= neckRows; r++) {
+    const nk = r / neckRows;
+    const y = THREE.MathUtils.lerp(1.445, 1.592, nk);
+    // Natural trapezius/clavicle flare at base (nk < 0.35), slender mid-neck, tapering subtly inside skull base
+    const clavicleFlare = Math.pow(Math.max(0, 1 - nk * 2.1), 1.6) * (fem ? 0.022 : 0.024);
+    const skullTuck = nk > 0.78 ? smoothstep(0.78, 1.0, nk) * 0.005 : 0;
+    const neckRx = (fem ? 0.0415 : 0.048) + clavicleFlare - skullTuck;
+    const neckRz = (fem ? 0.043 : 0.049) + clavicleFlare * 0.85 - skullTuck;
+    // Natural gentle forward cervical posture curve
+    const neckShiftZ = THREE.MathUtils.lerp(-0.017, -0.008, nk) + Math.sin(nk * Math.PI) * 0.004;
 
-  for (let r = 0; r <= rows; r++) {
-    const t = r / rows; // 0 = lower neck/clavicle root (y=1.445), 1 = top crown pole (y=1.757)
+    const ring: LoftRingPoint[] = [];
+    for (let s = 0; s < segs; s++) {
+      const phi = (s / segs) * Math.PI * 2;
+      const sinP = Math.sin(phi);
+      const cosP = Math.cos(phi);
+      let x = sinP * neckRx;
+      let z = cosP * neckRz + neckShiftZ;
+
+      // Subtle sternocleidomastoid tendons & male laryngeal prominence
+      if (cosP > 0.1) {
+        const scm = Math.exp(-Math.pow((Math.abs(sinP) - (0.52 - nk * 0.14)) / 0.22, 2));
+        z += scm * 0.002 * (1 - nk * 0.4);
+        if (!fem && cosP > 0.72) {
+          const adamsApple = Math.exp(-Math.pow((nk - 0.52) / 0.16, 2)) * Math.pow(cosP, 4);
+          z += adamsApple * 0.003;
+        }
+      }
+      // Trapezius slope at back-sides near base
+      if (nk < 0.4 && cosP < 0.15) {
+        const trap = (1 - nk / 0.4) * Math.abs(sinP) * 0.018;
+        x += Math.sign(sinP) * trap;
+      }
+      ring.push({ x, y, z });
+    }
+    neckRings.push(ring);
+  }
+  const neckGeo = loftRings(neckRings, true, true, [0, 1], 1);
+  const nPos = neckGeo.attributes.position;
+  const nUv = neckGeo.attributes.uv;
+  for (let i = 0; i < nPos.count; i++) {
+    const ang = Math.atan2(nPos.getX(i), nPos.getZ(i));
+    const u = 0.5 + ang / (Math.PI * 2);
+    const v = THREE.MathUtils.lerp(0.04, 0.22, THREE.MathUtils.clamp((nPos.getY(i) - 1.445) / 0.14, 0, 1));
+    nUv.setXY(i, u, v);
+  }
+  nUv.needsUpdate = true;
+
+  // 2. Unified Cranium & Sculpted Face (lat from -PI*0.44 submental jaw/chin underside up to +PI*0.498 crown)
+  const headRings: LoftRingPoint[][] = [];
+  for (let r = 0; r <= headRows; r++) {
+    const hk = r / headRows;
+    const lat = THREE.MathUtils.lerp(-Math.PI * 0.44, Math.PI * 0.498, hk);
+    const uy = Math.sin(lat);
+    const cosLat = Math.max(0.0025, Math.cos(lat));
     const ring: LoftRingPoint[] = [];
 
-    if (t < 0.24) {
-      // Sculpted neck transitioning smoothly from trapezius/clavicle (1.445) up into submental jaw (1.555)
-      const nk = t / 0.24;
-      const y = THREE.MathUtils.lerp(1.445, 1.556, nk);
-      const flare = Math.pow(1 - nk, 1.8) * (fem ? 0.014 : 0.017);
-      const neckRx = (fem ? 0.043 : 0.049) + flare;
-      const neckRz = (fem ? 0.044 : 0.05) + flare * 0.85;
-      const neckShiftZ = THREE.MathUtils.lerp(-0.012, -0.008, nk);
+    for (let s = 0; s < segs; s++) {
+      const phi = (s / segs) * Math.PI * 2;
+      const ux = Math.sin(phi) * cosLat;
+      const uz = Math.cos(phi) * cosLat;
 
-      for (let s = 0; s < segs; s++) {
-        const phi = (s / segs) * Math.PI * 2;
-        const sinP = Math.sin(phi); // +X side
-        const cosP = Math.cos(phi); // +Z front
-        let x = sinP * neckRx;
-        let z = cosP * neckRz + neckShiftZ;
+      let x = ux * rxHead;
+      let y = uy * ryHead + faceCenterY;
+      let z = uz * rzHead;
 
-        // Subtle sternocleidomastoid diagonal neck tendons + laryngeal cartilage
-        if (cosP > 0.1) {
-          const scm = Math.exp(-Math.pow((Math.abs(sinP) - (0.55 - nk * 0.15)) / 0.22, 2));
-          z += scm * 0.003 * (1 - nk * 0.4);
-          if (!fem && cosP > 0.7) {
-            const adamsApple = Math.exp(-Math.pow((nk - 0.55) / 0.18, 2)) * Math.pow(cosP, 4);
-            z += adamsApple * 0.0035;
-          }
-        }
-        // Subtle submental jaw overhang blend at top of neck
-        if (nk > 0.72 && cosP > 0.2) {
-          const blend = smoothstep(0.72, 1.0, nk);
-          z += blend * cosP * 0.022;
-          x *= 1 + blend * 0.14;
-        }
-        ring.push({ x, y, z });
+      // Occipital cranial length (back of skull curves smoothly rather than looking flat)
+      if (uz < 0) {
+        z *= 1.04;
       }
-    } else {
-      // Cranium & sculpted face (theta from -PI*0.44 near chin/jawbase up to +PI*0.498 crown)
-      const hk = (t - 0.24) / 0.76;
-      const lat = THREE.MathUtils.lerp(-Math.PI * 0.44, Math.PI * 0.498, hk);
-      const uy = Math.sin(lat);
-      const cosLat = Math.max(0.003, Math.cos(lat));
 
-      for (let s = 0; s < segs; s++) {
-        const phi = (s / segs) * Math.PI * 2;
-        const ux = Math.sin(phi) * cosLat;
-        const uz = Math.cos(phi) * cosLat;
-
-        let x = ux * rxHead;
-        let y = uy * ryHead + faceCenterY;
-        let z = uz * rzHead;
-
-        // Blend lower jaw cleanly into top of neck around lat < -0.78
-        if (hk < 0.09 && uz < 0.3) {
-          const nb = 1 - hk / 0.09;
-          x *= 1 - nb * 0.22;
-          z -= nb * 0.006;
-        }
-
-        // Temple & cranial parietal fullness
-        if (uy > 0) {
-          x *= 1 + uy * 0.055 * (1 - Math.abs(uy) * 0.35);
-          z -= uy * 0.003;
-        }
-
-        // Mandible / jaw taper + chin projection
-        const yLocal = y - 1.625;
-        if (yLocal < 0.016) {
-          const jt = THREE.MathUtils.clamp((0.016 - yLocal) / 0.095, 0, 1);
-          const smoothJt = jt * jt * (3 - 2 * jt);
-          const jawTaper = (fem ? 0.42 : 0.33) / jawMod;
-          x *= 1 - smoothJt * jawTaper;
-          if (uz > 0) {
-            const chinLift = Math.exp(-Math.pow(x / 0.026, 2)) * Math.exp(-Math.pow((y - 1.568) / 0.024, 2));
-            z += chinLift * (fem ? 0.011 : 0.0145);
-            z *= 1 - smoothJt * 0.09;
-          } else {
-            z *= 1 - smoothJt * 0.32;
-          }
-          // Subtle gonial jaw corner definition
-          const jawAngle = Math.exp(-Math.pow((Math.abs(x) - 0.048) / 0.014, 2)) * Math.exp(-Math.pow((y - 1.585) / 0.018, 2));
-          x += Math.sign(x) * jawAngle * (fem ? 0.0022 : 0.0042) * jawMod;
-        }
-
-        // Front facial sculpt (all coordinates in world head height ~1.55..1.73)
-        if (uz > 0.12) {
-          const frontFade = Math.min(1, (uz - 0.12) / 0.45);
-          z -= frontFade * 0.005;
-
-          // Deepened anatomical orbital eye sockets (centered around y=1.657, x=±0.0275)
-          const eyeL = Math.exp(-(Math.pow((x - 0.0275) / 0.0145, 2) + Math.pow((y - 1.657) / 0.0105, 2)));
-          const eyeR = Math.exp(-(Math.pow((x + 0.0275) / 0.0145, 2) + Math.pow((y - 1.657) / 0.0105, 2)));
-          z -= frontFade * (eyeL + eyeR) * 0.0165;
-
-          // Supraorbital brow ridge
-          const brow = Math.exp(-Math.pow(x / 0.048, 2)) * Math.exp(-Math.pow((y - 1.676) / 0.01, 2));
-          z += frontFade * brow * (fem ? 0.0055 : 0.0085);
-
-          // Zygomatic cheekbones
-          const cheekL = Math.exp(-(Math.pow((x - 0.039) / 0.018, 2) + Math.pow((y - 1.634) / 0.015, 2)));
-          const cheekR = Math.exp(-(Math.pow((x + 0.039) / 0.018, 2) + Math.pow((y - 1.634) / 0.015, 2)));
-          z += frontFade * (cheekL + cheekR) * 0.0085 * cheekMod;
-
-          // Sculpted nasal bridge, dorsum, tip & alar nostril wings
-          const noseBridge =
-            y > 1.622 && y < 1.682
-              ? Math.exp(-Math.pow(x / 0.0085, 2)) * Math.exp(-Math.pow((y - 1.644) / 0.02, 2))
-              : 0;
-          const noseTip = Math.exp(-Math.pow(x / 0.0105, 2)) * Math.exp(-Math.pow((y - 1.626) / 0.0085, 2));
-          const nostrilL = Math.exp(-(Math.pow((x - 0.0115) / 0.0055, 2) + Math.pow((y - 1.623) / 0.0055, 2)));
-          const nostrilR = Math.exp(-(Math.pow((x + 0.0115) / 0.0055, 2) + Math.pow((y - 1.623) / 0.0055, 2)));
-          const alarCrease = Math.exp(-Math.pow((Math.abs(x) - 0.0165) / 0.003, 2)) * Math.exp(-Math.pow((y - 1.624) / 0.005, 2));
-          z +=
-            frontFade *
-            (noseBridge * 0.0145 * noseMod +
-              noseTip * 0.0135 +
-              (nostrilL + nostrilR) * 0.0046 * noseMod -
-              alarCrease * 0.0022);
-
-          // Philtrum dimple + sculpted Cupid's bow upper lip + fuller lower lip + labiomental fold
-          const philtrum = Math.exp(-Math.pow(x / 0.0045, 2)) * Math.exp(-Math.pow((y - 1.613) / 0.006, 2));
-          const lipUp = Math.exp(-Math.pow(x / 0.0185, 2)) * Math.exp(-Math.pow((y - 1.603) / 0.0048, 2));
-          const lipLo = Math.exp(-Math.pow(x / 0.0165, 2)) * Math.exp(-Math.pow((y - 1.595) / 0.0055, 2));
-          const mouthCrease = Math.exp(-Math.pow(x / 0.0195, 2)) * Math.exp(-Math.pow((y - 1.599) / 0.0024, 2));
-          const mentolabial = Math.exp(-Math.pow(x / 0.018, 2)) * Math.exp(-Math.pow((y - 1.582) / 0.005, 2));
-          z +=
-            frontFade *
-            (-philtrum * 0.0018 + (lipUp + lipLo) * 0.0074 - mouthCrease * 0.004 - mentolabial * 0.0026);
-        }
-
-        ring.push({ x, y, z });
+      // Temple & cranial parietal fullness
+      if (uy > 0) {
+        x *= 1 + uy * 0.048 * (1 - Math.abs(uy) * 0.35);
+        z -= uy * 0.003;
       }
+
+      // Smooth submental underside + mandibular jawline + chin projection
+      const yLocal = y - 1.622;
+      if (yLocal < 0.024) {
+        const jt = THREE.MathUtils.clamp((0.024 - yLocal) / 0.095, 0, 1);
+        const smoothJt = jt * jt * (3 - 2 * jt);
+        const jawTaper = (fem ? 0.28 : 0.25) / jawMod;
+        x *= 1 - smoothJt * jawTaper;
+
+        if (uz > 0) {
+          const chinLift = Math.exp(-Math.pow(x / 0.029, 2)) * Math.exp(-Math.pow((y - 1.566) / 0.024, 2));
+          z += chinLift * (fem ? 0.017 : 0.019);
+          z *= 1 - smoothJt * 0.03;
+        } else {
+          // Tuck rear underside smoothly toward cervical neck without pinching
+          z *= 1 - smoothJt * 0.28;
+          z -= smoothJt * 0.004;
+        }
+
+        // Gonial jaw corner definition running cleanly toward ear
+        const jawAngle =
+          Math.exp(-Math.pow((Math.abs(x) - 0.049) / 0.016, 2)) *
+          Math.exp(-Math.pow((y - 1.588) / 0.02, 2));
+        x += Math.sign(x) * jawAngle * (fem ? 0.0035 : 0.005) * jawMod;
+      }
+
+      // Front facial sculpt (eye sockets, brow, cheeks, nose bridge/tip/nostrils, philtrum, lips, chin crease)
+      if (uz > 0.1) {
+        const frontFade = Math.min(1, (uz - 0.1) / 0.42);
+        z -= frontFade * 0.004;
+
+        // Recessed orbital eye sockets (centered around y=1.657, x=±0.0265)
+        const eyeL = Math.exp(-(Math.pow((x - 0.0265) / 0.014, 2) + Math.pow((y - 1.657) / 0.0105, 2)));
+        const eyeR = Math.exp(-(Math.pow((x + 0.0265) / 0.014, 2) + Math.pow((y - 1.657) / 0.0105, 2)));
+        z -= frontFade * (eyeL + eyeR) * 0.0185;
+
+        // Supraorbital brow ridge
+        const brow = Math.exp(-Math.pow(x / 0.046, 2)) * Math.exp(-Math.pow((y - 1.676) / 0.01, 2));
+        z += frontFade * brow * (fem ? 0.0048 : 0.008);
+
+        // Zygomatic cheekbones
+        const cheekL = Math.exp(-(Math.pow((x - 0.038) / 0.018, 2) + Math.pow((y - 1.635) / 0.015, 2)));
+        const cheekR = Math.exp(-(Math.pow((x + 0.038) / 0.018, 2) + Math.pow((y - 1.635) / 0.015, 2)));
+        z += frontFade * (cheekL + cheekR) * 0.0075 * cheekMod;
+
+        // Refined nasal bridge, nasion dip, tip & alar nostril wings
+        const nasionDip = Math.exp(-Math.pow(x / 0.012, 2)) * Math.exp(-Math.pow((y - 1.664) / 0.008, 2));
+        const noseBridge =
+          y > 1.622 && y < 1.672
+            ? Math.exp(-Math.pow(x / 0.0078, 2)) * Math.exp(-Math.pow((y - 1.641) / 0.019, 2))
+            : 0;
+        const noseTip = Math.exp(-Math.pow(x / 0.0095, 2)) * Math.exp(-Math.pow((y - 1.625) / 0.008, 2));
+        const nostrilL = Math.exp(-(Math.pow((x - 0.0108) / 0.0052, 2) + Math.pow((y - 1.622) / 0.005, 2)));
+        const nostrilR = Math.exp(-(Math.pow((x + 0.0108) / 0.0052, 2) + Math.pow((y - 1.622) / 0.005, 2)));
+        const alarCrease =
+          Math.exp(-Math.pow((Math.abs(x) - 0.0155) / 0.003, 2)) * Math.exp(-Math.pow((y - 1.623) / 0.005, 2));
+        z +=
+          frontFade *
+          (-nasionDip * 0.002 +
+            noseBridge * 0.0145 * noseMod +
+            noseTip * 0.0145 +
+            (nostrilL + nostrilR) * 0.0044 * noseMod -
+            alarCrease * 0.002);
+
+        // Philtrum + sculpted upper & lower lips + mentolabial fold
+        const philtrum = Math.exp(-Math.pow(x / 0.0042, 2)) * Math.exp(-Math.pow((y - 1.613) / 0.0055, 2));
+        const lipUp = Math.exp(-Math.pow(x / 0.018, 2)) * Math.exp(-Math.pow((y - 1.604) / 0.0046, 2));
+        const lipLo = Math.exp(-Math.pow(x / 0.016, 2)) * Math.exp(-Math.pow((y - 1.595) / 0.0052, 2));
+        const mouthCrease = Math.exp(-Math.pow(x / 0.019, 2)) * Math.exp(-Math.pow((y - 1.5995) / 0.0022, 2));
+        const mentolabial = Math.exp(-Math.pow(x / 0.018, 2)) * Math.exp(-Math.pow((y - 1.584) / 0.0048, 2));
+        z +=
+          frontFade *
+          (-philtrum * 0.002 + (lipUp * 0.0085 + lipLo * 0.0078) - mouthCrease * 0.0028 - mentolabial * 0.0016);
+      }
+
+      ring.push({ x, y, z });
     }
-    rings.push(ring);
+    headRings.push(ring);
   }
 
-  const geo = loftRings(rings, true, true, [0, 1], 1);
-
-  // Assign spherical face UVs matching humanTextures.ts exact coordinates
-  const pos = geo.attributes.position;
-  const uv = geo.attributes.uv;
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const y = pos.getY(i);
-    const z = pos.getZ(i);
-
-    if (y < 1.545) {
-      // Neck UVs mapped cleanly to lower neck dermal zone of face canvas (py ~ 0.78..0.96 -> v ~ 0.04..0.22)
-      const ang = Math.atan2(x, z);
-      const u = 0.5 + ang / (Math.PI * 2);
-      const v = THREE.MathUtils.lerp(0.04, 0.22, THREE.MathUtils.clamp((y - 1.445) / 0.1, 0, 1));
-      uv.setXY(i, u, v);
-    } else {
-      const ang = Math.atan2(x, z);
-      const u = 0.5 + ang / (Math.PI * 2);
-      const uy = THREE.MathUtils.clamp((y - faceCenterY) / ryHead, -0.99, 0.99);
-      const v = 0.5 + Math.asin(uy) / Math.PI;
-      uv.setXY(i, u, v);
-    }
+  const headGeo = loftRings(headRings, true, true, [0, 1], 1);
+  const hPos = headGeo.attributes.position;
+  const hUv = headGeo.attributes.uv;
+  for (let i = 0; i < hPos.count; i++) {
+    const ang = Math.atan2(hPos.getX(i), hPos.getZ(i));
+    const u = 0.5 + ang / (Math.PI * 2);
+    const uy = THREE.MathUtils.clamp((hPos.getY(i) - faceCenterY) / ryHead, -0.99, 0.99);
+    const v = 0.5 + Math.asin(uy) / Math.PI;
+    hUv.setXY(i, u, v);
   }
-  uv.needsUpdate = true;
+  hUv.needsUpdate = true;
 
-  return geo;
+  const merged = mergeGeometries([normalizeForMerge(neckGeo), normalizeForMerge(headGeo)], false);
+  neckGeo.dispose();
+  headGeo.dispose();
+  // Preserve welded smooth vertex normals from loftRings (never call computeVertexNormals on non-indexed soup)
+  return merged;
 }
 
 /**
  * Real 3D anatomical eyeball with UV centered strictly on the +Z front pole
  * so getEyeIrisTexture() (iris at u=0.5, v=0.5) aligns pixel-accurately.
  */
-export function build3DEyeballGeo(radius = 0.0124, detail: DetailLevel = 'office'): THREE.BufferGeometry {
+export function build3DEyeballGeo(radius = 0.0114, detail: DetailLevel = 'office'): THREE.BufferGeometry {
   const segs = detail === 'studio' ? 24 : 14;
   const geo = new THREE.SphereGeometry(radius, segs, segs);
   const pos = geo.attributes.position;
@@ -394,32 +404,31 @@ export function build3DEyeballGeo(radius = 0.0124, detail: DetailLevel = 'office
 }
 
 /**
- * Curved 3D upper & lower eyelid shells hugging the eyeball sphere.
+ * Curved 3D upper & lower eyelid shells hugging the eyeball sphere tightly inside the orbital socket.
  * Local origin sits at eyeball center so rotating X smoothly blinks the upper lid over the iris.
  */
 export function build3DEyelidGeo(isUpper: boolean, fem: boolean, detail: DetailLevel = 'office'): THREE.BufferGeometry {
-  const r = 0.0132;
+  const r = 0.0121;
   const wSeg = detail === 'studio' ? 16 : 10;
   const hSeg = 6;
   const geo = new THREE.SphereGeometry(
     r,
     wSeg,
     hSeg,
-    Math.PI * 0.22,
-    Math.PI * 0.56,
-    isUpper ? Math.PI * 0.16 : Math.PI * 0.56,
-    isUpper ? Math.PI * 0.25 : Math.PI * 0.2
+    Math.PI * 0.25,
+    Math.PI * 0.5,
+    isUpper ? Math.PI * 0.16 : Math.PI * 0.55,
+    isUpper ? Math.PI * 0.29 : Math.PI * 0.21
   );
   // Rotate so phi=0.5*PI aligns to +Z
   geo.rotateY(-Math.PI * 0.5);
-  // Subtle almond eye-shape squeeze & lash-edge thickening
   const pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
-    let x = pos.getX(i) * (fem ? 1.1 : 1.06);
-    let y = pos.getY(i);
+    const x = pos.getX(i) * (fem ? 1.06 : 1.03);
+    const y = pos.getY(i);
     let z = pos.getZ(i);
-    if (isUpper && y < 0.004) {
-      z += 0.0012; // thickened upper lash margin
+    if (isUpper && y < 0.0035) {
+      z += 0.0009; // subtle lash margin
     }
     pos.setXYZ(i, x, y, z);
   }
@@ -473,32 +482,44 @@ export function buildContinuousTorsoPelvisGeo(
 ): THREE.BufferGeometry {
   const segs = detail === 'studio' ? 44 : 28;
   const rows = detail === 'studio' ? 36 : 24;
-  const yStart = isDress ? 0.79 : 0.81;
-  const yEnd = 1.48;
+  // Sheath dress torso tucks cleanly inside the dress skirt starting at y=1.084 so hip-to-lap never tears open
+  const yStart = isDress ? 1.015 : 0.81;
+  const yEnd = 1.512;
   const rings: LoftRingPoint[][] = [];
 
   for (let r = 0; r <= rows; r++) {
-    const t = r / rows; // 0 = lower pelvis/crotch/hem, 1 = neck base
+    const t = r / rows; // 0 = lower torso/pelvis, 1 = collar/neck base
     const y = THREE.MathUtils.lerp(yStart, yEnd, t);
-    const tTorso = THREE.MathUtils.clamp((y - 0.86) / 0.62, 0, 1);
+    const tTorso = THREE.MathUtils.clamp((y - 0.86) / 0.652, 0, 1);
     const belowHip = y < 0.86 ? smoothstep(0.86, yStart, y) : 0;
+    const dressTuck = isDress && y < 1.06 ? smoothstep(1.06, yStart, y) * 0.01 : 0;
     const offset = isKnit ? 0.0055 : 0;
 
     let halfW: number;
     let halfD: number;
     if (isFem) {
       const hipFlare = 0.048 * Math.exp(-Math.pow((tTorso - 0.04) / 0.18, 2));
-      const waistPinch = -0.04 * Math.exp(-Math.pow((tTorso - 0.35) / 0.16, 2));
-      const ribChest = 0.036 * Math.exp(-Math.pow((tTorso - 0.72) / 0.23, 2));
-      const shoulderTaper = tTorso > 0.84 ? 1 - ((tTorso - 0.84) / 0.16) * 0.66 : 1;
-      halfW = (0.124 + hipFlare + waistPinch + ribChest - belowHip * 0.038) * shoulderTaper;
-      halfD = (0.09 + 0.013 * Math.sin(tTorso * Math.PI) - belowHip * 0.02) * shoulderTaper;
+      const waistPinch = -0.042 * Math.exp(-Math.pow((tTorso - 0.34) / 0.16, 2));
+      const ribChest = 0.036 * Math.exp(-Math.pow((tTorso - 0.7) / 0.23, 2));
+      // For sleeveless dresses, carve clean armhole scye inside the deltoid socket so bare shoulders flow seamlessly
+      const shoulderShelf = (isDress ? 0.008 : 0.022) * Math.exp(-Math.pow((tTorso - 0.85) / 0.08, 2));
+      const armholeScye = isDress ? -0.015 * Math.exp(-Math.pow((tTorso - 0.84) / 0.11, 2)) : 0;
+      const shoulderTaper = tTorso > 0.895 ? 1 - ((tTorso - 0.895) / 0.105) * (isDress ? 0.57 : 0.61) : 1;
+      halfW =
+        (0.124 + hipFlare + waistPinch + ribChest + shoulderShelf + armholeScye - belowHip * 0.025 - dressTuck) *
+        shoulderTaper;
+      halfD =
+        (0.09 + 0.013 * Math.sin(tTorso * Math.PI) - belowHip * 0.015 - dressTuck) *
+        (tTorso > 0.895 ? 1 - ((tTorso - 0.895) / 0.105) * 0.48 : 1);
     } else {
       const hipBase = 0.145 + 0.012 * Math.exp(-Math.pow((tTorso - 0.05) / 0.16, 2));
-      const vTaper = 0.044 * Math.exp(-Math.pow((tTorso - 0.78) / 0.24, 2)) - 0.015 * Math.exp(-Math.pow((tTorso - 0.3) / 0.16, 2));
-      const shoulderTaper = tTorso > 0.85 ? 1 - ((tTorso - 0.85) / 0.15) * 0.66 : 1;
-      halfW = (hipBase + vTaper - belowHip * 0.035) * shoulderTaper;
-      halfD = (0.098 + 0.014 * Math.sin(tTorso * Math.PI) - belowHip * 0.02) * shoulderTaper;
+      const vTaper = 0.048 * Math.exp(-Math.pow((tTorso - 0.78) / 0.24, 2)) - 0.015 * Math.exp(-Math.pow((tTorso - 0.3) / 0.16, 2));
+      const shoulderShelf = 0.022 * Math.exp(-Math.pow((tTorso - 0.86) / 0.08, 2));
+      const shoulderTaper = tTorso > 0.895 ? 1 - ((tTorso - 0.895) / 0.105) * 0.62 : 1;
+      halfW = (hipBase + vTaper + shoulderShelf - belowHip * 0.025) * shoulderTaper;
+      halfD =
+        (0.098 + 0.014 * Math.sin(tTorso * Math.PI) - belowHip * 0.015) *
+        (tTorso > 0.895 ? 1 - ((tTorso - 0.895) / 0.105) * 0.48 : 1);
     }
 
     const spineShiftZ = Math.sin(tTorso * Math.PI * 1.25) * 0.008;
@@ -514,7 +535,7 @@ export function buildContinuousTorsoPelvisGeo(
 
       if (isFem) {
         if (sinA > 0) {
-          rz += (isDress ? 0.025 : 0.022) * sinA * Math.exp(-Math.pow((tTorso - 0.65) / 0.14, 2));
+          rz += (isDress ? 0.024 : 0.022) * sinA * Math.exp(-Math.pow((tTorso - 0.63) / 0.14, 2));
         } else {
           const glute = 0.018 * (-sinA) * Math.exp(-Math.pow((tTorso - 0.03) / 0.13, 2));
           const backHollow = -0.011 * (-sinA) * Math.exp(-Math.pow((tTorso - 0.34) / 0.15, 2));
@@ -688,8 +709,6 @@ export function buildSculptedHandGeo(detail: DetailLevel = 'office'): {
   const nails = mergeGeometries(nailParts, false);
   skinParts.forEach((p) => p.dispose());
   nailParts.forEach((p) => p.dispose());
-  skin.computeVertexNormals();
-  nails.computeVertexNormals();
   return { skin, nails };
 }
 
@@ -718,8 +737,9 @@ export function buildContinuousArmGeo(
     let shiftZ = 0;
 
     if (style === 'sleeve' || style === 'rolledUpper') {
-      const base = THREE.MathUtils.lerp(0.049, 0.029, Math.pow(kTotal, 0.85));
-      const crease = Math.exp(-Math.pow((kTotal - 0.52) / 0.09, 2)) * Math.sin(y * 110) * 0.0024;
+      const capRound = kTotal < 0.08 ? Math.sin((kTotal / 0.08) * (Math.PI * 0.5)) * 0.48 + 0.52 : 1;
+      const base = THREE.MathUtils.lerp(0.047, 0.0285, Math.pow(kTotal, 0.85)) * capRound;
+      const crease = Math.exp(-Math.pow((kTotal - 0.52) / 0.09, 2)) * Math.sin(y * 110) * 0.0022;
       const cuff =
         style === 'rolledUpper' && kSeg > 0.9
           ? 0.0045 * Math.sin(((kSeg - 0.9) / 0.1) * Math.PI)
@@ -728,20 +748,22 @@ export function buildContinuousArmGeo(
           : 0;
       rx = base + crease + cuff;
       rz = base + 0.003 + crease + cuff;
-      if (kTotal < 0.12) shiftX = -0.008 * (1 - kTotal / 0.12); // tuck smoothly into shoulder socket
+      if (kTotal < 0.18) shiftX = -0.024 * (1 - kTotal / 0.18); // tuck smoothly into shoulder socket
     } else if (style === 'shortSleeve') {
-      rx = THREE.MathUtils.lerp(0.051, 0.044, kSeg);
-      rz = THREE.MathUtils.lerp(0.054, 0.046, kSeg);
-      if (kSeg < 0.18) shiftX = -0.008 * (1 - kSeg / 0.18);
+      const capRound = kSeg < 0.14 ? Math.sin((kSeg / 0.14) * (Math.PI * 0.5)) * 0.45 + 0.55 : 1;
+      rx = THREE.MathUtils.lerp(0.049, 0.043, kSeg) * capRound;
+      rz = THREE.MathUtils.lerp(0.052, 0.045, kSeg) * capRound;
+      if (kSeg < 0.24) shiftX = -0.022 * (1 - kSeg / 0.24);
     } else {
-      // Bare arm: deltoid cap, biceps/triceps, elbow contour, brachioradialis forearm, wrist taper
-      const deltoid = Math.exp(-Math.pow((kTotal - 0.08) / 0.12, 2)) * 0.008;
+      // Bare arm: smooth spherical deltoid cap tucked cleanly inside sleeveless armhole
+      const capRound = kTotal < 0.11 ? Math.sin((kTotal / 0.11) * (Math.PI * 0.5)) * 0.68 + 0.32 : 1;
+      const deltoid = Math.exp(-Math.pow((kTotal - 0.13) / 0.11, 2)) * 0.0085;
       const elbow = -Math.exp(-Math.pow((kTotal - 0.52) / 0.07, 2)) * 0.002;
-      const forearm = Math.exp(-Math.pow((kTotal - 0.63) / 0.13, 2)) * 0.0045;
-      rx = THREE.MathUtils.lerp(0.04, 0.017, Math.pow(kTotal, 0.9)) + deltoid + elbow + forearm;
-      rz = THREE.MathUtils.lerp(0.044, 0.023, Math.pow(kTotal, 0.9)) + deltoid + elbow + forearm;
-      if (kTotal < 0.12) shiftX = -0.007 * (1 - kTotal / 0.12);
-      shiftZ = Math.sin(kTotal * Math.PI) * 0.003;
+      const forearm = Math.exp(-Math.pow((kTotal - 0.63) / 0.13, 2)) * 0.0042;
+      rx = (THREE.MathUtils.lerp(0.038, 0.0175, Math.pow(kTotal, 0.9)) + deltoid + elbow + forearm) * capRound;
+      rz = (THREE.MathUtils.lerp(0.042, 0.0225, Math.pow(kTotal, 0.9)) + deltoid + elbow + forearm) * capRound;
+      if (kTotal < 0.24) shiftX = -0.028 * (1 - kTotal / 0.24);
+      shiftZ = Math.sin(kTotal * Math.PI) * 0.002;
     }
 
     const ring: LoftRingPoint[] = [];
@@ -777,15 +799,16 @@ export function buildContinuousLegGeo(isTrouser: boolean, detail: DetailLevel = 
 
     if (t <= 0.5) {
       const k = t / 0.5;
+      const topTuck = t < 0.08 ? smoothstep(0.08, 0, t) * 0.18 : 0;
       if (isTrouser) {
-        rx = THREE.MathUtils.lerp(0.088, 0.062, Math.pow(k, 0.8));
-        rz = THREE.MathUtils.lerp(0.092, 0.066, Math.pow(k, 0.8));
+        rx = THREE.MathUtils.lerp(0.088, 0.062, Math.pow(k, 0.8)) * (1 - topTuck * 0.4);
+        rz = THREE.MathUtils.lerp(0.092, 0.066, Math.pow(k, 0.8)) * (1 - topTuck * 0.4);
         const kneeFold = Math.exp(-Math.pow((k - 0.92) / 0.14, 2)) * Math.sin(y * 95) * 0.0024;
         rx += kneeFold;
         rz += kneeFold;
       } else {
-        rx = THREE.MathUtils.lerp(0.076, 0.048, Math.pow(k, 0.85));
-        rz = THREE.MathUtils.lerp(0.082, 0.052, Math.pow(k, 0.85));
+        rx = THREE.MathUtils.lerp(0.074, 0.048, Math.pow(k, 0.85)) * (1 - topTuck);
+        rz = THREE.MathUtils.lerp(0.08, 0.052, Math.pow(k, 0.85)) * (1 - topTuck);
         oz = Math.sin(k * Math.PI) * 0.0065;
       }
     } else {
@@ -924,7 +947,6 @@ export function buildSculptedShoeGeo(
 
   const sole = mergeGeometries(soleParts, false);
   soleParts.forEach((p) => p.dispose());
-  sole.computeVertexNormals();
 
   let instep: THREE.BufferGeometry | undefined;
   if (isHeel || isFlat) {

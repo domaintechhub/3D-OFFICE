@@ -23,11 +23,11 @@ function buildFittedScalpBase(
   mode: 'tight' | 'parted' | 'fade' | 'crop',
   detail: DetailLevel
 ): THREE.BufferGeometry {
-  const segs = detail === 'studio' ? 32 : 22;
-  const rows = detail === 'studio' ? 20 : 14;
-  const rx = (fem ? 0.0745 : 0.079) * 1.01;
-  const ry = (fem ? 0.106 : 0.110) * 1.01;
-  const rz = (fem ? 0.092 : 0.096) * 1.01;
+  const segs = detail === 'studio' ? 36 : 24;
+  const rows = detail === 'studio' ? 22 : 14;
+  const rx = (fem ? 0.0735 : 0.0785) * 1.008;
+  const ry = (fem ? 0.106 : 0.1095) * 1.008;
+  const rz = (fem ? 0.095 : 0.0985) * 1.008;
   const cy = 1.651;
 
   const rings: LoftRingPoint[][] = [];
@@ -40,16 +40,18 @@ function buildFittedScalpBase(
       const sinP = Math.sin(phi); // +X side
       const cosP = Math.cos(phi); // +Z front
 
-      // Asymmetric realistic hairline latitude: higher on forehead, lower on nape & sideburns
+      // Realistic full hairline: covers upper forehead & temples smoothly, dips at sideburns & nape, arches above ears
       const frontWeight = Math.max(0, cosP);
       const backWeight = Math.max(0, -cosP);
       const sideWeight = Math.abs(sinP);
-      let baseLat =
+      const earArch = Math.exp(-Math.pow((Math.abs(sinP) - 0.96) / 0.16, 2)) * (cosP < 0.25 ? 0.13 : 0);
+      const templeDip = Math.max(0, cosP) * sideWeight * 0.11;
+      const baseLat =
         mode === 'fade'
-          ? 0.42 * frontWeight - 0.16 * backWeight + 0.14 * sideWeight
+          ? 0.37 * frontWeight - 0.18 * backWeight + 0.08 * sideWeight + earArch - templeDip
           : mode === 'parted'
-          ? 0.44 * frontWeight - 0.34 * backWeight - 0.02 * sideWeight
-          : 0.43 * frontWeight - 0.3 * backWeight + 0.04 * sideWeight;
+          ? 0.32 * frontWeight - 0.36 * backWeight - 0.06 * sideWeight + earArch - templeDip
+          : 0.31 * frontWeight - 0.33 * backWeight - 0.02 * sideWeight + earArch - templeDip;
 
       const lat = THREE.MathUtils.lerp(baseLat, Math.PI * 0.495, t);
       const cosL = Math.max(0.002, Math.cos(lat));
@@ -59,29 +61,27 @@ function buildFittedScalpBase(
       const uy = sinL;
       const uz = cosP * cosL;
 
-      // Subtle hairline taper so edge hugs skin seamlessly, swelling out smoothly over crown
-      const edgeBlend = THREE.MathUtils.clamp(t / 0.18, 0, 1);
+      // Flush hairline taper at t=0 (sinks 0.5mm smoothly into skin texture feather) swelling naturally over crown
+      const edgeBlend = smoothstep(0.0, 0.22, t);
       const lift =
-        mode === 'fade'
-          ? edgeBlend * 0.0045
-          : mode === 'crop'
-          ? edgeBlend * 0.0075
-          : edgeBlend * 0.0065;
+        -0.0005 * (1 - edgeBlend) +
+        edgeBlend * (mode === 'fade' ? 0.0042 : mode === 'crop' ? 0.007 : 0.0058);
 
       // Subtle parting groove for parted/sleek styles
       const partGroove =
-        mode === 'parted' && cosP > 0.15 && t > 0.15
-          ? -Math.exp(-Math.pow((ux - 0.22) / 0.045, 2)) * 0.0032
+        mode === 'parted' && cosP > 0.15 && t > 0.18
+          ? -Math.exp(-Math.pow((ux - 0.22) / 0.045, 2)) * 0.0024
           : 0;
 
-      // Parietal flare matching buildUnifiedHeadNeckGeo
-      const xFlare = uy > 0 ? 1 + uy * 0.055 * (1 - Math.abs(uy) * 0.35) : 1;
+      // Occipital & parietal contour matching buildUnifiedHeadNeckGeo
+      const xFlare = uy > 0 ? 1 + uy * 0.048 * (1 - Math.abs(uy) * 0.35) : 1;
+      const zOccip = uz < 0 ? 1.035 : 1;
       const zShift = uy > 0 ? -uy * 0.003 : 0;
 
       ring.push({
         x: ux * rx * xFlare + ux * lift,
         y: uy * ry + cy + uy * (lift + partGroove),
-        z: uz * rz + zShift + uz * lift,
+        z: uz * rz * zOccip + zShift + uz * lift,
       });
     }
     rings.push(ring);
@@ -249,7 +249,6 @@ export function buildSculptedHairStyle(
     coreParts.push(normalizeForMerge(loftRings(crownRings, false, true)));
     const coreGeo = mergeGeometries(coreParts, false);
     coreParts.forEach((p) => p.dispose());
-    coreGeo.computeVertexNormals();
     return { coreGeo, isCoily: true };
   }
 
@@ -265,8 +264,8 @@ export function buildSculptedHairStyle(
       const uz = cPos.getZ(i);
       const n = Math.sin(ux * 14 + uz * 11) * Math.cos(uy * 13) * 0.007;
       // Cut out lower front face opening cleanly around forehead & cheekbones
-      const cutFace = uz > 0.35 && uy < 0.32 ? smoothstep(0.35, 0.65, uz) * smoothstep(0.32, -0.2, uy) : 0;
-      const radScale = (0.112 + n) * (1 - cutFace * 0.42);
+      const cutFace = uz > 0.44 && uy < 0.24 ? smoothstep(0.44, 0.72, uz) * smoothstep(0.24, -0.22, uy) : 0;
+      const radScale = (0.112 + n) * (1 - cutFace * 0.44);
       cPos.setXYZ(i, ux * radScale * 0.98, uy * radScale * 0.94 + 1.688, uz * radScale * 1.02 - 0.015);
     }
     coreGeoRaw.computeVertexNormals();
@@ -287,7 +286,7 @@ export function buildSculptedHairStyle(
         Math.sin(phi) * Math.sin(theta)
       ).normalize();
       // Skip cards blocking the front face
-      if (dir.z > 0.48 && dir.y < 0.42) continue;
+      if (dir.z > 0.6 && dir.y < 0.22) continue;
 
       const c = buildCoilyHaloCard(0.068 + (i % 3) * 0.01, 0.068 + (i % 2) * 0.01, 0.014);
       const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
@@ -304,7 +303,6 @@ export function buildSculptedHairStyle(
     }
     const cardGeo = mergeGeometries(cards, false);
     cards.forEach((p) => p.dispose());
-    cardGeo.computeVertexNormals();
     return { coreGeo, cardGeo, isCoily: true };
   }
 
@@ -345,7 +343,6 @@ export function buildSculptedHairStyle(
     }
     const cardGeo = mergeGeometries(cards, false);
     cards.forEach((p) => p.dispose());
-    cardGeo.computeVertexNormals();
 
     return { coreGeo, cardGeo, bandGeo, isCoily: true };
   }
@@ -376,7 +373,6 @@ export function buildSculptedHairStyle(
     }
     const coreGeo = mergeGeometries(coreParts, false);
     coreParts.forEach((p) => p.dispose());
-    coreGeo.computeVertexNormals();
     return { coreGeo, isCoily: true };
   }
 
@@ -413,58 +409,91 @@ export function buildSculptedHairStyle(
 
     const coreGeo = mergeGeometries(coreParts, false);
     coreParts.forEach((p) => p.dispose());
-    coreGeo.computeVertexNormals();
     return { coreGeo, isCoily: false };
   }
 
   if (style === 'bun') {
-    const coreParts: THREE.BufferGeometry[] = [normalizeForMerge(buildFittedScalpBase(fem, 'parted', detail))];
-    // Sculpted coiled chignon bun at upper nape / crown back wrapped in braided strands
-    const bunCenter = new THREE.Vector3(0, 1.682, -0.104);
+    const coreParts: THREE.BufferGeometry[] = [normalizeForMerge(buildFittedScalpBase(fem, 'tight', detail))];
+
+    // Swept-up braided/twisted scalp strands converging smoothly toward high crown bun
+    const sweepCount = hi ? 16 : 9;
+    for (let i = 0; i < sweepCount; i++) {
+      const k = (i / (sweepCount - 1)) * 2 - 1; // -1 to +1 around sides/back
+      const ang = k * Math.PI * 0.8;
+      const sinA = Math.sin(ang);
+      const cosA = -Math.cos(ang);
+      const p0 = new THREE.Vector3(sinA * 0.072, 1.662, cosA * 0.09);
+      const p1 = new THREE.Vector3(sinA * 0.056, 1.724, cosA * 0.068 - 0.014);
+      const p2 = new THREE.Vector3(sinA * 0.02, 1.756, cosA * 0.022 - 0.036);
+      coreParts.push(normalizeForMerge(buildBraidedLockGeo([p0, p1, p2], 0.0046, 0.0056, 5, 6, 14)));
+    }
+
+    // Lush sculpted high coiled topknot bun (y ~ 1.784, z ~ -0.036) matching editorial updo silhouette
+    const bunCenter = new THREE.Vector3(0, 1.784, -0.036);
     const bunRings: LoftRingPoint[][] = [];
-    const bSegs = hi ? 22 : 14;
-    const bRows = hi ? 12 : 8;
+    const bSegs = hi ? 28 : 16;
+    const bRows = hi ? 16 : 10;
     for (let r = 0; r <= bRows; r++) {
       const v = r / bRows;
       const lat = THREE.MathUtils.lerp(-Math.PI * 0.45, Math.PI * 0.45, v);
-      const rad = Math.cos(lat) * 0.038;
-      const yOff = Math.sin(lat) * 0.032;
+      const cosL = Math.cos(lat);
+      const sinL = Math.sin(lat);
+      const rx = 0.056 * cosL;
+      const rz = 0.058 * cosL;
+      const yOff = sinL * 0.048;
       const ring: LoftRingPoint[] = [];
       for (let s = 0; s < bSegs; s++) {
         const a = (s / bSegs) * Math.PI * 2;
-        const twistMod = 1 + 0.08 * Math.sin(a * 4 + v * 10);
+        const twistMod = 1 + 0.065 * Math.sin(a * 5 + v * 14) + 0.04 * Math.cos(a * 3 - v * 9);
         ring.push({
-          x: bunCenter.x + Math.cos(a) * rad * twistMod,
-          y: bunCenter.y + yOff * 0.85 - Math.sin(a) * rad * 0.25,
-          z: bunCenter.z + Math.sin(a) * rad * 0.68 * twistMod,
+          x: bunCenter.x + Math.cos(a) * rx * twistMod,
+          y: bunCenter.y + yOff - Math.sin(lat * 2) * 0.002,
+          z: bunCenter.z + Math.sin(a) * rz * twistMod,
         });
       }
       bunRings.push(ring);
     }
     coreParts.push(normalizeForMerge(loftRings(bunRings, true, true)));
 
-    // Two wrapped braid coils framing the chignon
-    for (const sign of [-1, 1]) {
-      const coil = buildBraidedLockGeo(
-        [
-          new THREE.Vector3(0, 1.716, -0.095),
-          new THREE.Vector3(sign * 0.036, 1.69, -0.105),
-          new THREE.Vector3(sign * 0.025, 1.652, -0.112),
-          new THREE.Vector3(0, 1.65, -0.102),
-        ],
-        0.008,
-        0.007,
-        6,
-        10,
-        18
-      );
-      coreParts.push(normalizeForMerge(coil));
+    // Stacked helical braided coils wrapping around the high topknot bun
+    for (let tier = 0; tier < 3; tier++) {
+      const ty = 1.755 + tier * 0.024;
+      const tr = 0.056 - tier * 0.008;
+      const pts: THREE.Vector3[] = [];
+      const steps = 8;
+      for (let p = 0; p <= steps; p++) {
+        const a = (p / steps) * Math.PI * 2 + tier * 0.9;
+        pts.push(
+          new THREE.Vector3(
+            bunCenter.x + Math.cos(a) * tr,
+            ty + Math.sin(a * 2 + tier) * 0.0045,
+            bunCenter.z + Math.sin(a) * tr * 1.03
+          )
+        );
+      }
+      coreParts.push(normalizeForMerge(buildBraidedLockGeo(pts, 0.0095, 0.0085, 6, hi ? 14 : 9, 22)));
     }
 
     const coreGeo = mergeGeometries(coreParts, false);
     coreParts.forEach((p) => p.dispose());
-    coreGeo.computeVertexNormals();
-    return { coreGeo, isCoily: false };
+
+    // Rich textured coily halo cards around topknot bun perimeter so edges look softly braided & organic
+    const cards: THREE.BufferGeometry[] = [];
+    const cardCount = hi ? 28 : 16;
+    for (let i = 0; i < cardCount; i++) {
+      const phi = Math.acos(1 - (2 * (i + 0.5)) / cardCount);
+      const theta = i * 2.399963;
+      const dir = new THREE.Vector3(Math.sin(phi) * Math.cos(theta), Math.cos(phi), Math.sin(phi) * Math.sin(theta)).normalize();
+      const c = buildCoilyHaloCard(0.044, 0.044, 0.008);
+      c.applyQuaternion(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), i * 1.2));
+      c.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir));
+      c.translate(bunCenter.x + dir.x * 0.056, bunCenter.y + dir.y * 0.048, bunCenter.z + dir.z * 0.058);
+      cards.push(normalizeForMerge(c));
+    }
+    const cardGeo = mergeGeometries(cards, false);
+    cards.forEach((p) => p.dispose());
+
+    return { coreGeo, cardGeo, isCoily: true };
   }
 
   if (style === 'bob') {
@@ -509,7 +538,6 @@ export function buildSculptedHairStyle(
 
     const cardGeo = mergeGeometries(cards, false);
     cards.forEach((p) => p.dispose());
-    cardGeo.computeVertexNormals();
     return { coreGeo, cardGeo, isCoily: false };
   }
 
@@ -531,7 +559,6 @@ export function buildSculptedHairStyle(
   }
   const cardGeo = mergeGeometries(cards, false);
   cards.forEach((p) => p.dispose());
-  cardGeo.computeVertexNormals();
   return { coreGeo, cardGeo, isCoily: false };
 }
 
