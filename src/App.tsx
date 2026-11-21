@@ -27,6 +27,7 @@ const INITIAL_HUD: HudSnapshot = {
   hoveredRoom: null,
   floorActivity: null,
   inspectedMonitor: null,
+  selectedCharacter: null,
   audioEnabled: true,
 };
 
@@ -86,6 +87,10 @@ export default function App() {
         onJumpToTime={(m) => engineRef.current?.jumpToTime(m)}
         onCloseMonitor={() => engineRef.current?.closeMonitorInspector()}
         getInspectedScreenCanvas={() => engineRef.current?.getInspectedScreenCanvas() ?? null}
+        onCloseCharacter={() => engineRef.current?.closeCharacterInspector()}
+        onFocusCharacter={() => engineRef.current?.focusSelectedCharacter()}
+        onToggleFollowCharacter={() => engineRef.current?.toggleFollowCharacter()}
+        onNudgeCharacter={() => engineRef.current?.nudgeSelectedCharacter()}
       />
     </div>
   );

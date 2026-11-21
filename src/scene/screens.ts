@@ -9,8 +9,11 @@ import {
   type WorkstationProfile,
 } from './workstations';
 
-const WS_W = 384;
-const WS_H = 216;
+const WS_LOGICAL_W = 384;
+const WS_LOGICAL_H = 216;
+const WS_SCALE = 2;
+const WS_W = WS_LOGICAL_W * WS_SCALE;
+const WS_H = WS_LOGICAL_H * WS_SCALE;
 const WS_MONO = 'ui-monospace,Menlo,Consolas,"Courier New",monospace';
 const WS_SANS = '"Plus Jakarta Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif';
 
@@ -472,8 +475,8 @@ const stageCol: Record<string, string> = {
   Build: '#c0a8ff',
 };
 
-const TV_W = 640;
-const TV_H = 360;
+const TV_W = 1280;
+const TV_H = 720;
 
 export function createWallTvMat(reg: ScreenRegistry, d: RoomDef, idx: number): THREE.MeshStandardMaterial {
   const cv = document.createElement('canvas');
@@ -484,12 +487,12 @@ export function createWallTvMat(reg: ScreenRegistry, d: RoomDef, idx: number): T
   tx.anisotropy = getMaxAnisotropy();
 
   const mat = new THREE.MeshStandardMaterial({
-    color: 0x05070a,
-    roughness: 0.24,
-    metalness: 0.2,
+    color: 0x000000,
+    roughness: 0.65,
+    metalness: 0.0,
     emissive: 0xffffff,
     emissiveMap: tx,
-    emissiveIntensity: 0.95,
+    emissiveIntensity: 1.05,
   });
 
   const lc = document.createElement('canvas');
@@ -537,80 +540,80 @@ export function drawWallTV(tv: WallTVRef, t: number) {
   g.fillRect(0, 58, 800, 3);
   g.drawImage(tv.logo, 10, 8, 88, 44);
 
-  g.fillStyle = '#f2f7fb';
+  g.fillStyle = '#ffffff';
   g.textAlign = 'left';
   g.textBaseline = 'middle';
-  g.font = `700 30px ${WS_SANS}`;
+  g.font = `700 34px ${WS_SANS}`;
   g.fillText(tv.d.n, 108, 31);
 
   const now = new Date();
   const hh = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
   g.textAlign = 'right';
-  g.fillStyle = '#9db1c1';
-  g.font = `500 20px ${WS_SANS}`;
+  g.fillStyle = '#cbd5e1';
+  g.font = `600 20px ${WS_SANS}`;
   g.fillText(hh, 780, 31);
 
   g.fillStyle = Math.sin(t * 4) > -0.2 ? '#ff4d4d' : '#7a2a2a';
   circ(g, 676, 31, 6);
-  g.fillStyle = '#f2f7fb';
-  g.font = `700 16px ${WS_SANS}`;
-  g.fillText('LIVE', 714, 32);
+  g.fillStyle = '#ffffff';
+  g.font = `700 17px ${WS_SANS}`;
+  g.fillText('LIVE', 716, 32);
 
   g.textAlign = 'left';
   g.fillStyle = A;
-  g.font = `700 15px ${WS_SANS}`;
-  g.fillText('WHAT WE BUILD', 28, 90);
+  g.font = `700 17px ${WS_SANS}`;
+  g.fillText('WHAT WE BUILD', 28, 88);
   D.build.forEach((b, i) => {
     const y = 104 + i * 46;
-    g.fillStyle = 'rgba(255,255,255,.06)';
+    g.fillStyle = 'rgba(255,255,255,.09)';
     rr(g, 24, y, 270, 38, 8);
     g.fill();
     g.fillStyle = A;
     rr(g, 34, y + 11, 16, 16, 4);
     g.fill();
-    g.fillStyle = '#e8f0ff';
-    g.font = `600 19px ${WS_SANS}`;
+    g.fillStyle = '#ffffff';
+    g.font = `600 20px ${WS_SANS}`;
     g.fillText(b, 62, y + 20);
   });
 
   g.fillStyle = A;
-  g.font = `700 15px ${WS_SANS}`;
-  g.fillText('DELIVERED THIS WEEK', 28, 262);
+  g.font = `700 17px ${WS_SANS}`;
+  g.fillText('DELIVERED THIS WEEK', 28, 260);
   const k = tv.idx * 7 + 1;
   for (let i = 0; i < 7; i++) {
     let v = 0.3 + 0.6 * hr(k + i);
     if (i === 6) v = 0.55 + 0.35 * Math.sin(t * 1.3) * 0.5 + 0.15;
     const bh = v * 84;
     const x = 30 + i * 38;
-    g.fillStyle = i === 6 ? A : 'rgba(255,255,255,.28)';
+    g.fillStyle = i === 6 ? A : 'rgba(255,255,255,.32)';
     rr(g, x, 372 - bh, 26, bh, 4);
     g.fill();
-    g.fillStyle = '#7d8da0';
-    g.font = `500 12px ${WS_SANS}`;
+    g.fillStyle = '#cbd5e1';
+    g.font = `600 14px ${WS_SANS}`;
     g.textAlign = 'center';
     g.fillText('MTWTFSS'[i], x + 13, 386);
     g.textAlign = 'left';
   }
 
   g.fillStyle = A;
-  g.font = `700 15px ${WS_SANS}`;
-  g.fillText("HOW IT'S GOING", 330, 90);
+  g.font = `700 17px ${WS_SANS}`;
+  g.fillText("HOW IT'S GOING", 330, 88);
   const cyc = (t + tv.idx * 1.7) % 16;
   const ease = Math.min(1, cyc / 2.4);
   const e = 1 - Math.pow(1 - ease, 3);
   D.proj.forEach((p, i) => {
     const y = 104 + i * 88;
     const col = stageCol[p[2]] || A;
-    g.fillStyle = 'rgba(255,255,255,.06)';
+    g.fillStyle = 'rgba(255,255,255,.09)';
     rr(g, 326, y, 452, 78, 10);
     g.fill();
-    g.fillStyle = '#f2f7fb';
-    g.font = `700 21px ${WS_SANS}`;
+    g.fillStyle = '#ffffff';
+    g.font = `700 22px ${WS_SANS}`;
     g.fillText(p[0], 342, y + 22);
-    g.font = `700 14px ${WS_SANS}`;
-    const tw = g.measureText(p[2]).width + 20;
+    g.font = `700 15px ${WS_SANS}`;
+    const tw = g.measureText(p[2]).width + 22;
     g.fillStyle = col;
-    g.globalAlpha = 0.2;
+    g.globalAlpha = 0.24;
     rr(g, 762 - tw, y + 10, tw, 24, 12);
     g.fill();
     g.globalAlpha = 1;
@@ -618,7 +621,7 @@ export function drawWallTV(tv: WallTVRef, t: number) {
     g.textAlign = 'center';
     g.fillText(p[2], 762 - tw / 2, y + 23);
     g.textAlign = 'left';
-    g.fillStyle = 'rgba(255,255,255,.12)';
+    g.fillStyle = 'rgba(255,255,255,.14)';
     rr(g, 342, y + 48, 360, 14, 7);
     g.fill();
     const pg = (p[1] / 100) * e;
@@ -630,8 +633,8 @@ export function drawWallTV(tv: WallTVRef, t: number) {
       rr(g, 342, y + 48, Math.max(14, 360 * pg), 14, 7);
       g.fill();
     }
-    g.fillStyle = '#f2f7fb';
-    g.font = `700 20px ${WS_SANS}`;
+    g.fillStyle = '#ffffff';
+    g.font = `700 21px ${WS_SANS}`;
     g.textAlign = 'right';
     g.fillText(Math.round(p[1] * e) + '%', 764, y + 55);
     g.textAlign = 'left';
@@ -649,12 +652,12 @@ export function drawWallTV(tv: WallTVRef, t: number) {
   g.textAlign = 'center';
   g.fillText('LATEST', 53, 427);
   g.textAlign = 'left';
-  g.fillStyle = '#e8f0ff';
-  g.font = `500 20px ${WS_SANS}`;
+  g.fillStyle = '#ffffff';
+  g.font = `600 21px ${WS_SANS}`;
   g.fillText(D.news[Math.floor(t / 5 + tv.idx) % D.news.length], 104, 427);
   g.fillStyle = '#4fe38a';
   circ(g, 688, 427, 6);
-  g.font = `700 16px ${WS_SANS}`;
+  g.font = `700 17px ${WS_SANS}`;
   g.fillText('On track', 700, 428);
   g.restore();
   tv.tx.needsUpdate = true;
@@ -1247,12 +1250,12 @@ export function createDeskScreenMat(reg: ScreenRegistry, d: RoomDef, k: number):
   tx.anisotropy = getMaxAnisotropy();
 
   const mat = new THREE.MeshStandardMaterial({
-    color: 0x05070a,
-    roughness: 0.25,
-    metalness: 0.2,
+    color: 0x000000,
+    roughness: 0.6,
+    metalness: 0.0,
     emissive: 0xffffff,
     emissiveMap: tx,
-    emissiveIntensity: 0.95,
+    emissiveIntensity: 1.02,
   });
 
   const acc = '#' + d.soft.toString(16).padStart(6, '0');
@@ -1260,6 +1263,8 @@ export function createDeskScreenMat(reg: ScreenRegistry, d: RoomDef, k: number):
   const mode = getModeForDesk(d.t, k);
 
   const fn = (g: CanvasRenderingContext2D, w: number, h: number, t: number) => {
+    g.save();
+    g.setTransform(WS_SCALE, 0, 0, WS_SCALE, 0, 0);
     if (mode === 'browser') {
       wsBrowser(g, w, h, t, profile.browserSessions);
     } else if (mode === 'dataEntry') {
@@ -1267,6 +1272,7 @@ export function createDeskScreenMat(reg: ScreenRegistry, d: RoomDef, k: number):
     } else {
       wsJobScreen(g, w, h, t, acc, profile);
     }
+    g.restore();
   };
 
   const s: WorkScreenRef = {
@@ -1276,11 +1282,12 @@ export function createDeskScreenMat(reg: ScreenRegistry, d: RoomDef, k: number):
     mesh: null,
     next: 0,
     off: (ROOMS.indexOf(d) + 1) * 2.9 + k * 4.3,
+    lv: d.lv,
     fn,
   };
   d._ws[k] = s;
   reg.workScreens.push(s);
-  s.fn(s.g, WS_W, WS_H, s.off);
+  s.fn(s.g, WS_LOGICAL_W, WS_LOGICAL_H, s.off);
   tx.needsUpdate = true;
   return mat;
 }
@@ -1295,12 +1302,12 @@ export function createExecScreen(reg: ScreenRegistry, key: string, k: number): W
   tx.anisotropy = getMaxAnisotropy();
 
   const mat = new THREE.MeshStandardMaterial({
-    color: 0x05070a,
-    roughness: 0.25,
-    metalness: 0.2,
+    color: 0x000000,
+    roughness: 0.6,
+    metalness: 0.0,
     emissive: 0xffffff,
     emissiveMap: tx,
-    emissiveIntensity: 0.95,
+    emissiveIntensity: 1.02,
   });
 
   const stationKey =
@@ -1319,6 +1326,8 @@ export function createExecScreen(reg: ScreenRegistry, key: string, k: number): W
   const mode = getModeForDesk(stationKey, k);
 
   const fn = (g: CanvasRenderingContext2D, w: number, h: number, t: number) => {
+    g.save();
+    g.setTransform(WS_SCALE, 0, 0, WS_SCALE, 0, 0);
     if (mode === 'browser') {
       wsBrowser(g, w, h, t, profile.browserSessions);
     } else if (mode === 'dataEntry') {
@@ -1326,6 +1335,7 @@ export function createExecScreen(reg: ScreenRegistry, key: string, k: number): W
     } else {
       wsJobScreen(g, w, h, t, profile.projectWork.accent, profile);
     }
+    g.restore();
   };
 
   const s: WorkScreenRef = {
@@ -1335,46 +1345,49 @@ export function createExecScreen(reg: ScreenRegistry, key: string, k: number): W
     mesh: null,
     next: 0,
     off: ++exN * 3.7 + k * 4.3,
+    lv: key === 'reception' ? 0 : key === 'secr' ? 4 : 5,
     fn,
   };
   reg.workScreens.push(s);
-  s.fn(s.g, WS_W, WS_H, s.off);
+  s.fn(s.g, WS_LOGICAL_W, WS_LOGICAL_H, s.off);
   tx.needsUpdate = true;
   return s;
 }
 
 export function createBoardScreenMat(reg: ScreenRegistry): THREE.MeshStandardMaterial {
-  const W = 768;
-  const H = 256;
+  const LWb = 768;
+  const LHb = 256;
   const cv = document.createElement('canvas');
-  cv.width = W;
-  cv.height = H;
+  cv.width = LWb * 2;
+  cv.height = LHb * 2;
   const tx = new THREE.CanvasTexture(cv);
   tx.colorSpace = THREE.SRGBColorSpace;
   tx.anisotropy = getMaxAnisotropy();
 
   const mat = new THREE.MeshStandardMaterial({
-    color: 0x05070a,
-    roughness: 0.26,
-    metalness: 0.2,
+    color: 0x000000,
+    roughness: 0.65,
+    metalness: 0.0,
     emissive: 0xffffff,
     emissiveMap: tx,
-    emissiveIntensity: 0.95,
+    emissiveIntensity: 1.08,
   });
 
   const fn = (g: CanvasRenderingContext2D, w: number, h: number, t: number) => {
-    g.fillStyle = '#0b1220';
+    g.save();
+    g.setTransform(2, 0, 0, 2, 0, 0);
+    g.fillStyle = '#09101d';
     g.fillRect(0, 0, w, h);
     const hd = g.createLinearGradient(0, 0, w, 0);
     hd.addColorStop(0, '#1d3a6b');
-    hd.addColorStop(1, '#0b1220');
+    hd.addColorStop(1, '#09101d');
     g.fillStyle = hd;
-    g.fillRect(0, 0, w, 36);
-    g.fillStyle = '#e8f0ff';
-    g.font = `600 20px ${WS_SANS}`;
+    g.fillRect(0, 0, w, 40);
+    g.fillStyle = '#ffffff';
+    g.font = `700 22px ${WS_SANS}`;
     g.textAlign = 'left';
     g.textBaseline = 'middle';
-    g.fillText('DomainTechHub Office · Quarterly board review', 16, 19);
+    g.fillText('DomainTechHub Office · Quarterly board review', 18, 21);
 
     const grow = Math.min(1, (t % 12) / 2.5 + 0.15);
     for (let i = 0; i < 8; i++) {
@@ -1394,20 +1407,21 @@ export function createBoardScreenMat(reg: ScreenRegistry): THREE.MeshStandardMat
     ].forEach((k, i) => {
       const x = 480;
       const y = 52 + i * 64;
-      g.fillStyle = 'rgba(255,255,255,.07)';
+      g.fillStyle = 'rgba(255,255,255,.1)';
       g.fillRect(x, y, 270, 54);
-      g.fillStyle = '#9db1c1';
-      g.font = `500 16px ${WS_SANS}`;
+      g.fillStyle = '#cbd5e1';
+      g.font = `600 17px ${WS_SANS}`;
       g.fillText(k[0], x + 14, y + 17);
       g.fillStyle = k[2];
-      g.font = `700 28px ${WS_SANS}`;
+      g.font = `700 30px ${WS_SANS}`;
       g.fillText(k[1], x + 14, y + 38);
     });
+    g.restore();
   };
 
-  const entry = { g: cv.getContext('2d')!, tx, mat, w: W, h: H, fn };
+  const entry = { g: cv.getContext('2d')!, tx, mat, w: LWb, h: LHb, fn };
   reg.boardScreens.push(entry);
-  fn(entry.g, W, H, 0);
+  fn(entry.g, LWb, LHb, 0);
   tx.needsUpdate = true;
   return mat;
 }
@@ -1419,21 +1433,25 @@ let tvLast = 0;
 let tvTick = 0;
 let scrLast = 0;
 
-export function updateAllScreens(reg: ScreenRegistry, camera: THREE.Camera, t: number) {
-  if (t - scrLast >= 0.16) {
+export function updateAllScreens(
+  reg: ScreenRegistry,
+  camera: THREE.Camera,
+  t: number,
+  cutawayMaxLv: number | null = null
+) {
+  camera.updateMatrixWorld();
+  _tvM.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  _tvFr.setFromProjectionMatrix(_tvM);
+
+  if (t - scrLast >= 0.65) {
     scrLast = t;
     for (const b of reg.boardScreens) {
-      b.g.clearRect(0, 0, b.w, b.h);
       b.fn(b.g, b.w, b.h, t);
       b.tx.needsUpdate = true;
     }
   }
 
-  camera.updateMatrixWorld();
-  _tvM.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-  _tvFr.setFromProjectionMatrix(_tvM);
-
-  if (t - tvLast >= 0.12) {
+  if (t - tvLast >= 0.5) {
     tvLast = t;
     tvTick++;
     for (let i = 0; i < reg.wallTVs.length; i++) {
@@ -1447,16 +1465,25 @@ export function updateAllScreens(reg: ScreenRegistry, camera: THREE.Camera, t: n
   for (let i = 0; i < reg.workScreens.length; i++) {
     const s = reg.workScreens[i];
     if (t < s.next || !s.mesh) continue;
+    if (cutawayMaxLv !== null && s.lv != null && s.lv > cutawayMaxLv) {
+      s.next = t + 0.8;
+      continue;
+    }
     const mesh = s.mesh as THREE.Mesh;
     if (!_tvFr.intersectsObject(mesh)) {
-      s.next = t + 0.35;
+      s.next = t + 0.75;
       continue;
     }
     mesh.getWorldPosition(_wsV);
     const dist = _wsV.distanceTo(camera.position);
-    s.next = t + (dist < 9 ? 0.12 : dist < 22 ? 0.28 : 0.75);
+    if (dist > 45) {
+      s.next = t + 2.5;
+      continue;
+    }
+    s.next = t + (dist < 8 ? 0.55 : dist < 20 ? 1.2 : 2.2);
+    s.g.setTransform(1, 0, 0, 1, 0, 0);
     s.g.clearRect(0, 0, WS_W, WS_H);
-    s.fn(s.g, WS_W, WS_H, t + s.off);
+    s.fn(s.g, WS_LOGICAL_W, WS_LOGICAL_H, t + s.off);
     (s.tx as THREE.CanvasTexture).needsUpdate = true;
   }
 }

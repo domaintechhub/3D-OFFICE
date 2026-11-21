@@ -543,7 +543,7 @@ export interface FaceTextureOptions {
   hasFadeHairline: boolean;
   freckleSeed: number;
   warmSmile: boolean;
-  size?: 512 | 768 | 1024;
+  size?: 256 | 512 | 768 | 1024;
 }
 
 /**

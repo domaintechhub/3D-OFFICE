@@ -117,7 +117,7 @@ export function circ(g: CanvasRenderingContext2D, x: number, y: number, r: numbe
 }
 
 export function buildCoreTextures() {
-  const marbleTex = makeCanvasTex('marble', 512, 512, (g, W, H) => {
+  const marbleTex = makeCanvasTex('marble', 256, 256, (g, W, H) => {
     const bg = g.createLinearGradient(0, 0, W, H);
     bg.addColorStop(0, '#f4f0e8');
     bg.addColorStop(0.5, '#efeae0');
@@ -126,11 +126,11 @@ export function buildCoreTextures() {
     g.fillRect(0, 0, W, H);
 
     // Soft cloudy mineral patches
-    for (let i = 0; i < 42; i++) {
+    for (let i = 0; i < 24; i++) {
       const x = Math.random() * W;
       const y = Math.random() * H;
-      const r = 24 + Math.random() * 86;
-      const rg = g.createRadialGradient(x, y, 2, x, y, r);
+      const r = 12 + Math.random() * 44;
+      const rg = g.createRadialGradient(x, y, 1, x, y, r);
       rg.addColorStop(0, 'rgba(205,196,182,0.14)');
       rg.addColorStop(1, 'rgba(205,196,182,0)');
       g.fillStyle = rg;
@@ -138,19 +138,19 @@ export function buildCoreTextures() {
     }
 
     // Primary & secondary Calacatta slate + subtle warm gold mineral veins
-    for (let i = 0; i < 46; i++) {
+    for (let i = 0; i < 28; i++) {
       const isWarm = i % 5 === 0;
       const a = isWarm ? 0.05 + Math.random() * 0.06 : 0.04 + Math.random() * 0.09;
       g.strokeStyle = isWarm ? `rgba(164,132,90,${a})` : `rgba(108,114,122,${a})`;
-      g.lineWidth = isWarm ? 0.6 + Math.random() * 1.4 : 0.7 + Math.random() * 2.6;
+      g.lineWidth = isWarm ? 0.5 + Math.random() * 1.0 : 0.6 + Math.random() * 1.6;
       g.beginPath();
       let x = Math.random() * W;
-      let y = -20;
+      let y = -10;
       g.moveTo(x, y);
       for (let k = 0; k < 8; k++) {
-        const nx = x + (Math.random() - 0.5) * 110;
+        const nx = x + (Math.random() - 0.5) * 56;
         const ny = y + H / 7;
-        g.quadraticCurveTo(x + (Math.random() - 0.5) * 70, y + 26, nx, ny);
+        g.quadraticCurveTo(x + (Math.random() - 0.5) * 35, y + 13, nx, ny);
         x = nx;
         y = ny;
       }
@@ -159,14 +159,14 @@ export function buildCoreTextures() {
 
     // Crisp honed architectural slab grout seams
     g.strokeStyle = 'rgba(126,120,112,0.16)';
-    g.lineWidth = 1.5;
-    for (let x = 0; x < W; x += 256) {
+    g.lineWidth = 1;
+    for (let x = 0; x < W; x += W / 2) {
       g.beginPath();
       g.moveTo(x, 0);
       g.lineTo(x, H);
       g.stroke();
     }
-    for (let y = 0; y < H; y += 256) {
+    for (let y = 0; y < H; y += H / 2) {
       g.beginPath();
       g.moveTo(0, y);
       g.lineTo(W, y);
@@ -176,23 +176,23 @@ export function buildCoreTextures() {
   marbleTex.wrapS = marbleTex.wrapT = THREE.RepeatWrapping;
   marbleTex.repeat.set(5, 3);
 
-  const marbleNormal = heightCanvasToNormalTex('marble', 512, 512, (g, W, H) => {
+  const marbleNormal = heightCanvasToNormalTex('marble', 256, 256, (g, W, H) => {
     g.fillStyle = '#888888';
     g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 1200; i++) {
+    for (let i = 0; i < 500; i++) {
       const v = 128 + ((Math.random() * 16) | 0);
       g.fillStyle = `rgb(${v},${v},${v})`;
-      circ(g, Math.random() * W, Math.random() * H, 2 + Math.random() * 7);
+      circ(g, Math.random() * W, Math.random() * H, 1 + Math.random() * 4);
     }
     g.strokeStyle = '#303030';
-    g.lineWidth = 4;
-    for (let x = 0; x < W; x += 256) {
+    g.lineWidth = 2;
+    for (let x = 0; x < W; x += W / 2) {
       g.beginPath();
       g.moveTo(x, 0);
       g.lineTo(x, H);
       g.stroke();
     }
-    for (let y = 0; y < H; y += 256) {
+    for (let y = 0; y < H; y += H / 2) {
       g.beginPath();
       g.moveTo(0, y);
       g.lineTo(W, y);
@@ -201,23 +201,23 @@ export function buildCoreTextures() {
   }, 2.1);
   marbleNormal.repeat.set(5, 3);
 
-  const marbleRoughness = makeCanvasTex('marble_rough', 512, 512, (g, W, H) => {
+  const marbleRoughness = makeCanvasTex('marble_rough', 256, 256, (g, W, H) => {
     g.fillStyle = '#303030';
     g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 72; i++) {
+    for (let i = 0; i < 40; i++) {
       const v = 34 + ((Math.random() * 48) | 0);
       g.fillStyle = `rgba(${v},${v},${v},0.34)`;
-      circ(g, Math.random() * W, Math.random() * H, 14 + Math.random() * 52);
+      circ(g, Math.random() * W, Math.random() * H, 8 + Math.random() * 26);
     }
     g.strokeStyle = '#d8d8d8';
-    g.lineWidth = 4;
-    for (let x = 0; x < W; x += 256) {
+    g.lineWidth = 2;
+    for (let x = 0; x < W; x += W / 2) {
       g.beginPath();
       g.moveTo(x, 0);
       g.lineTo(x, H);
       g.stroke();
     }
-    for (let y = 0; y < H; y += 256) {
+    for (let y = 0; y < H; y += H / 2) {
       g.beginPath();
       g.moveTo(0, y);
       g.lineTo(W, y);
@@ -227,7 +227,7 @@ export function buildCoreTextures() {
   marbleRoughness.wrapS = marbleRoughness.wrapT = THREE.RepeatWrapping;
   marbleRoughness.repeat.set(5, 3);
 
-  const woodTex = makeCanvasTex('wood', 512, 512, (g, W, H) => {
+  const woodTex = makeCanvasTex('wood', 256, 256, (g, W, H) => {
     const base = g.createLinearGradient(0, 0, W, 0);
     base.addColorStop(0, '#b98652');
     base.addColorStop(0.5, '#cc9961');
@@ -276,7 +276,7 @@ export function buildCoreTextures() {
   woodNormal.repeat.set(2, 2);
 
   // Architectural walnut parquet hardwood planks (albedo + V-groove normal + per-plank roughness)
-  const parquetTex = makeCanvasTex('parquet', 512, 512, (g, W, H) => {
+  const parquetTex = makeCanvasTex('parquet', 256, 256, (g, W, H) => {
     g.fillStyle = '#745236';
     g.fillRect(0, 0, W, H);
     const cols = 4;
@@ -292,21 +292,21 @@ export function buildCoreTextures() {
         g.fillStyle = `rgb(${128 + tone},${90 + Math.round(tone * 0.7)},${58 + Math.round(tone * 0.5)})`;
         g.fillRect(x + 1, y + 1, pw - 2, ph - 2);
         // longitudinal timber fiber
-        for (let f = 0; f < 16; f++) {
-          const fx = x + 3 + Math.random() * (pw - 6);
+        for (let f = 0; f < 10; f++) {
+          const fx = x + 2 + Math.random() * (pw - 4);
           g.fillStyle = `rgba(60,36,16,${0.08 + Math.random() * 0.14})`;
-          g.fillRect(fx, y + 2, 1 + Math.random() * 2.5, ph - 4);
+          g.fillRect(fx, y + 1, 1 + Math.random() * 1.5, ph - 2);
         }
         // bevel shadow seam
         g.strokeStyle = 'rgba(32,18,8,0.55)';
-        g.lineWidth = 2;
+        g.lineWidth = 1.5;
         g.strokeRect(x + 0.5, y + 0.5, pw - 1, ph - 1);
       }
     }
   });
   parquetTex.wrapS = parquetTex.wrapT = THREE.RepeatWrapping;
 
-  const parquetNormal = heightCanvasToNormalTex('parquet', 512, 512, (g, W, H) => {
+  const parquetNormal = heightCanvasToNormalTex('parquet', 256, 256, (g, W, H) => {
     g.fillStyle = '#9a9a9a';
     g.fillRect(0, 0, W, H);
     const cols = 4;
@@ -320,20 +320,20 @@ export function buildCoreTextures() {
         const x = c * pw;
         const pv = 148 + (((c * 19 + r * 43) % 24) - 12);
         g.fillStyle = `rgb(${pv},${pv},${pv})`;
-        g.fillRect(x + 2, y + 2, pw - 4, ph - 4);
-        for (let f = 0; f < 14; f++) {
+        g.fillRect(x + 1, y + 1, pw - 2, ph - 2);
+        for (let f = 0; f < 8; f++) {
           const gv = pv - 16 + ((Math.random() * 24) | 0);
           g.fillStyle = `rgb(${gv},${gv},${gv})`;
-          g.fillRect(x + 3 + Math.random() * (pw - 6), y + 2, 1 + Math.random() * 2, ph - 4);
+          g.fillRect(x + 2 + Math.random() * (pw - 4), y + 1, 1 + Math.random() * 1.5, ph - 2);
         }
         g.strokeStyle = '#242424';
-        g.lineWidth = 3;
+        g.lineWidth = 2;
         g.strokeRect(x + 0.5, y + 0.5, pw - 1, ph - 1);
       }
     }
   }, 2.4);
 
-  const parquetRoughness = makeCanvasTex('parquet_rough', 512, 512, (g, W, H) => {
+  const parquetRoughness = makeCanvasTex('parquet_rough', 256, 256, (g, W, H) => {
     g.fillStyle = '#767676';
     g.fillRect(0, 0, W, H);
     const cols = 4;
@@ -347,26 +347,26 @@ export function buildCoreTextures() {
         const x = c * pw;
         const rv = 78 + (((c * 29 + r * 53) % 44));
         g.fillStyle = `rgb(${rv},${rv},${rv})`;
-        g.fillRect(x + 2, y + 2, pw - 4, ph - 4);
+        g.fillRect(x + 1, y + 1, pw - 2, ph - 2);
         g.strokeStyle = '#d4d4d4';
-        g.lineWidth = 2.5;
+        g.lineWidth = 2;
         g.strokeRect(x + 0.5, y + 0.5, pw - 1, ph - 1);
       }
     }
   }, false);
   parquetRoughness.wrapS = parquetRoughness.wrapT = THREE.RepeatWrapping;
 
-  const slatTex = makeCanvasTex('slat', 512, 512, (g, W, H) => {
+  const slatTex = makeCanvasTex('slat', 256, 256, (g, W, H) => {
     g.fillStyle = '#4a321b';
     g.fillRect(0, 0, W, H);
-    for (let x = 0; x < W; x += 16) {
-      const l = g.createLinearGradient(x, 0, x + 16, 0);
+    for (let x = 0; x < W; x += 8) {
+      const l = g.createLinearGradient(x, 0, x + 8, 0);
       l.addColorStop(0, '#362310');
       l.addColorStop(0.24, '#9a6b39');
       l.addColorStop(0.56, '#bb884c');
       l.addColorStop(1, '#311f0d');
       g.fillStyle = l;
-      g.fillRect(x, 0, 13, H);
+      g.fillRect(x, 0, 6.5, H);
     }
   });
   slatTex.wrapS = slatTex.wrapT = THREE.RepeatWrapping;
@@ -386,14 +386,14 @@ export function buildCoreTextures() {
   }, 3.2);
   slatNormal.repeat.set(4, 1);
 
-  const mossTex = makeCanvasTex('moss', 512, 512, (g, W, H) => {
+  const mossTex = makeCanvasTex('moss', 256, 256, (g, W, H) => {
     g.fillStyle = '#2c6432';
     g.fillRect(0, 0, W, H);
     const cs = ['#2e783a', '#3d8e46', '#215628', '#4ca657', '#1c4a23', '#5ab264'];
-    for (let i = 0; i < 6200; i++) {
+    for (let i = 0; i < 2200; i++) {
       g.fillStyle = cs[(Math.random() * cs.length) | 0];
       g.globalAlpha = 0.38 + Math.random() * 0.5;
-      circ(g, Math.random() * W, Math.random() * H, 1.4 + Math.random() * 4.2);
+      circ(g, Math.random() * W, Math.random() * H, 1.0 + Math.random() * 2.8);
     }
     g.globalAlpha = 1;
   });
@@ -403,16 +403,16 @@ export function buildCoreTextures() {
   const mossNormal = heightCanvasToNormalTex('moss', 256, 256, (g, W, H) => {
     g.fillStyle = '#606060';
     g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 2400; i++) {
+    for (let i = 0; i < 1600; i++) {
       const v = 90 + ((Math.random() * 140) | 0);
       g.fillStyle = `rgb(${v},${v},${v})`;
-      circ(g, Math.random() * W, Math.random() * H, 1.5 + Math.random() * 4.5);
+      circ(g, Math.random() * W, Math.random() * H, 1.2 + Math.random() * 3.5);
     }
   }, 2.6);
   mossNormal.repeat.set(3, 1.4);
 
   // Architectural honed dark slate feature stone (for Reception hero wall & Board Room wall)
-  const slateTex = makeCanvasTex('slate', 512, 512, (g, W, H) => {
+  const slateTex = makeCanvasTex('slate', 256, 256, (g, W, H) => {
     g.fillStyle = '#1e2228';
     g.fillRect(0, 0, W, H);
     const rows = 8;
@@ -426,22 +426,22 @@ export function buildCoreTextures() {
         const y = r * bh;
         const tone = (((r * 41 + c * 73) % 16) - 8);
         g.fillStyle = `rgb(${36 + tone},${41 + tone},${48 + tone})`;
-        g.fillRect(x + 2, y + 2, bw - 4, bh - 4);
-        for (let i = 0; i < 36; i++) {
+        g.fillRect(x + 1, y + 1, bw - 2, bh - 2);
+        for (let i = 0; i < 18; i++) {
           const v = 24 + ((Math.random() * 34) | 0);
           g.fillStyle = `rgba(${v},${v + 2},${v + 5},0.28)`;
-          circ(g, x + 4 + Math.random() * (bw - 8), y + 4 + Math.random() * (bh - 8), 2 + Math.random() * 7);
+          circ(g, x + 2 + Math.random() * (bw - 4), y + 2 + Math.random() * (bh - 4), 1.5 + Math.random() * 4);
         }
         g.strokeStyle = 'rgba(10,12,15,0.85)';
-        g.lineWidth = 3;
-        g.strokeRect(x + 1, y + 1, bw - 2, bh - 2);
+        g.lineWidth = 2;
+        g.strokeRect(x + 0.5, y + 0.5, bw - 1, bh - 1);
       }
     }
   });
   slateTex.wrapS = slateTex.wrapT = THREE.RepeatWrapping;
   slateTex.repeat.set(3, 1.6);
 
-  const slateNormal = heightCanvasToNormalTex('slate', 512, 512, (g, W, H) => {
+  const slateNormal = heightCanvasToNormalTex('slate', 256, 256, (g, W, H) => {
     g.fillStyle = '#909090';
     g.fillRect(0, 0, W, H);
     const rows = 8;
@@ -455,21 +455,21 @@ export function buildCoreTextures() {
         const y = r * bh;
         const base = 136 + (((r * 31 + c * 59) % 28) - 14);
         g.fillStyle = `rgb(${base},${base},${base})`;
-        g.fillRect(x + 2, y + 2, bw - 4, bh - 4);
-        for (let i = 0; i < 32; i++) {
+        g.fillRect(x + 1, y + 1, bw - 2, bh - 2);
+        for (let i = 0; i < 16; i++) {
           const v = base - 16 + ((Math.random() * 32) | 0);
           g.fillStyle = `rgb(${v},${v},${v})`;
-          circ(g, x + 4 + Math.random() * (bw - 8), y + 4 + Math.random() * (bh - 8), 2 + Math.random() * 6);
+          circ(g, x + 2 + Math.random() * (bw - 4), y + 2 + Math.random() * (bh - 4), 1.5 + Math.random() * 4);
         }
         g.strokeStyle = '#202020';
-        g.lineWidth = 3.5;
-        g.strokeRect(x + 1, y + 1, bw - 2, bh - 2);
+        g.lineWidth = 2;
+        g.strokeRect(x + 0.5, y + 0.5, bw - 1, bh - 1);
       }
     }
   }, 2.8);
   slateNormal.repeat.set(3, 1.6);
 
-  const slateRoughness = makeCanvasTex('slate_rough', 512, 512, (g, W, H) => {
+  const slateRoughness = makeCanvasTex('slate_rough', 256, 256, (g, W, H) => {
     g.fillStyle = '#7a7a7a';
     g.fillRect(0, 0, W, H);
     const rows = 8;
@@ -483,10 +483,10 @@ export function buildCoreTextures() {
         const y = r * bh;
         const rv = 84 + ((r * 23 + c * 47) % 58);
         g.fillStyle = `rgb(${rv},${rv},${rv})`;
-        g.fillRect(x + 2, y + 2, bw - 4, bh - 4);
+        g.fillRect(x + 1, y + 1, bw - 2, bh - 2);
         g.strokeStyle = '#e5e5e5';
-        g.lineWidth = 3;
-        g.strokeRect(x + 1, y + 1, bw - 2, bh - 2);
+        g.lineWidth = 2;
+        g.strokeRect(x + 0.5, y + 0.5, bw - 1, bh - 1);
       }
     }
   }, false);
@@ -1144,36 +1144,45 @@ export function buildCoreTextures() {
 }
 
 export function svcSignTex(key: string, title: string, sub: string, accent?: string): THREE.CanvasTexture {
-  return makeCanvasTex(key, 768, 168, (g, W, H) => {
-    g.fillStyle = 'rgba(9,13,18,0.92)';
-    g.fillRect(0, 0, W, H);
+  return makeCanvasTex(key, 1536, 336, (g, W, H) => {
+    const lW = W / 2;
+    const lH = H / 2;
+    g.save();
+    g.setTransform(2, 0, 0, 2, 0, 0);
+    g.fillStyle = 'rgba(7,11,18,0.97)';
+    g.fillRect(0, 0, lW, lH);
     g.fillStyle = accent || '#6fe3a1';
-    g.fillRect(0, 0, 10, H);
-    g.fillStyle = '#eef6fb';
+    g.fillRect(0, 0, 12, lH);
+    g.fillStyle = '#ffffff';
     g.textBaseline = 'middle';
-    g.font = '700 52px "Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif';
-    g.fillText(title, 44, 62);
-    g.fillStyle = '#8fa7b8';
-    g.font = '400 30px "Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif';
-    g.fillText(sub || '', 44, 116);
+    g.font = '700 54px "Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif';
+    g.fillText(title, 44, 60);
+    g.fillStyle = '#cbd5e1';
+    g.font = '500 32px "Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif';
+    g.fillText(sub || '', 44, 118);
+    g.restore();
   });
 }
 
 export function plateTex(name: string): THREE.CanvasTexture {
-  return makeCanvasTex(`plate-${name}`, 640, 96, (g, W) => {
-    g.clearRect(0, 0, W, 96);
-    g.fillStyle = 'rgba(8,12,18,0.78)';
-    rr(g, 2, 10, W - 4, 72, 36);
+  return makeCanvasTex(`plate-${name}`, 1280, 192, (g, W) => {
+    const lW = W / 2;
+    g.save();
+    g.setTransform(2, 0, 0, 2, 0, 0);
+    g.clearRect(0, 0, lW, 96);
+    g.fillStyle = 'rgba(7,11,18,0.96)';
+    rr(g, 2, 8, lW - 4, 80, 38);
     g.fill();
-    g.strokeStyle = 'rgba(255,255,255,0.22)';
-    g.lineWidth = 2;
-    rr(g, 2, 10, W - 4, 72, 36);
+    g.strokeStyle = 'rgba(255,255,255,0.44)';
+    g.lineWidth = 2.5;
+    rr(g, 2, 8, lW - 4, 80, 38);
     g.stroke();
-    g.fillStyle = '#f2f7fb';
-    g.font = '600 38px "Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif';
+    g.fillStyle = '#ffffff';
+    g.font = '700 42px "Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillText(name, W / 2, 48);
+    g.fillText(name, lW / 2, 49, lW - 48);
+    g.restore();
   });
 }
 

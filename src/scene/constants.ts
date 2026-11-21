@@ -26,6 +26,7 @@ export interface WorkScreenRef {
   tx: unknown;
   next: number;
   off: number;
+  lv?: number;
   fn: (g: CanvasRenderingContext2D, w: number, h: number, t: number) => void;
 }
 
@@ -66,6 +67,27 @@ export interface InspectedMonitor {
   isOccupied: boolean;
 }
 
+export interface SelectedCharacterSnapshot {
+  id: string;
+  name: string;
+  role: string;
+  department: string;
+  seniority?: 'Senior' | 'Junior' | 'Lead' | 'Executive';
+  accentColor: string;
+  personality: string;
+  mood: string;
+  goal: string;
+  actionLabel: string;
+  thought: string;
+  recentThoughts: string[];
+  focus: number;
+  energy: number;
+  social: number;
+  levelLabel: string;
+  isFollowing: boolean;
+  isGuide: boolean;
+}
+
 export interface HudSnapshot {
   simMinutes: number;
   simRate: number;
@@ -87,9 +109,10 @@ export interface HudSnapshot {
   tourText: string;
   tourColor: string;
   tourProgress: number;
-  hoveredRoom: { title: string; sub: string; color: string } | null;
+  hoveredRoom: { title: string; sub: string; color: string; hint?: string } | null;
   floorActivity: FloorActivitySummary | null;
   inspectedMonitor: InspectedMonitor | null;
+  selectedCharacter: SelectedCharacterSnapshot | null;
   audioEnabled: boolean;
 }
 

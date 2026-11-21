@@ -92,6 +92,19 @@ export interface LiftCabState {
   gw?: boolean;
 }
 
+export interface OfficeChairHandle {
+  group: THREE.Group;
+  lv: number;
+  restX: number;
+  restZ: number;
+  restRot: number;
+  maxPush: number;
+  swivelDir: number;
+  curX: number;
+  curZ: number;
+  curRot: number;
+}
+
 export interface ArchitectureHandles {
   picks: PickTarget[];
   monitorPicks: MonitorPickTarget[];
@@ -105,6 +118,7 @@ export interface ArchitectureHandles {
   b2Group: THREE.Group;
   b2Ceiling: THREE.Group;
   cabs: Record<number, LiftCabState>;
+  officeChairs: OfficeChairHandle[];
   sculptureGroup: THREE.Group;
   sculptureRings: THREE.Mesh[];
   sculptureCore: THREE.Mesh;
@@ -211,9 +225,38 @@ export function buildSceneArchitecture(
   const picks: PickTarget[] = [];
   const monitorPicks: MonitorPickTarget[] = [];
   const cabs: Record<number, LiftCabState> = {};
+  const officeChairs: OfficeChairHandle[] = [];
   const interiorWarmLights: THREE.PointLight[] = [];
   const streetGlows: THREE.Sprite[] = [];
   const roofFans: THREE.Group[] = [];
+
+  const addTrackedChair = (
+    parent: THREE.Object3D,
+    x: number,
+    y: number,
+    z: number,
+    rot: number,
+    lv: number,
+    scale = 1,
+    maxPush = 0.48,
+    swivelDir = 1
+  ) => {
+    const g = officeChair(parent, x, y, z, rot, M);
+    if (scale !== 1) g.scale.setScalar(scale);
+    officeChairs.push({
+      group: g,
+      lv,
+      restX: x,
+      restZ: z,
+      restRot: rot,
+      maxPush,
+      swivelDir,
+      curX: x,
+      curZ: z,
+      curRot: rot,
+    });
+    return g;
+  };
 
   const exMon = (
     parent: THREE.Object3D,
@@ -311,14 +354,11 @@ export function buildSceneArchitecture(
   boxAt(roofShellGroup, WIDTH, 0.7, 0.4, 0, ROOF - 0.2, DEPTH + 0.14, M.white, true, false, 0.06);
 
   // Side curtain walls with anodized mullions & low-iron architectural glazing (split per level for cutaway)
-  const sideWinMat = new THREE.MeshPhysicalMaterial({
+  const sideWinMat = new THREE.MeshStandardMaterial({
     color: 0x3b4d56,
     roughness: 0.2,
-    metalness: 0.06,
-    ior: 1.52,
-    reflectivity: 0.35,
+    metalness: 0.08,
     envMapIntensity: 0.35,
-    clearcoat: 0.0,
   });
   for (let s = 0; s < FLOORS; s++) {
     const lg = levelGroups[s];
@@ -561,6 +601,7 @@ export function buildSceneArchitecture(
     bf.position.set(x0, y0 + 0.035, 3.45);
     bf.receiveShadow = true;
     roomsGrp.add(bf);
+    picks.push({ mesh: bf, room: d });
 
     // Suspended acoustic ceiling bay + recessed architectural linear LED troffers + HVAC supply diffusers
     const cp = new THREE.Mesh(new THREE.PlaneGeometry(wallW, 6.9), M.softCeil);
@@ -625,7 +666,7 @@ export function buildSceneArchitecture(
     const dz = 3.95;
     const rugb = new THREE.Mesh(
       new THREE.PlaneGeometry(6.2, 3.2),
-      new THREE.MeshPhysicalMaterial({
+      new THREE.MeshStandardMaterial({
         map: M.textures.carpetTex,
         normalMap: M.textures.carpetNormal,
         normalScale: new THREE.Vector2(0.65, 0.65),
@@ -633,8 +674,6 @@ export function buildSceneArchitecture(
         color: 0x626772,
         roughness: 0.94,
         metalness: 0,
-        sheen: 0.42,
-        sheenRoughness: 0.82,
       })
     );
     rugb.rotation.x = -Math.PI / 2;
@@ -703,14 +742,14 @@ export function buildSceneArchitecture(
           role: roles[k],
           color: `#${d.c.toString(16).padStart(6, '0')}`,
           seatX: x0 + ox,
-          seatZ: dz + 1.2,
+          seatZ: dz + 0.83,
           monPos: [x0 + ox, y0 + 1.16, dz + 0.12],
           rotY: 0,
           screenRef: d._ws[k],
           screenTask: tasks[k],
         });
       }
-      officeChair(roomsGrp, x0 + ox, y0, dz + 1.2, Math.PI, M);
+      addTrackedChair(roomsGrp, x0 + ox, y0, dz + 0.83, Math.PI, d.lv, 1, 0.48, (idx + k) % 2 ? 1 : -1);
     });
 
     shelfUnit(roomsGrp, x0 + (d.col % 2 ? -1 : 1) * 4.15, y0, 0.95, 1.55, M);
@@ -734,16 +773,14 @@ export function buildSceneArchitecture(
 
   const recFloor = new THREE.Mesh(
     new THREE.PlaneGeometry(19.6, 10.9),
-    new THREE.MeshPhysicalMaterial({
+    new THREE.MeshStandardMaterial({
       map: M.textures.marbleTex,
       normalMap: M.textures.marbleNormal,
       normalScale: new THREE.Vector2(0.45, 0.45),
       roughnessMap: M.textures.marbleRoughness,
       color: 0xa6a198,
-      roughness: 0.56,
+      roughness: 0.54,
       metalness: 0.0,
-      clearcoat: 0.06,
-      clearcoatRoughness: 0.48,
       envMapIntensity: 0.22,
     })
   );
@@ -751,6 +788,10 @@ export function buildSceneArchitecture(
   recFloor.position.set(0, 0.022, 5.5);
   recFloor.receiveShadow = true;
   rec.add(recFloor);
+  picks.push({
+    mesh: recFloor,
+    room: { n: 'Reception Atrium', c: 0x4ea8ff, lv: 0, cx: 0, sub: 'Level 0 · Ground Reception' },
+  });
 
   boxAt(rec, 5.7, cy0, 0.18, -7.15, cy0 / 2, 0.2, M.slat, false, true);
   boxAt(rec, 5.7, cy0, 0.18, 7.15, cy0 / 2, 0.2, M.slat, false, true);
@@ -760,15 +801,23 @@ export function buildSceneArchitecture(
     boxAt(rec, 0.08, cy0 - 1.0, 0.045, x, cy0 / 2 - 0.1, 0.36, M.ledWarm, false, false);
   });
 
-  const signTex = makeCanvasTex('brandsign', 1024, 152, (gc, W, H) => {
-    gc.clearRect(0, 0, W, H);
-    gc.fillStyle = '#f4f8ff';
+  const signTex = makeCanvasTex('brandsign', 2048, 304, (gc, W, H) => {
+    const lW = W / 2;
+    const lH = H / 2;
+    gc.save();
+    gc.setTransform(2, 0, 0, 2, 0, 0);
+    gc.clearRect(0, 0, lW, lH);
+    gc.fillStyle = '#ffffff';
     gc.textAlign = 'center';
     gc.textBaseline = 'middle';
-    gc.font = '600 54px "Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif';
-    gc.fillText('DOMAINTECHHUB OFFICE', W / 2, H / 2 + 2);
+    gc.font = '700 58px "Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif';
+    gc.shadowColor = 'rgba(0, 0, 0, 0.75)';
+    gc.shadowBlur = 8;
+    gc.fillText('DOMAINTECHHUB OFFICE', lW / 2, lH / 2 + 2);
+    gc.shadowBlur = 0;
     gc.fillStyle = '#6fe3a1';
-    gc.fillRect(W / 2 - 90, H - 18, 180, 4);
+    gc.fillRect(lW / 2 - 96, lH - 18, 192, 4);
+    gc.restore();
   });
   const brandSign = new THREE.Mesh(
     new THREE.PlaneGeometry(5.4, 0.8),
@@ -943,15 +992,14 @@ export function buildSceneArchitecture(
   earthTex.colorSpace = THREE.SRGBColorSpace;
 
   const sculptureCore = new THREE.Mesh(
-    new THREE.SphereGeometry(0.72, 48, 32),
-    new THREE.MeshPhysicalMaterial({
+    new THREE.SphereGeometry(0.72, 40, 24),
+    new THREE.MeshStandardMaterial({
       map: earthTex,
       emissiveMap: earthTex,
       emissive: 0xffffff,
       emissiveIntensity: 0.12,
       roughness: 0.62,
       metalness: 0.02,
-      clearcoat: 0.0,
       envMapIntensity: 0.28,
     })
   );
@@ -1013,8 +1061,8 @@ export function buildSceneArchitecture(
     zone: 'DomainTechHub Reception',
     role: 'Front Desk Receptionist',
     color: '#4ea8ff',
-    seatX: -1.2,
-    seatZ: 4.9,
+    seatX: -1.32,
+    seatZ: 5.26,
     screenTask: 'Managing today’s visitor check-ins & lobby arrivals',
   });
   exMon(rec, 1.35, 1.125, 6.02, Math.PI + 0.14, 'reception', 1, {
@@ -1022,8 +1070,8 @@ export function buildSceneArchitecture(
     zone: 'DomainTechHub Reception',
     role: 'Front Desk Concierge',
     color: '#4ea8ff',
-    seatX: -1.2,
-    seatZ: 4.9,
+    seatX: -1.32,
+    seatZ: 5.26,
     screenTask: 'Notifying department teams in #front-desk-arrivals',
   });
 
@@ -1115,17 +1163,14 @@ export function buildSceneArchitecture(
   const walnutFloorMat = M.parquet;
   const carpetExecMat = M.execCarpet;
   const stoneExecMat = M.slate;
-  const glassWallMat = new THREE.MeshPhysicalMaterial({
+  const glassWallMat = new THREE.MeshStandardMaterial({
     color: 0xc8dad8,
     roughness: 0.18,
-    metalness: 0.0,
-    ior: 1.52,
-    reflectivity: 0.35,
+    metalness: 0.05,
     transparent: true,
     opacity: 0.14,
     side: THREE.DoubleSide,
     envMapIntensity: 0.32,
-    clearcoat: 0.0,
     depthWrite: false,
   });
   const slatW = (w: number) =>
@@ -1157,12 +1202,17 @@ export function buildSceneArchitecture(
     boxAt(exCeilForY(y0), 39.2, 0.09, 0.14, 0, y0 + CH - 0.07, 0.3, M.dark, false, false, 0.015);
     [-14, -4, 6, 15].forEach((hx) => hvacDiffuser(exCeilForY(y0), hx, y0 + CH - 0.062, 7.6, M));
   };
+  const execFloorPickMat = new THREE.MeshBasicMaterial({ visible: false });
   const exWall = (y0: number, cx: number, w: number, mat: THREE.Material, room?: ExecRoomDef | null) => {
     const h = CH - 0.06;
     const m = exPlane(w, h, cx, y0 + h / 2 + 0.03, 0.22, mat);
     m.receiveShadow = true;
     boxAt(exForY(y0), w, 0.05, 0.035, cx, y0 + 0.025, 0.238, M.dark, false, false);
-    if (room) picks.push({ mesh: m, room });
+    if (room) {
+      picks.push({ mesh: m, room });
+      const fp = exPlane(w, 9.6, cx, y0 + 0.07, 5.0, execFloorPickMat, -Math.PI / 2);
+      picks.push({ mesh: fp, room });
+    }
     return m;
   };
   const partition = (y0: number, x: number) => {
@@ -1197,17 +1247,28 @@ export function buildSceneArchitecture(
     });
   };
   const exSign = (name: string, x: number, y: number) => {
-    const pw = Math.min(3.4, name.length * 0.15 + 0.95);
+    const pw = Math.min(3.8, name.length * 0.17 + 1.05);
     exPlane(
       pw,
-      0.4,
+      0.52,
       x,
       y,
-      0.28,
+      0.3,
       new THREE.MeshBasicMaterial({ map: plateTex(name), transparent: true, toneMapped: false, depthWrite: false })
     );
   };
-  const exChair = (x: number, y0: number, z: number, rot: number, s = 1) => {
+  const exChair = (
+    x: number,
+    y0: number,
+    z: number,
+    rot: number,
+    s = 1,
+    track = false,
+    maxPush = 0.48,
+    swivelDir = 1
+  ) => {
+    const lv = y0 >= LV[5] - 0.2 ? 5 : 4;
+    if (track) return addTrackedChair(exForY(y0), x, y0, z, rot, lv, s, maxPush, swivelDir);
     const c = officeChair(exForY(y0), x, y0, z, rot, M);
     c.scale.setScalar(s);
     return c;
@@ -1250,14 +1311,14 @@ export function buildSceneArchitecture(
     exWall(y0, cx, w, slatW(w), room);
     exSign(label, cx, y0 + 3.15);
     exDesk(cx, 3.4, 2.2, y0);
-    exChair(cx, y0, 2.2, 0, 1);
+    exChair(cx, y0, 2.58, 0, 1, true, 0.48, seed % 2 ? 1 : -1);
     exMon(grp, cx, y0 + 0.8, 3.3, Math.PI, 'pa', 0, {
       lv: y0 >= LV[5] - 0.2 ? 5 : 4,
       zone: label,
       role: label,
       color: '#5d6b7a',
       seatX: cx,
-      seatZ: 2.2,
+      seatZ: 2.58,
       screenTask: 'Managing weekly executive calendar & meeting prep',
     });
     armchair(grp, cx - 1.9, y0, 6.6, Math.PI - 0.35, M.fabricGrey, M);
@@ -1298,16 +1359,16 @@ export function buildSceneArchitecture(
 
     for (let i = 0; i < 7; i++) {
       const x = -5.4 + i * 1.8;
-      exChair(x, y0, 3.0, 0, 1.05);
-      exChair(x, y0, 6.8, Math.PI, 1.05);
+      exChair(x, y0, 3.26, 0, 1.05, true, 0.44, i % 2 ? 1 : -1);
+      exChair(x, y0, 6.54, Math.PI, 1.05, true, 0.44, i % 2 ? -1 : 1);
       // Leather desk blotter + crisp white portfolio notepad
       boxAt(ex4, 0.42, 0.01, 0.28, x, y0 + 0.805, tz - 0.72, M.leatherMat, false, false, 0.004);
       boxAt(ex4, 0.3, 0.014, 0.21, x, y0 + 0.815, tz - 0.72, M.white, false, false, 0.004);
       boxAt(ex4, 0.42, 0.01, 0.28, x, y0 + 0.805, tz + 0.72, M.leatherMat, false, false, 0.004);
       boxAt(ex4, 0.3, 0.014, 0.21, x, y0 + 0.815, tz + 0.72, M.white, false, false, 0.004);
     }
-    exChair(-6.9, y0, tz, Math.PI / 2, 1.1);
-    exChair(6.9, y0, tz, -Math.PI / 2, 1.1);
+    exChair(-6.58, y0, tz, Math.PI / 2, 1.1, true, 0.44, 1);
+    exChair(6.58, y0, tz, -Math.PI / 2, 1.1, true, 0.44, -1);
     cylAt(ex4, 0.22, 0.24, 0.05, 0, y0 + 0.825, tz, M.dark, false, false, 20);
     [-2.4, 2.4].forEach((x) => {
       const car = new THREE.Mesh(getCarafeGeo(), M.metal);
@@ -1346,14 +1407,13 @@ export function buildSceneArchitecture(
       -12.6,
       y0 + 0.06,
       4.4,
-      new THREE.MeshPhysicalMaterial({
+      new THREE.MeshStandardMaterial({
         map: M.textures.carpetTex,
         normalMap: M.textures.carpetNormal,
         normalScale: new THREE.Vector2(0.65, 0.65),
         roughnessMap: M.textures.carpetRoughness,
         color: 0x525c70,
         roughness: 0.96,
-        sheen: 0.45,
       }),
       -Math.PI / 2
     );
@@ -1385,14 +1445,14 @@ export function buildSceneArchitecture(
       boxAt(ex5, 4.4, 0.07, 0.05, cx, y0 + 3.62, 0.28, new THREE.MeshBasicMaterial({ color: room.c, toneMapped: false }), false, false);
       exSign(room.n, cx, y0 + 3.2);
       exDesk(cx, 3.5, 2.2, y0);
-      exChair(cx, y0, 2.2, 0, 1.1);
+      exChair(cx, y0, 2.66, 0, 1.1, true, 0.48, i % 2 ? 1 : -1);
       exMon(ex5, cx, y0 + 0.8, 3.4, Math.PI, key, 0, {
         lv: 5,
         zone: room.n,
         role: room.n,
         color: `#${room.c.toString(16).padStart(6, '0')}`,
         seatX: cx,
-        seatZ: 2.2,
+        seatZ: 2.66,
         screenTask: `Reviewing ${room.n} weekly roadmap & executive calls`,
       });
       exChair(cx - 0.8, y0, 5.4, Math.PI, 1);
@@ -1405,14 +1465,13 @@ export function buildSceneArchitecture(
         cx,
         y0 + 0.06,
         4.4,
-        new THREE.MeshPhysicalMaterial({
+        new THREE.MeshStandardMaterial({
           map: M.textures.carpetTex,
           normalMap: M.textures.carpetNormal,
           normalScale: new THREE.Vector2(0.65, 0.65),
           roughnessMap: M.textures.carpetRoughness,
           color: 0x525866,
           roughness: 0.96,
-          sheen: 0.42,
         }),
         -Math.PI / 2
       );
@@ -1520,14 +1579,14 @@ export function buildSceneArchitecture(
     });
 
     exDesk(cx, 3.4, 3.4, y0);
-    exChair(cx, y0, 2.2, 0, 1.3);
+    exChair(cx, y0, 2.58, 0, 1.3, true, 0.5, 1);
     exMon(ex5, cx - 0.75, y0 + 0.8, 3.3, Math.PI, 'ceo', 0, {
       lv: 5,
       zone: EXEC.ceo.n,
       role: 'Chief Executive Officer',
       color: `#${EXEC.ceo.c.toString(16).padStart(6, '0')}`,
       seatX: cx,
-      seatZ: 2.2,
+      seatZ: 2.58,
       screenTask: 'Reviewing company revenue & active project metrics',
     });
     exMon(ex5, cx + 0.75, y0 + 0.8, 3.3, Math.PI, 'ceo', 1, {
@@ -1536,7 +1595,7 @@ export function buildSceneArchitecture(
       role: 'Chief Executive Officer',
       color: `#${EXEC.ceo.c.toString(16).padStart(6, '0')}`,
       seatX: cx,
-      seatZ: 2.2,
+      seatZ: 2.58,
       screenTask: 'Reviewing executive schedule & board strategy',
     });
     floorLamp(14.4, y0, 3.05);
@@ -1550,14 +1609,13 @@ export function buildSceneArchitecture(
       cx,
       y0 + 0.06,
       4.2,
-      new THREE.MeshPhysicalMaterial({
+      new THREE.MeshStandardMaterial({
         map: M.textures.carpetTex,
         normalMap: M.textures.carpetNormal,
         normalScale: new THREE.Vector2(0.65, 0.65),
         roughnessMap: M.textures.carpetRoughness,
         color: 0x424a5a,
         roughness: 0.96,
-        sheen: 0.45,
       }),
       -Math.PI / 2
     );
@@ -1578,14 +1636,13 @@ export function buildSceneArchitecture(
       17.8,
       y0 + 0.06,
       3.9,
-      new THREE.MeshPhysicalMaterial({
+      new THREE.MeshStandardMaterial({
         map: M.textures.carpetTex,
         normalMap: M.textures.carpetNormal,
         normalScale: new THREE.Vector2(0.65, 0.65),
         roughnessMap: M.textures.carpetRoughness,
         color: 0x525c70,
         roughness: 0.96,
-        sheen: 0.45,
       }),
       -Math.PI / 2
     );
@@ -1655,17 +1712,14 @@ export function buildSceneArchitecture(
     ]);
     cab.add(new THREE.Mesh(new THREE.TubeGeometry(railCurve, 12, 0.022, 8, false), M.metal));
 
-    const paneMat = new THREE.MeshPhysicalMaterial({
+    const paneMat = new THREE.MeshStandardMaterial({
       color: 0xc8dad8,
       roughness: 0.18,
-      metalness: 0.0,
-      ior: 1.52,
-      reflectivity: 0.35,
+      metalness: 0.05,
       transparent: true,
       opacity: 0.14,
       side: THREE.DoubleSide,
       envMapIntensity: 0.32,
-      clearcoat: 0.0,
       depthWrite: false,
     });
     const mkPane = (w: number, hh: number, d: number, x: number, z: number) => {
@@ -1749,7 +1803,7 @@ export function buildSceneArchitecture(
     boxAt(gB1, 25, 0.09, 0.5, -2, ch1 - 0.6, z, M.tray, false, false);
     for (let x = -13; x <= 9; x += 4) cylAt(gB1, 0.02, 0.02, 0.55, x, ch1 - 0.32, z, M.metal, false, false, 8);
   });
-  const redCylMat = new THREE.MeshPhysicalMaterial({ color: 0xa8322a, roughness: 0.34, metalness: 0.25, clearcoat: 0.4 });
+  const redCylMat = new THREE.MeshStandardMaterial({ color: 0xa8322a, roughness: 0.32, metalness: 0.25 });
   [-12.9, -12.3].forEach((x) => {
     cylAt(gB1, 0.17, 0.17, 1.4, x, y1 + 0.7, 7.8, redCylMat, true, false, 16);
     const cap = new THREE.Mesh(new THREE.SphereGeometry(0.17, 16, 10), redCylMat);
@@ -1757,10 +1811,14 @@ export function buildSceneArchitecture(
     gB1.add(cap);
     cylAt(gB1, 0.05, 0.05, 0.14, x, y1 + 1.6, 7.8, M.brass, false, false, 10);
   });
-  const nocTex = makeCanvasTex('noc', 512, 256, (g, W2, H2) => {
+  const nocTex = makeCanvasTex('noc', 1024, 512, (g, W2, H2) => {
+    const lW = W2 / 2;
+    const lH = H2 / 2;
+    g.save();
+    g.setTransform(2, 0, 0, 2, 0, 0);
     g.fillStyle = '#08111a';
-    g.fillRect(0, 0, W2, H2);
-    g.strokeStyle = 'rgba(90,200,255,0.25)';
+    g.fillRect(0, 0, lW, lH);
+    g.strokeStyle = 'rgba(90,200,255,0.28)';
     g.lineWidth = 2;
     for (let i = 0; i < 4; i++) {
       for (let j = 0; j < 2; j++) {
@@ -1769,9 +1827,10 @@ export function buildSceneArchitecture(
         for (let k = 0; k < 7; k++) g.fillRect(30 + i * 122 + k * 13, 30 + j * 118 + (k % 3) * 22, 7, 34 + k * 3);
       }
     }
-    g.fillStyle = '#8fd8ff';
-    g.font = '600 22px "Plus Jakarta Sans",ui-sans-serif,sans-serif';
-    g.fillText('CORE · 42 NODES · 18.4 TB/s', 20, H2 - 16);
+    g.fillStyle = '#bae6fd';
+    g.font = '700 24px "Plus Jakarta Sans",ui-sans-serif,sans-serif';
+    g.fillText('CORE · 42 NODES · 18.4 TB/s', 20, lH - 16);
+    g.restore();
   });
   planeAt(gB1, 6.4, 1.9, -1.2, ch1 - 1.1, 0.38, new THREE.MeshBasicMaterial({ map: nocTex, toneMapped: false }));
   planeAt(
@@ -1797,17 +1856,22 @@ export function buildSceneArchitecture(
     boxAt(gB2, 0.06, 0.06, 0.03, x - 0.3, y2 + 1.76, 1.45, M.ledGreen, false, false);
     boxAt(gB2, 0.06, 0.06, 0.03, x + 0.3, y2 + 1.76, 1.45, M.ledRed, false, false);
   }
-  const invTex = makeCanvasTex('inv', 256, 128, (g, W2, H2) => {
+  const invTex = makeCanvasTex('inv', 512, 256, (g, W2, H2) => {
+    const lW = W2 / 2;
+    const lH = H2 / 2;
+    g.save();
+    g.setTransform(2, 0, 0, 2, 0, 0);
     g.fillStyle = '#0a1016';
-    g.fillRect(0, 0, W2, H2);
+    g.fillRect(0, 0, lW, lH);
     g.fillStyle = '#79e6a6';
-    g.font = '700 30px "Plus Jakarta Sans",ui-sans-serif,sans-serif';
+    g.font = '700 32px "Plus Jakarta Sans",ui-sans-serif,sans-serif';
     g.fillText('PV 18.4 kW', 18, 42);
-    g.fillStyle = '#8fd8ff';
-    g.font = '400 22px "Plus Jakarta Sans",ui-sans-serif,sans-serif';
+    g.fillStyle = '#bae6fd';
+    g.font = '600 24px "Plus Jakarta Sans",ui-sans-serif,sans-serif';
     g.fillText('AC 17.9 kW · 98%', 18, 82);
     g.fillStyle = '#ffb14a';
     g.fillText('GRID 0', 18, 110);
+    g.restore();
   });
   for (let i = 0; i < 3; i++) {
     const x = 1.4 + i * 1.4;
@@ -2525,6 +2589,7 @@ export function buildSceneArchitecture(
     b2Group: gB2,
     b2Ceiling,
     cabs,
+    officeChairs,
     sculptureGroup,
     sculptureRings: [ring1, ring2],
     sculptureCore,

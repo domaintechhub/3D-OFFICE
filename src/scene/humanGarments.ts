@@ -122,6 +122,22 @@ export function buildTailoredBlazerOrCoatGeo(
     }
   }
 
+  // Seal bottom hem (r = 0, outward -Y) and top collar/shoulder rim (r = rows, outward +Y)
+  const topBase = rows * ringVerts;
+  for (let s = 0; s < uSegs; s++) {
+    const o0 = s;
+    const o1 = s + 1;
+    const i0 = ringVerts - 1 - s;
+    const i1 = ringVerts - 2 - s;
+    indices.push(o0, o1, i0, o1, i1, i0);
+
+    const to0 = topBase + o0;
+    const to1 = topBase + o1;
+    const ti0 = topBase + i0;
+    const ti1 = topBase + i1;
+    indices.push(to0, ti0, to1, to1, ti0, ti1);
+  }
+
   const jacketShell = new THREE.BufferGeometry();
   jacketShell.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   jacketShell.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));

@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { LiftCabState } from './architecture';
 import type { AmbientSource } from './audio';
 import {
+  BASE,
   COLX,
   DEPTH,
   EXEC,
@@ -20,6 +21,7 @@ import {
   type FloorZoneActivity,
   type HudSnapshot,
   type InspectedMonitor,
+  type SelectedCharacterSnapshot,
   type TourStop,
 } from './constants';
 import {
@@ -34,8 +36,18 @@ import {
   type MakePersonOptions,
   type PersonActor,
 } from './human';
+import {
+  createCharacterBrain,
+  generateCharacterName,
+  pickPersonality,
+  pickThoughtForGoal,
+  setBrainThought,
+  type CharacterIdentity,
+  type FreeGoal,
+} from './characterMind';
 import type { MaterialLibrary } from './materials';
 import { getRoundedBox, makeCar } from './props';
+import { buildObstacleAwarePath, resolveObstaclePosition } from './obstacles';
 import { plateTex } from './textures';
 
 type WorkerActor = PersonActor & {
@@ -63,6 +75,46 @@ type DayVisitorActor = PersonActor & {
   cab: number;
   _arr?: number;
   _w2?: number;
+};
+
+type BasementCrewActor = PersonActor & {
+  lv: -1 | -2;
+  seniority: 'senior' | 'junior';
+  roleLabel: string;
+};
+
+interface FreeAgentState {
+  lv: number;
+  homeX: number;
+  homeZ: number;
+  homeFace: number;
+  homePose: string;
+  mode: 'home' | 'toGoal' | 'atGoal' | 'toHome';
+  queue: Array<{ x: number; z: number }>;
+  targetPose: string;
+  targetFace: number;
+  walkSpeed: number;
+  isDeskWorker: boolean;
+  stuckTime: number;
+  lastX: number;
+  lastZ: number;
+}
+
+const DEPT_ROLE: Record<string, string> = {
+  web: 'Full-Stack Engineer',
+  front: 'UI/UX Front-End Engineer',
+  cart: 'E-Commerce Engineer',
+  wp: 'CMS & WordPress Specialist',
+  seo: 'Technical SEO Strategist',
+  mkt: 'Digital Marketing Analyst',
+  ppc: 'Paid Search & Ads Specialist',
+  wa: 'WhatsApp Automation Specialist',
+  social: 'Social Media Strategist',
+  crm: 'CRM Solutions Engineer',
+  ai: 'AI & Automation Engineer',
+  hand: 'Technology Consultant',
+  sec: 'Systems & Security Engineer',
+  mobile: 'Mobile App Engineer',
 };
 
 type TrafficVehicle = {
@@ -112,6 +164,9 @@ export class AtriumSimulation {
   public readonly STAFF: PersonActor[] = [];
   private readonly WORKERS: WorkerActor[] = [];
   private readonly DAYONLY: DayVisitorActor[] = [];
+  private readonly BASEMENT_STAFF: BasementCrewActor[] = [];
+  private secOffActor!: PersonActor;
+  private readonly freeAgents = new Map<PersonActor, FreeAgentState>();
   private readonly TRAF: TrafficVehicle[] = [];
   private readonly LOT: Array<{ sd: number; x: number; z: number; face: number }> = [];
   private readonly PLOCK: Array<{ x: number; z: number; r: number }> = [];
@@ -158,6 +213,7 @@ export class AtriumSimulation {
   private savedCamTgt = new THREE.Vector3(0, 12.2, 4);
   private readonly onFootstep?: () => void;
   private readonly ambientSources: AmbientSource[] = [];
+  private cutawayMinY: number | null = null;
   private cutawayMaxY: number | null = null;
 
   // Pre-allocated scratch vectors for zero-GC update loops
@@ -212,12 +268,57 @@ export class AtriumSimulation {
     this.guideActor.tyaw = -0.3;
     setPose(this.guideActor, 'stand', this.P_LIB);
     this.peopleGroup.add(this.guideActor.g);
+    this.attachBrain(
+      this.guideActor,
+      {
+        id: 'guide-zuri',
+        name: 'Zuri Mwangi',
+        role: 'Lead Office Guide',
+        department: 'Ground Atrium · Hospitality',
+        seniority: 'Lead',
+        accentColor: '#6fe3a1',
+        personality: 'Warm & energetic storyteller',
+        topicKey: 'guide',
+        homeLv: 0,
+        homeX: 14.5,
+        homeZ: LANE,
+        homeFace: -0.3,
+        homePose: 'stand',
+      },
+      false,
+      1.15
+    );
 
     this.STOPS = this.buildTourStops();
     this.populateOfficeStaff(M);
     this.populateTrafficAndParking();
     this.initAmbientSources();
     this.snapAll();
+  }
+
+  private attachBrain(
+    actor: PersonActor,
+    identity: CharacterIdentity,
+    isDeskWorker: boolean,
+    walkSpeed = 1.15
+  ) {
+    actor.brain = createCharacterBrain(identity);
+    this.freeAgents.set(actor, {
+      lv: identity.homeLv,
+      homeX: identity.homeX,
+      homeZ: identity.homeZ,
+      homeFace: identity.homeFace,
+      homePose: identity.homePose,
+      mode: 'home',
+      queue: [],
+      targetPose: identity.homePose,
+      targetFace: identity.homeFace,
+      walkSpeed,
+      isDeskWorker,
+      stuckTime: 0,
+      lastX: identity.homeX,
+      lastZ: identity.homeZ,
+    });
   }
 
   private addPerson(
@@ -237,7 +338,7 @@ export class AtriumSimulation {
     M: MaterialLibrary
   ): PersonActor {
     const P = makePerson(opts, this.P_LIB, M);
-    P.g.position.set(x, LV[lv], z);
+    P.g.position.set(x, liftY(lv), z);
     P.yaw = P.tyaw = face;
     P.g.rotation.y = face;
     P.look = opts.look || 0;
@@ -261,13 +362,11 @@ export class AtriumSimulation {
     const P_LIB = this.P_LIB;
     const h = (seed: number, mod: number) => Math.abs((seed * 73 + 19) % mod);
     const sMat = (col: number) =>
-      new THREE.MeshPhysicalMaterial({
+      new THREE.MeshStandardMaterial({
         color: col,
         normalMap: M.textures.fabricNormal,
         normalScale: new THREE.Vector2(0.32, 0.32),
-        roughness: 0.8,
-        sheen: 0.45,
-        sheenRoughness: 0.72,
+        roughness: 0.82,
       });
 
     // Desk workers across two shifts (Morning + Afternoon)
@@ -326,19 +425,48 @@ export class AtriumSimulation {
           p.want = 'desk';
           p.lunch = (idx * 3 + k) % 3;
           if (sh === 1) p.g.visible = false;
+          this.attachBrain(
+            p,
+            {
+              id: `worker-${d.t}-${k}-${sh}`,
+              name: generateCharacterName(fem, id + idx * 13 + k * 5),
+              role: DEPT_ROLE[d.t] || 'Software Specialist',
+              department: `${d.n} · ${d.lv === 0 ? 'Ground' : `Level ${d.lv}`}`,
+              seniority: k === 1 ? 'Senior' : 'Junior',
+              accentColor: `#${d.c.toString(16).padStart(6, '0')}`,
+              personality: pickPersonality(id),
+              topicKey: d.t,
+              homeLv: d.lv,
+              homeX: cx + ox,
+              homeZ: 5.15,
+              homeFace: Math.PI,
+              homePose: p.pose,
+            },
+            true,
+            1.18
+          );
           this.WORKERS.push(p);
         }
       });
     });
 
     // Receptionist + Lounge concierge + Visitors & Guests
+    let dayIdx = 0;
     const addDayVisitor = (
       lv: number,
       dx: number,
       dz: number,
       df: number,
       dpose: string,
-      opts: Parameters<AtriumSimulation['addPerson']>[5]
+      opts: Parameters<AtriumSimulation['addPerson']>[5],
+      meta: {
+        name: string;
+        role: string;
+        department: string;
+        topicKey: string;
+        accentColor: string;
+        seniority?: 'Senior' | 'Junior' | 'Lead' | 'Executive';
+      }
     ) => {
       const p = this.addPerson(lv, dx, dz, df, dpose, opts, M) as DayVisitorActor;
       p.lv = lv;
@@ -349,55 +477,118 @@ export class AtriumSimulation {
       p.sd = dx < 0 ? -1 : 1;
       p.state = 'atDesk';
       p.cab = 0;
+      this.attachBrain(
+        p,
+        {
+          id: `day-${++dayIdx}`,
+          name: meta.name,
+          role: meta.role,
+          department: meta.department,
+          seniority: meta.seniority,
+          accentColor: meta.accentColor,
+          personality: pickPersonality(dayIdx * 17),
+          topicKey: meta.topicKey,
+          homeLv: lv,
+          homeX: dx,
+          homeZ: dz,
+          homeFace: df,
+          homePose: dpose,
+        },
+        false,
+        1.12
+      );
       this.DAYONLY.push(p);
       return p;
     };
 
     // Receptionist (emerald/navy tailored blazer, low chignon bun & warm smile)
-    addDayVisitor(0, -1.2, 4.9, 0, 'standType', {
-      skin: P_LIB.skins[0],
-      shirt: sMat(0x223654),
-      hair: P_LIB.hairs[0],
-      trou: P_LIB.trous[0],
-      fem: true,
-      hairStyle: 'bun',
-      outfit: 'suit',
-      skirt: 'short',
-      shoeStyle: 'heel',
-      warmSmile: true,
-      look: 0.4,
-      blazer: true,
-    });
+    addDayVisitor(
+      0,
+      -1.2,
+      4.9,
+      0,
+      'standType',
+      {
+        skin: P_LIB.skins[0],
+        shirt: sMat(0x223654),
+        hair: P_LIB.hairs[0],
+        trou: P_LIB.trous[0],
+        fem: true,
+        hairStyle: 'bun',
+        outfit: 'suit',
+        skirt: 'short',
+        shoeStyle: 'heel',
+        warmSmile: true,
+        look: 0.4,
+        blazer: true,
+      },
+      {
+        name: 'Grace Muthoni',
+        role: 'Front Desk Receptionist',
+        department: 'Ground Atrium · Reception',
+        topicKey: 'reception',
+        accentColor: '#4ea8ff',
+      }
+    );
     // Ground lobby visitor in tailored dark coat checking smartphone / reading briefs
-    addDayVisitor(0, 2.55, 8.5, -Math.PI / 2, 'hold', {
-      skin: P_LIB.skins[2],
-      shirt: sMat(0x1b212b),
-      hair: P_LIB.hairs[1],
-      trou: P_LIB.trous[4],
-      hairStyle: 'fade',
-      beardStyle: 'full',
-      coat: true,
-      outfit: 'shirtTrousers',
-      shoeStyle: 'oxford',
-      look: 0.3,
-    });
+    addDayVisitor(
+      0,
+      1.85,
+      9.05,
+      -Math.PI / 2 - 0.3,
+      'hold',
+      {
+        skin: P_LIB.skins[2],
+        shirt: sMat(0x1b212b),
+        hair: P_LIB.hairs[1],
+        trou: P_LIB.trous[4],
+        hairStyle: 'fade',
+        beardStyle: 'full',
+        coat: true,
+        outfit: 'shirtTrousers',
+        shoeStyle: 'oxford',
+        look: 0.3,
+      },
+      {
+        name: 'Tariq Abdalla',
+        role: 'Enterprise Client Partner',
+        department: 'Ground Atrium · Visitor Lounge',
+        topicKey: 'visitor',
+        accentColor: '#60a5fa',
+      }
+    );
     // Ground lobby architect in sleek sleeveless dress + natural puff holding coffee
-    addDayVisitor(0, 5.4, 9.8, -0.55, 'coffee', {
-      skin: P_LIB.skins[0],
-      shirt: sMat(0x16181d),
-      hair: P_LIB.hairs[0],
-      trou: sMat(0x16181d),
-      fem: true,
-      hairStyle: 'puff',
-      outfit: 'dress',
-      skirt: 'short',
-      sleeve: 'sleeveless',
-      shoeStyle: 'heel',
-      warmSmile: true,
-      look: 0.35,
-    });
+    addDayVisitor(
+      0,
+      5.4,
+      9.8,
+      -0.55,
+      'coffee',
+      {
+        skin: P_LIB.skins[0],
+        shirt: sMat(0x16181d),
+        hair: P_LIB.hairs[0],
+        trou: sMat(0x16181d),
+        fem: true,
+        hairStyle: 'puff',
+        outfit: 'dress',
+        skirt: 'short',
+        sleeve: 'sleeveless',
+        shoeStyle: 'heel',
+        warmSmile: true,
+        look: 0.35,
+      },
+      {
+        name: 'Nadia Hassan',
+        role: 'Solutions Architect',
+        department: 'Ground Atrium · Lobby',
+        seniority: 'Senior',
+        topicKey: 'visitor',
+        accentColor: '#60a5fa',
+      }
+    );
 
-    // Ground Security Officer patrolling lobby
+    // Ground Security Officer patrolling lobby freely
     const secOff = this.addPerson(
       0,
       -5,
@@ -415,14 +606,30 @@ export class AtriumSimulation {
         sleeve: 'short',
         shoeStyle: 'oxford',
         s: 1.07,
-        speed: 0.9,
-        route: [
-          { x: -5, z: 9.4, wait: 3, pose: 'radio', face: 0.1 },
-          { x: 5, z: 9.4, wait: 3, pose: 'stand', face: -0.1 },
-          { x: 3.5, z: 7.2, wait: 2, pose: 'readDoc', face: 0 },
-        ],
+        speed: 0.95,
       },
       M
+    );
+    this.secOffActor = secOff;
+    this.attachBrain(
+      secOff,
+      {
+        id: 'ground-security',
+        name: 'David Kiprop',
+        role: 'Campus Security Officer',
+        department: 'Ground Atrium · Security',
+        seniority: 'Senior',
+        accentColor: '#38bdf8',
+        personality: 'Vigilant & approachable guardian',
+        topicKey: 'security',
+        homeLv: 0,
+        homeX: -5,
+        homeZ: 9.4,
+        homeFace: 0.2,
+        homePose: 'radio',
+      },
+      false,
+      0.95
     );
     const badgeMesh = new THREE.Mesh(
       getRoundedBox(0.052, 0.068, 0.012, 0.004, 2),
@@ -432,52 +639,97 @@ export class AtriumSimulation {
     secOff.tor.add(badgeMesh);
 
     // Executive Lounge barista
-    addDayVisitor(4, -17.6, 0.4, 0, 'standType', {
-      skin: P_LIB.skins[2],
-      shirt: sMat(0x2a2d34),
-      hair: P_LIB.hairs[0],
-      trou: P_LIB.trous[0],
-      fem: true,
-      hairStyle: 'afro',
-      outfit: 'blouseSkirt',
-      sleeve: 'rolled',
-      skirt: 'midi',
-      shoeStyle: 'flat',
-      warmSmile: true,
-      look: 0.3,
-    });
-    // Executive Lounge collaborating pair (dark coat + coffee mug, ivory blouse + cobalt midi skirt + box braids)
-    addDayVisitor(4, -14.8, 4.1, Math.PI / 2 - 0.15, 'coffee', {
-      skin: P_LIB.skins[5],
-      shirt: sMat(0x1c222d),
-      hair: P_LIB.hairs[0],
-      trou: sMat(0x16181e),
-      hairStyle: 'fade',
-      beardStyle: 'full',
-      coat: true,
-      outfit: 'shirtTrousers',
-      shoeStyle: 'oxford',
-      look: 0.3,
-    });
-    addDayVisitor(4, -13.5, 4.15, -Math.PI / 2 + 0.15, 'collaborate', {
-      skin: P_LIB.skins[4],
-      shirt: sMat(0xf0eee8),
-      hair: P_LIB.hairs[0],
-      trou: sMat(0x1e4c9a),
-      fem: true,
-      hairStyle: 'braids',
-      outfit: 'blouseSkirt',
-      sleeve: 'rolled',
-      skirt: 'midi',
-      shoeStyle: 'heel',
-      headphones: true,
-      warmSmile: true,
-      gest: true,
-      look: 0.35,
-    });
+    addDayVisitor(
+      4,
+      -17.6,
+      0.45,
+      0,
+      'standType',
+      {
+        skin: P_LIB.skins[2],
+        shirt: sMat(0x2a2d34),
+        hair: P_LIB.hairs[0],
+        trou: P_LIB.trous[0],
+        fem: true,
+        hairStyle: 'afro',
+        outfit: 'blouseSkirt',
+        sleeve: 'rolled',
+        skirt: 'midi',
+        shoeStyle: 'flat',
+        warmSmile: true,
+        look: 0.3,
+      },
+      {
+        name: 'Beatrice Akinyi',
+        role: 'Executive Barista',
+        department: 'Level 4 · Executive Lounge',
+        topicKey: 'lounge',
+        accentColor: '#b08452',
+      }
+    );
+    // Executive Lounge collaborating pair
+    addDayVisitor(
+      4,
+      -14.8,
+      4.1,
+      Math.PI / 2 - 0.15,
+      'coffee',
+      {
+        skin: P_LIB.skins[5],
+        shirt: sMat(0x1c222d),
+        hair: P_LIB.hairs[0],
+        trou: sMat(0x16181e),
+        hairStyle: 'fade',
+        beardStyle: 'full',
+        coat: true,
+        outfit: 'shirtTrousers',
+        shoeStyle: 'oxford',
+        look: 0.3,
+      },
+      {
+        name: 'Victor Kariuki',
+        role: 'Advisory Partner',
+        department: 'Level 4 · Executive Lounge',
+        seniority: 'Senior',
+        topicKey: 'lounge',
+        accentColor: '#b08452',
+      }
+    );
+    addDayVisitor(
+      4,
+      -13.5,
+      4.15,
+      -Math.PI / 2 + 0.15,
+      'collaborate',
+      {
+        skin: P_LIB.skins[4],
+        shirt: sMat(0xf0eee8),
+        hair: P_LIB.hairs[0],
+        trou: sMat(0x1e4c9a),
+        fem: true,
+        hairStyle: 'braids',
+        outfit: 'blouseSkirt',
+        sleeve: 'rolled',
+        skirt: 'midi',
+        shoeStyle: 'heel',
+        headphones: true,
+        warmSmile: true,
+        gest: true,
+        look: 0.35,
+      },
+      {
+        name: 'Imani Achieng',
+        role: 'Product Strategy Lead',
+        department: 'Level 4 · Executive Lounge',
+        seniority: 'Lead',
+        topicKey: 'lounge',
+        accentColor: '#b08452',
+      }
+    );
 
-    // Directors around Board Room table (conference meeting, reading documents, presenting)
+    // Directors around Board Room table
     const dirCol = [0x1c2838, 0x3a2434, 0x283630, 0x24262e, 0x363024];
+    const dirNames = ['Salma Ndegwa', 'Peter Mwangi', 'Gideon Omondi', 'Chebet Koech', 'Baraka Mutiso'];
     const execSeats: Array<[number, number, number, string, number, number]> = [
       [-6.9, 4.9, Math.PI / 2, 'talk', 1, 0x9c282e],
       [-1.8, 3.0, 0, 'meeting', 0, 0x284e86],
@@ -486,56 +738,291 @@ export class AtriumSimulation {
       [3.6, 6.8, Math.PI, 'collaborate', 0, 0x5c3670],
     ];
     execSeats.forEach(([x, z, rot, pose, fem, tie], i) => {
-      addDayVisitor(4, x, z, rot, pose, {
-        skin: P_LIB.skins[(i * 2) % P_LIB.skins.length],
-        shirt: sMat(dirCol[i]),
-        hair: P_LIB.hairs[(i * 2) % P_LIB.hairs.length],
-        trou: sMat(dirCol[i]),
-        fem: !!fem,
-        hairStyle: fem ? (i === 0 ? 'bun' : 'bob') : i === 2 ? 'twists' : 'fade',
-        beardStyle: !fem && i % 2 === 1 ? 'stubble' : 'none',
-        faceVariant: i % 4,
-        s: fem ? 0.97 : 1.04,
-        outfit: 'suit',
-        skirt: fem && i === 0 ? 'short' : 'none',
-        shoeStyle: fem ? 'heel' : 'oxford',
-        blazer: true,
-        gest: pose === 'talk' || pose === 'collaborate',
-        look: 0.35,
-        tie: fem ? undefined : tie,
-      });
+      addDayVisitor(
+        4,
+        x,
+        z,
+        rot,
+        pose,
+        {
+          skin: P_LIB.skins[(i * 2) % P_LIB.skins.length],
+          shirt: sMat(dirCol[i]),
+          hair: P_LIB.hairs[(i * 2) % P_LIB.hairs.length],
+          trou: sMat(dirCol[i]),
+          fem: !!fem,
+          hairStyle: fem ? (i === 0 ? 'bun' : 'bob') : i === 2 ? 'twists' : 'fade',
+          beardStyle: !fem && i % 2 === 1 ? 'stubble' : 'none',
+          faceVariant: i % 4,
+          s: fem ? 0.97 : 1.04,
+          outfit: 'suit',
+          skirt: fem && i === 0 ? 'short' : 'none',
+          shoeStyle: fem ? 'heel' : 'oxford',
+          blazer: true,
+          gest: pose === 'talk' || pose === 'collaborate',
+          look: 0.35,
+          tie: fem ? undefined : tie,
+        },
+        {
+          name: dirNames[i],
+          role: 'Board Director',
+          department: 'Level 4 · Board Room',
+          seniority: 'Executive',
+          topicKey: 'board',
+          accentColor: '#c9a24b',
+        }
+      );
     });
 
     // Heads of Department & Board Secretary & EA & CEO
     (
       [
-        [4, 15, 2.2, 0, 'readDoc', 0x165e4c, 1, 0, 'dress', 'braids'],
-        [5, -17.5, 2.2, 0, 'type', 0x1e2c44, 0, 0x2e64b8, 'suit', 'fade'],
-        [5, -12.5, 2.2, 0, 'phone', 0x422238, 1, 0, 'suit', 'puff'],
-        [5, -7.5, 2.2, 0, 'think', 0x2b303a, 0, 0, 'knit', 'twists'],
-        [5, -2.5, 2.2, 0, 'writeNotes', 0x3c2e22, 1, 0, 'blouseSkirt', 'bob'],
-        [5, 3, 2.2, 0, 'sit', 0x181a20, 1, 0, 'dress', 'pixie'],
-        [5, 13, 2.2, 0, 'phone', 0x141a26, 0, 0x8a1f2e, 'suit', 'fade'],
+        [4, 15, 2.2, 0, 'readDoc', 0x165e4c, 1, 0, 'dress', 'braids', 'Faith Nyambura', 'Board Secretary', 'Level 4 · Secretariat', 'secr', '#64748b'],
+        [5, -17.5, 2.2, 0, 'type', 0x1e2c44, 0, 0x2e64b8, 'suit', 'fade', 'Kelvin Ochieng', 'Head of Technology', 'Level 5 · Executive Suite', 'hod', '#34598f'],
+        [5, -12.5, 2.2, 0, 'phone', 0x422238, 1, 0, 'suit', 'puff', 'Zawadi Kimani', 'Head of Marketing', 'Level 5 · Executive Suite', 'hod', '#7a2f5a'],
+        [5, -7.5, 2.2, 0, 'think', 0x2b303a, 0, 0, 'knit', 'twists', 'Collins Kioko', 'Head of Finance', 'Level 5 · Executive Suite', 'hod', '#2d7a5a'],
+        [5, -2.5, 2.2, 0, 'writeNotes', 0x3c2e22, 1, 0, 'blouseSkirt', 'bob', 'Makena Chege', 'Head of Operations', 'Level 5 · Executive Suite', 'hod', '#c9762e'],
+        [5, 3, 2.2, 0, 'sit', 0x181a20, 1, 0, 'dress', 'pixie', 'Sifa Wambui', 'Executive Assistant', 'Level 5 · Executive Suite', 'secr', '#5d6b7a'],
+        [5, 13, 2.2, 0, 'phone', 0x141a26, 0, 0x8a1f2e, 'suit', 'fade', 'Samuel Njoroge', 'Chief Executive Officer', 'Level 5 · CEO Office', 'ceo', '#c9a24b'],
       ] as const
-    ).forEach(([lv, x, z, rot, pose, col, fem, tie, outfit, hairStyle], i) => {
-      addDayVisitor(lv, x, z, rot, pose, {
-        skin: P_LIB.skins[(i + 2) % P_LIB.skins.length],
-        shirt: outfit === 'knit' ? P_LIB.knits[0] : sMat(col),
-        hair: P_LIB.hairs[(i + 1) % P_LIB.hairs.length],
-        trou: sMat(col),
-        fem: !!fem,
-        hairStyle,
-        beardStyle: !fem ? 'full' : 'none',
-        faceVariant: i % 4,
-        outfit,
-        blazer: outfit === 'suit',
-        sleeve: outfit === 'dress' ? 'sleeveless' : undefined,
-        skirt: outfit === 'dress' || outfit === 'blouseSkirt' ? 'short' : 'none',
-        shoeStyle: fem ? 'heel' : 'oxford',
-        s: lv === 5 && x === 13 ? 1.1 : fem ? 0.96 : 1.02,
-        look: 0.35,
-        tie: tie || undefined,
-      });
+    ).forEach(([lv, x, z, rot, pose, col, fem, tie, outfit, hairStyle, name, role, dept, topicKey, acc], i) => {
+      addDayVisitor(
+        lv,
+        x,
+        z,
+        rot,
+        pose,
+        {
+          skin: P_LIB.skins[(i + 2) % P_LIB.skins.length],
+          shirt: outfit === 'knit' ? P_LIB.knits[0] : sMat(col),
+          hair: P_LIB.hairs[(i + 1) % P_LIB.hairs.length],
+          trou: sMat(col),
+          fem: !!fem,
+          hairStyle,
+          beardStyle: !fem ? 'full' : 'none',
+          faceVariant: i % 4,
+          outfit,
+          blazer: outfit === 'suit',
+          sleeve: outfit === 'dress' ? 'sleeveless' : undefined,
+          skirt: outfit === 'dress' || outfit === 'blouseSkirt' ? 'short' : 'none',
+          shoeStyle: fem ? 'heel' : 'oxford',
+          s: lv === 5 && x === 13 ? 1.1 : fem ? 0.96 : 1.02,
+          look: 0.35,
+          tie: tie || undefined,
+        },
+        {
+          name,
+          role,
+          department: dept,
+          seniority: 'Executive',
+          topicKey,
+          accentColor: acc,
+        }
+      );
+    });
+
+    // B1 Server Room & B2 Power Room Maintenance Teams (Senior Engineers & Junior Technicians)
+    let baseIdx = 0;
+    const addBasementCrew = (
+      lv: -1 | -2,
+      seniority: 'senior' | 'junior',
+      name: string,
+      roleLabel: string,
+      opts: Parameters<AtriumSimulation['addPerson']>[5] & {
+        startX: number;
+        startZ: number;
+        startFace: number;
+        startPose: string;
+      }
+    ) => {
+      const speed = seniority === 'senior' ? 0.88 : 1.08;
+      const p = this.addPerson(
+        lv,
+        opts.startX,
+        opts.startZ,
+        opts.startFace,
+        opts.startPose,
+        {
+          speed,
+          look: 0.25,
+          lanyard: true,
+          ...opts,
+        },
+        M
+      ) as BasementCrewActor;
+      p.lv = lv;
+      p.seniority = seniority;
+      p.roleLabel = roleLabel;
+      this.attachBrain(
+        p,
+        {
+          id: `base-${lv}-${++baseIdx}`,
+          name,
+          role: roleLabel,
+          department: lv === -1 ? 'B1 · Server Room' : 'B2 · Power Room',
+          seniority: seniority === 'senior' ? 'Senior' : 'Junior',
+          accentColor:
+            lv === -1
+              ? seniority === 'senior'
+                ? '#38bdf8'
+                : '#6fe3a1'
+              : seniority === 'senior'
+                ? '#f8fafc'
+                : '#f2b705',
+          personality: pickPersonality(baseIdx * 23),
+          topicKey: `${lv === -1 ? 'b1' : 'b2'}_${seniority}`,
+          homeLv: lv,
+          homeX: opts.startX,
+          homeZ: opts.startZ,
+          homeFace: opts.startFace,
+          homePose: opts.startPose,
+        },
+        false,
+        speed
+      );
+      this.BASEMENT_STAFF.push(p);
+      return p;
+    };
+
+    // B1 · Server Room (2 Senior Infrastructure Engineers, 2 Junior Maintenance Technicians)
+    addBasementCrew(-1, 'senior', 'Benson Kipchoge', 'Senior Cooling & Systems Engineer', {
+      skin: P_LIB.skins[1],
+      shirt: sMat(0x1b2b42),
+      hair: P_LIB.hairs[0],
+      trou: sMat(0x181c24),
+      hairStyle: 'fade',
+      beardStyle: 'full',
+      coat: true,
+      outfit: 'shirtTrousers',
+      shoeStyle: 'oxford',
+      glasses: true,
+      s: 1.06,
+      startX: -2.5,
+      startZ: 2.15,
+      startFace: Math.PI,
+      startPose: 'readDoc',
+    });
+    addBasementCrew(-1, 'senior', 'Amina Odhiambo', 'Senior Server Infrastructure Engineer', {
+      skin: P_LIB.skins[4],
+      shirt: sMat(0x283242),
+      hair: P_LIB.hairs[0],
+      trou: sMat(0x1a1e28),
+      fem: true,
+      hairStyle: 'bun',
+      outfit: 'suit',
+      skirt: 'none',
+      blazer: true,
+      shoeStyle: 'flat',
+      glasses: true,
+      s: 1.01,
+      startX: -1.6,
+      startZ: 4.35,
+      startFace: -Math.PI / 2,
+      startPose: 'hold',
+    });
+    addBasementCrew(-1, 'junior', 'Kevin Mburu', 'Junior Network & Cabling Tech', {
+      skin: P_LIB.skins[2],
+      shirt: sMat(0x1d7a6e),
+      hair: P_LIB.hairs[1],
+      trou: sMat(0x222732),
+      hairStyle: 'fade',
+      beardStyle: 'stubble',
+      outfit: 'smartCasual',
+      sleeve: 'rolled',
+      sneakers: true,
+      s: 0.96,
+      startX: -8.5,
+      startZ: 4.35,
+      startFace: Math.PI,
+      startPose: 'standType',
+    });
+    addBasementCrew(-1, 'junior', 'Wanjiku Wafula', 'Junior Rack Maintenance Tech', {
+      skin: P_LIB.skins[0],
+      shirt: sMat(0x2a5ea8),
+      hair: P_LIB.hairs[0],
+      trou: sMat(0x1d222c),
+      fem: true,
+      hairStyle: 'braids',
+      outfit: 'shirtTrousers',
+      sleeve: 'short',
+      sneakers: true,
+      s: 0.94,
+      startX: 5.6,
+      startZ: 4.35,
+      startFace: Math.PI,
+      startPose: 'point',
+    });
+
+    // B2 · Power Room (2 Senior Power Engineers in white hard hats, 2 Junior Technicians in yellow hard hats)
+    addBasementCrew(-2, 'senior', 'George Gitonga', 'Senior High-Voltage Power Lead', {
+      skin: P_LIB.skins[3],
+      shirt: sMat(0x202732),
+      hair: P_LIB.hairs[0],
+      trou: sMat(0x181c22),
+      hairStyle: 'fade',
+      beardStyle: 'full',
+      coat: true,
+      outfit: 'shirtTrousers',
+      shoeStyle: 'oxford',
+      glasses: true,
+      hardHat: 0xf4f6f9,
+      s: 1.07,
+      startX: 7.1,
+      startZ: 3.4,
+      startFace: Math.PI / 2,
+      startPose: 'readDoc',
+    });
+    addBasementCrew(-2, 'senior', 'Esther Karanja', 'Senior Solar & Inverter Engineer', {
+      skin: P_LIB.skins[5],
+      shirt: sMat(0x1e324d),
+      hair: P_LIB.hairs[2],
+      trou: sMat(0x191e27),
+      fem: true,
+      hairStyle: 'bun',
+      outfit: 'suit',
+      skirt: 'none',
+      blazer: true,
+      shoeStyle: 'flat',
+      glasses: true,
+      hardHat: 0xf4f6f9,
+      s: 1.01,
+      startX: 2.8,
+      startZ: 2.25,
+      startFace: Math.PI,
+      startPose: 'point',
+    });
+    addBasementCrew(-2, 'junior', 'Dennis Langat', 'Junior Battery & Storage Tech', {
+      skin: P_LIB.skins[6],
+      shirt: sMat(0x2f5b88),
+      hair: P_LIB.hairs[1],
+      trou: sMat(0x212630),
+      hairStyle: 'fade',
+      beardStyle: 'none',
+      outfit: 'shirtTrousers',
+      sleeve: 'rolled',
+      shoeStyle: 'oxford',
+      hardHat: 0xf2b705,
+      s: 0.96,
+      startX: -3.5,
+      startZ: 3.75,
+      startFace: 0,
+      startPose: 'hold',
+    });
+    addBasementCrew(-2, 'junior', 'Mercy Auma', 'Junior Electrical Maintenance Tech', {
+      skin: P_LIB.skins[0],
+      shirt: sMat(0xc87d28),
+      hair: P_LIB.hairs[0],
+      trou: sMat(0x1e232c),
+      fem: true,
+      hairStyle: 'braids',
+      outfit: 'shirtTrousers',
+      sleeve: 'short',
+      shoeStyle: 'flat',
+      hardHat: 0xf2b705,
+      s: 0.94,
+      startX: 3.7,
+      startZ: 8.7,
+      startFace: -Math.PI / 2,
+      startPose: 'standType',
     });
   }
 
@@ -681,21 +1168,87 @@ export class AtriumSimulation {
     return out;
   }
 
-  private walkPt(P: PersonActor, gx: number, gz: number, dt: number): boolean {
+  private levelFromY(y: number): number {
+    if (y < -6.5) return -2;
+    if (y < -2.0) return -1;
+    let bestLv = 0;
+    let bestDiff = Math.abs(LV[0] - y);
+    for (let i = 1; i < LV.length; i++) {
+      const diff = Math.abs(LV[i] - y);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        bestLv = i;
+      }
+    }
+    return bestLv;
+  }
+
+  private resolveCharacterSeparation(actor: PersonActor, lv: number, nx: number, nz: number, allowLiftShaft?: boolean): { x: number; z: number } {
+    const minDist = 0.48;
+    const minDistSq = minDist * minDist;
+    const py = actor.g.position.y;
+    let rx = nx;
+    let rz = nz;
+
+    const pushFrom = (other: PersonActor) => {
+      if (other === actor || !other.g.visible) return;
+      const st = (other as { state?: string }).state;
+      if (st === 'inCab' || st === 'away') return;
+      if (Math.abs(other.g.position.y - py) > 0.6) return;
+      const dx = rx - other.g.position.x;
+      const dz = rz - other.g.position.z;
+      const dSq = dx * dx + dz * dz;
+      if (dSq < minDistSq) {
+        const d = Math.sqrt(dSq);
+        if (d > 0.001) {
+          rx = other.g.position.x + (dx / d) * minDist;
+          rz = other.g.position.z + (dz / d) * minDist;
+        } else {
+          rx += 0.25;
+        }
+      }
+    };
+
+    for (let i = 0; i < this.STAFF.length; i++) pushFrom(this.STAFF[i]);
+    pushFrom(this.guideActor);
+
+    const safe = resolveObstaclePosition(lv, rx, rz, { allowLiftShaft });
+    return { x: safe.x, z: safe.z };
+  }
+
+  private walkPt(P: PersonActor, gx: number, gz: number, dt: number, opts?: { allowLiftShaft?: boolean }): boolean {
     const dx = gx - P.g.position.x;
     const dz = gz - P.g.position.z;
     const dist = Math.hypot(dx, dz);
-    if (dist < 0.08) {
+    if (dist < 0.09) {
       P.g.position.x = gx;
       P.g.position.z = gz;
       P.moving = false;
       return true;
     }
+
     const step = Math.min(dist, (P.speed || 2.3) * dt);
-    P.g.position.x += (dx / dist) * step;
-    P.g.position.z += (dz / dist) * step;
+    let nx = P.g.position.x + (dx / dist) * step;
+    let nz = P.g.position.z + (dz / dist) * step;
+
+    const actorState = (P as { state?: string }).state;
+    if (actorState !== 'inCab') {
+      const lv = this.levelFromY(P.g.position.y);
+      const safe = resolveObstaclePosition(lv, nx, nz, { allowLiftShaft: opts?.allowLiftShaft });
+      const sep = this.resolveCharacterSeparation(P, lv, safe.x, safe.z, opts?.allowLiftShaft);
+      nx = sep.x;
+      nz = sep.z;
+    }
+
+    P.g.position.x = nx;
+    P.g.position.z = nz;
     P.tyaw = Math.atan2(dx, dz);
     P.moving = true;
+
+    if (Math.hypot(gx - nx, gz - nz) < 0.11) {
+      P.moving = false;
+      return true;
+    }
     return false;
   }
 
@@ -779,7 +1332,7 @@ export class AtriumSimulation {
         if (!p) continue;
         const tgt = p.want === 'desk' ? (p.d ? p.d.lv : p.lv) : 0;
         if (Math.abs(c.y - liftY(tgt)) < 0.1) {
-          if (this.walkPt(p, cx - sd * 1.45, LANE, dt)) {
+          if (this.walkPt(p, cx - sd * 1.45, LANE, dt, { allowLiftShaft: true })) {
             slots[i] = null;
             p.cab = 0;
             p.g.position.y = c.y;
@@ -795,7 +1348,7 @@ export class AtriumSimulation {
         const cand = this.findWaiting(sd, c.stop!);
         if (cand) {
           c.busy = true;
-          if (this.walkPt(cand, cx, LANE + (empty ? 0.35 : -0.35), dt)) {
+          if (this.walkPt(cand, cx, LANE + (empty ? 0.35 : -0.35), dt, { allowLiftShaft: true })) {
             slots[empty] = cand;
             cand.state = 'inCab';
             cand.g.position.y = c.y;
@@ -879,6 +1432,281 @@ export class AtriumSimulation {
     return 'desk';
   }
 
+  private decideFreeWill(actor: PersonActor, forceMove = false) {
+    const ag = this.freeAgents.get(actor);
+    const brain = actor.brain;
+    if (!ag || !brain) return;
+
+    // Drift internal needs realistically
+    if (ag.mode === 'home') {
+      brain.energy = Math.max(18, brain.energy - (6 + Math.random() * 8));
+      brain.social = Math.max(15, brain.social - (4 + Math.random() * 7));
+      brain.focus = Math.min(98, brain.focus + 5);
+    } else {
+      brain.energy = Math.min(98, brain.energy + (8 + Math.random() * 10));
+      brain.social = Math.min(98, brain.social + 6);
+    }
+
+    const r = Math.random();
+    let goal: FreeGoal = 'work';
+
+    if (ag.lv < 0) {
+      if (forceMove || r < 0.72) {
+        goal = r < 0.4 ? 'inspect' : r < 0.62 ? 'patrol' : 'socialize';
+      } else {
+        goal = 'stretch';
+      }
+    } else if (brain.identity.topicKey === 'security') {
+      goal = r < 0.48 ? 'patrol' : r < 0.72 ? 'socialize' : r < 0.88 ? 'balcony' : 'coffeeBreak';
+    } else {
+      const tired = brain.energy < 46;
+      const lonely = brain.social < 42;
+      if (forceMove || ag.mode === 'home') {
+        const wStay = forceMove ? 0 : tired ? 0.25 : 0.5;
+        if (r < wStay) {
+          goal = 'work';
+        } else if (r < wStay + (tired ? 0.26 : 0.16)) {
+          goal = 'stretch';
+        } else if (r < wStay + (tired ? 0.52 : 0.34)) {
+          goal = 'balcony';
+        } else if (r < wStay + (lonely ? 0.76 : 0.52)) {
+          goal = 'socialize';
+        } else {
+          goal = 'coffeeBreak';
+        }
+      } else {
+        goal = r < 0.72 && !forceMove ? 'work' : r < 0.86 ? 'balcony' : 'socialize';
+      }
+    }
+
+    const curX = actor.g.position.x;
+    const curZ = actor.g.position.z;
+    ag.stuckTime = 0;
+    ag.lastX = curX;
+    ag.lastZ = curZ;
+
+    if (goal === 'work') {
+      brain.goal = 'work';
+      const thoughtPack = pickThoughtForGoal(brain, 'work');
+      setBrainThought(brain, thoughtPack.mood, thoughtPack.actionLabel, thoughtPack.thought);
+      brain.nextDecisionIn = 12 + Math.random() * 16;
+      const distHome = Math.hypot(curX - ag.homeX, curZ - ag.homeZ);
+      if (distHome > 0.35) {
+        ag.mode = 'toHome';
+        ag.queue = buildObstacleAwarePath(ag.lv, curX, curZ, ag.homeX, ag.homeZ);
+        ag.targetPose = actor.modes ? pickMode(actor.modes) : ag.homePose;
+        ag.targetFace = ag.homeFace;
+        setPose(actor, 'stand', this.P_LIB);
+      } else {
+        ag.mode = 'home';
+        ag.queue = [];
+        actor.tyaw = ag.homeFace;
+        setPose(actor, actor.modes ? pickMode(actor.modes) : ag.homePose, this.P_LIB);
+      }
+      return;
+    }
+
+    if (goal === 'stretch') {
+      brain.goal = 'stretch';
+      const thoughtPack = pickThoughtForGoal(brain, 'stretch');
+      setBrainThought(brain, thoughtPack.mood, thoughtPack.actionLabel, thoughtPack.thought);
+      brain.nextDecisionIn = 8 + Math.random() * 8;
+      const rawSx =
+        ag.lv < 0
+          ? curX
+          : Math.max(-17.5, Math.min(17.5, ag.homeX + (Math.random() - 0.5) * 0.9));
+      const rawSz =
+        ag.lv < 0
+          ? curZ
+          : Math.min(9.4, Math.max(2.0, ag.homeZ + (ag.homeZ < 3.5 ? 1.1 : 1.0)));
+      const safeStretch = resolveObstaclePosition(ag.lv, rawSx, rawSz);
+      ag.mode = 'toGoal';
+      ag.queue =
+        Math.hypot(curX - safeStretch.x, curZ - safeStretch.z) > 0.25
+          ? buildObstacleAwarePath(ag.lv, curX, curZ, safeStretch.x, safeStretch.z)
+          : [];
+      ag.targetPose = Math.random() < 0.5 ? 'hold' : 'stand';
+      ag.targetFace = (Math.random() - 0.5) * 1.4;
+      if (ag.queue.length === 0) {
+        ag.mode = 'atGoal';
+        actor.tyaw = ag.targetFace;
+        setPose(actor, ag.targetPose, this.P_LIB);
+      } else {
+        setPose(actor, 'stand', this.P_LIB);
+      }
+      return;
+    }
+
+    if (goal === 'socialize') {
+      const peers = this.STAFF.filter(
+        (other) =>
+          other !== actor &&
+          other.g.visible &&
+          other.brain &&
+          Math.abs(other.g.position.y - actor.g.position.y) < 0.6 &&
+          Math.hypot(other.g.position.x - curX, other.g.position.z - curZ) > 0.8
+      );
+      if (peers.length > 0) {
+        brain.goal = 'socialize';
+        const peer = peers[Math.floor(Math.random() * peers.length)];
+        const px = peer.g.position.x;
+        const pz = peer.g.position.z;
+        const rawStandZ = ag.lv >= 0 ? Math.min(9.8, Math.max(2.2, pz + (pz > 8.0 ? -0.75 : 0.9))) : pz;
+        const rawStandX = Math.max(-16.8, Math.min(16.8, px + (px > curX ? -0.78 : 0.78)));
+        const safeStand = resolveObstaclePosition(ag.lv, rawStandX, rawStandZ);
+        const faceToPeer = Math.atan2(px - safeStand.x, pz - safeStand.z);
+        const thoughtPack = pickThoughtForGoal(brain, 'socialize', peer.brain!.identity.name);
+        setBrainThought(brain, thoughtPack.mood, thoughtPack.actionLabel, thoughtPack.thought);
+        brain.nextDecisionIn = 10 + Math.random() * 9;
+        ag.mode = 'toGoal';
+        ag.queue = buildObstacleAwarePath(ag.lv, curX, curZ, safeStand.x, safeStand.z);
+        ag.targetPose = Math.random() < 0.55 ? 'talk' : 'collaborate';
+        ag.targetFace = faceToPeer;
+        setPose(actor, 'stand', this.P_LIB);
+        return;
+      }
+      goal = ag.lv < 0 ? 'inspect' : 'balcony';
+    }
+
+    if (goal === 'balcony' || goal === 'coffeeBreak') {
+      brain.goal = goal;
+      const thoughtPack = pickThoughtForGoal(brain, goal);
+      setBrainThought(brain, thoughtPack.mood, thoughtPack.actionLabel, thoughtPack.thought);
+      brain.nextDecisionIn = 10 + Math.random() * 10;
+      let gx = Math.max(-15.5, Math.min(15.5, ag.homeX + (Math.random() - 0.5) * 14));
+      let gz = ag.lv === 0 && Math.random() < 0.45 ? 12.2 + Math.random() * 2.5 : 9.85;
+      let gFace = Math.random() < 0.7 ? 0 : (Math.random() - 0.5) * 0.8;
+      if (goal === 'coffeeBreak') {
+        if (ag.lv === 4) {
+          gx = -14.8 + Math.random() * 1.4;
+          gz = 3.8 + Math.random() * 0.4;
+          gFace = -Math.PI / 2;
+        } else if (ag.lv === 0) {
+          gx = (Math.random() < 0.5 ? -1 : 1) * (4.8 + Math.random() * 2.4);
+          gz = 9.4 + Math.random() * 1.0;
+          gFace = 0;
+        } else {
+          gx = (ag.homeX < 0 ? -1 : 1) * (13.2 + Math.random() * 1.6);
+          gz = 9.75;
+          gFace = 0;
+        }
+      }
+      const safeGoal = resolveObstaclePosition(ag.lv, gx, gz);
+      ag.mode = 'toGoal';
+      ag.queue = buildObstacleAwarePath(ag.lv, curX, curZ, safeGoal.x, safeGoal.z);
+      ag.targetPose = goal === 'coffeeBreak' || Math.random() < 0.35 ? 'coffee' : 'stand';
+      ag.targetFace = gFace;
+      setPose(actor, 'stand', this.P_LIB);
+      return;
+    }
+
+    // Basement 'inspect' or 'patrol' (or ground security 'patrol')
+    brain.goal = goal;
+    const thoughtPack = pickThoughtForGoal(brain, goal);
+    setBrainThought(brain, thoughtPack.mood, thoughtPack.actionLabel, thoughtPack.thought);
+    brain.nextDecisionIn = 9 + Math.random() * 9;
+
+    const stations: Array<{ x: number; z: number; face: number; pose: string }> =
+      ag.lv === -1
+        ? [
+            { x: -6.5, z: 2.15, face: Math.PI, pose: 'point' },
+            { x: -2.5, z: 2.15, face: Math.PI, pose: 'readDoc' },
+            { x: 1.5, z: 2.15, face: Math.PI, pose: 'hold' },
+            { x: -1.6, z: 4.35, face: -Math.PI / 2, pose: 'hold' },
+            { x: -8.5, z: 4.35, face: Math.PI, pose: 'standType' },
+            { x: -5.4, z: 4.35, face: 0, pose: 'point' },
+            { x: 5.6, z: 4.35, face: Math.PI, pose: 'standType' },
+            { x: 8.6, z: 7.3, face: -Math.PI / 2, pose: 'carry' },
+            { x: -10.8, z: 7.3, face: Math.PI, pose: 'readDoc' },
+            { x: 0.6, z: 7.4, face: Math.PI, pose: 'radio' },
+          ]
+        : ag.lv === -2
+          ? [
+              { x: 7.1, z: 3.4, face: Math.PI / 2, pose: 'readDoc' },
+              { x: 7.1, z: 5.3, face: 0, pose: 'radio' },
+              { x: 9.2, z: 5.3, face: Math.PI, pose: 'point' },
+              { x: 2.8, z: 2.25, face: Math.PI, pose: 'point' },
+              { x: -3.5, z: 2.25, face: Math.PI, pose: 'readDoc' },
+              { x: -7.5, z: 2.25, face: Math.PI, pose: 'hold' },
+              { x: -3.5, z: 3.75, face: 0, pose: 'hold' },
+              { x: 0.4, z: 7.4, face: -Math.PI / 2, pose: 'readDoc' },
+              { x: 3.7, z: 8.7, face: -Math.PI / 2, pose: 'standType' },
+              { x: 4.4, z: 5.8, face: Math.PI, pose: 'carry' },
+            ]
+          : [
+              { x: -5.2, z: 9.4, face: 0.15, pose: 'radio' },
+              { x: 5.2, z: 9.4, face: -0.15, pose: 'stand' },
+              { x: 3.6, z: 7.2, face: 0, pose: 'readDoc' },
+              { x: -3.6, z: 7.4, face: 0.3, pose: 'hold' },
+              { x: 0.2, z: 12.2, face: 0, pose: 'stand' },
+            ];
+
+    const pick = stations[Math.floor(Math.random() * stations.length)];
+    ag.mode = 'toGoal';
+    ag.queue = buildObstacleAwarePath(ag.lv, curX, curZ, pick.x, pick.z);
+    ag.targetPose = pick.pose;
+    ag.targetFace = pick.face;
+    setPose(actor, ag.targetPose === 'carry' ? 'carry' : 'stand', this.P_LIB);
+  }
+
+  private stepFreeAgent(actor: PersonActor, dt: number) {
+    const ag = this.freeAgents.get(actor);
+    const brain = actor.brain;
+    if (!ag || !brain) return;
+
+    if (ag.queue.length > 0) {
+      const next = ag.queue[0];
+      const prevSpd = actor.speed;
+      actor.speed = ag.walkSpeed;
+      const reached = this.walkPt(actor, next.x, next.z, dt);
+      actor.speed = prevSpd;
+
+      const moved = Math.hypot(actor.g.position.x - ag.lastX, actor.g.position.z - ag.lastZ);
+      ag.lastX = actor.g.position.x;
+      ag.lastZ = actor.g.position.z;
+      if (moved < 0.08 * dt) {
+        ag.stuckTime += dt;
+      } else {
+        ag.stuckTime = 0;
+      }
+
+      if (reached || ag.stuckTime > 1.25) {
+        ag.stuckTime = 0;
+        if (!reached && ag.queue.length === 1) {
+          this.decideFreeWill(actor, false);
+          return;
+        }
+        ag.queue.shift();
+        if (ag.queue.length === 0) {
+          actor.tyaw = ag.targetFace;
+          setPose(actor, ag.targetPose, this.P_LIB);
+          ag.mode = ag.mode === 'toHome' ? 'home' : 'atGoal';
+        }
+      }
+      return;
+    }
+
+    brain.nextDecisionIn -= dt;
+    if (brain.nextDecisionIn <= 0) {
+      this.decideFreeWill(actor, false);
+    }
+  }
+
+  public nudgeCharacterFreeWill(actor: PersonActor) {
+    const ag = this.freeAgents.get(actor);
+    if (!ag || !actor.brain) return;
+    if (actor === this.guideActor && this.tourOn) return;
+    this.decideFreeWill(actor, true);
+  }
+
+  public getAllActors(): PersonActor[] {
+    return [...this.STAFF, this.guideActor];
+  }
+
+  public isStaffVisible(): boolean {
+    return this.peopleGroup.visible;
+  }
+
   private wThink(p: WorkerActor, dt: number) {
     const w = this.wantOf(p, this.simMin);
     p.want = w;
@@ -889,6 +1717,14 @@ export class AtriumSimulation {
         p.g.visible = true;
         p.g.position.set(p.sd * (Math.random() * 3 + 2), 0, 14.5 + Math.random() * 4);
         p.state = 'toLift';
+        if (p.brain) {
+          setBrainThought(
+            p.brain,
+            'Focused',
+            'Arriving for shift',
+            `Just arrived at DomainTechHub—heading up to ${p.d.n}.`
+          );
+        }
       }
       return;
     }
@@ -909,13 +1745,24 @@ export class AtriumSimulation {
 
     if (p.state === 'atDesk') {
       if (w !== 'desk') {
-        p.state = 'toLift';
-      } else if (p.modes) {
-        p.timer -= dt;
-        if (p.timer <= 0) {
-          setPose(p, pickMode(p.modes), this.P_LIB);
-          p.timer = 4 + Math.random() * 7;
+        const ag = this.freeAgents.get(p);
+        if (ag) {
+          ag.mode = 'home';
+          ag.queue = [];
         }
+        if (p.brain) {
+          setBrainThought(
+            p.brain,
+            w === 'lunch' ? 'Relaxed' : 'Caffeinated',
+            w === 'lunch' ? 'Heading out for lunch' : 'Wrapping up shift',
+            w === 'lunch'
+              ? 'Lunch window is open—taking the lift down for a proper meal.'
+              : 'Great day’s work—heading downstairs to catch my ride home.'
+          );
+        }
+        p.state = 'toLift';
+      } else {
+        this.stepFreeAgent(p, dt);
       }
       return;
     }
@@ -923,14 +1770,22 @@ export class AtriumSimulation {
     if (p.state === 'toLift') {
       if (p.pose !== 'stand') setPose(p, 'stand', this.P_LIB);
       if (w === 'desk') {
-        if (this.walkPt(p, p.sd * (LIFTX - p.sd * 1.45), LANE, dt)) {
+        if (p.g.position.z > 10.6 && Math.abs(p.g.position.x) < 10.5) {
+          this.walkPt(p, p.sd * 8.5, 9.8, dt);
+        } else if (Math.abs(p.g.position.x - gx) > 1.2 && Math.abs(p.g.position.z - 9.8) > 0.35) {
+          this.walkPt(p, p.g.position.x, 9.8, dt);
+        } else if (Math.abs(p.g.position.x - gx) > 0.65) {
+          this.walkPt(p, gx, 9.8, dt);
+        } else if (this.walkPt(p, gx, LANE, dt, { allowLiftShaft: true })) {
           p.state = 'wait';
           p.tyaw = p.sd * Math.PI / 2;
         }
       } else {
-        if (Math.abs(p.g.position.z - LANE) > 0.3) {
-          this.walkPt(p, p.g.position.x, LANE, dt);
-        } else if (this.walkPt(p, gx, LANE, dt)) {
+        if (Math.abs(p.g.position.x - gx) > 1.2 && Math.abs(p.g.position.z - 9.8) > 0.3) {
+          this.walkPt(p, p.g.position.x, 9.8, dt);
+        } else if (Math.abs(p.g.position.x - gx) > 0.65) {
+          this.walkPt(p, gx, 9.8, dt);
+        } else if (this.walkPt(p, gx, LANE, dt, { allowLiftShaft: true })) {
           p.state = 'wait';
           p.tyaw = p.sd * Math.PI / 2;
         }
@@ -940,14 +1795,18 @@ export class AtriumSimulation {
 
     if (p.state === 'toDesk') {
       if (p.pose !== 'stand') setPose(p, 'stand', this.P_LIB);
-      if (Math.abs(p.g.position.x - p.seat.x) > 0.5 && Math.abs(p.g.position.z - LANE) > 0.35) {
-        this.walkPt(p, p.g.position.x, LANE, dt);
+      if (Math.abs(p.g.position.x - p.seat.x) > 0.5 && Math.abs(p.g.position.z - 9.8) > 0.35) {
+        this.walkPt(p, p.g.position.x, 9.8, dt, { allowLiftShaft: Math.abs(p.g.position.x) > 16.5 });
       } else if (Math.abs(p.g.position.x - p.seat.x) > 0.2) {
-        this.walkPt(p, p.seat.x, LANE, dt);
+        this.walkPt(p, p.seat.x, 9.8, dt, { allowLiftShaft: Math.abs(p.g.position.x) > 16.5 });
       } else if (this.walkPt(p, p.seat.x, p.seat.z, dt)) {
         p.state = 'atDesk';
         p.tyaw = Math.PI;
         setPose(p, p.modes ? pickMode(p.modes) : 'type', this.P_LIB);
+        if (p.brain) {
+          const tp = pickThoughtForGoal(p.brain, 'work');
+          setBrainThought(p.brain, tp.mood, tp.actionLabel, tp.thought);
+        }
       }
     }
   }
@@ -966,25 +1825,46 @@ export class AtriumSimulation {
     }
     if (p.state === 'in') {
       if (p.lv === 0) {
-        if (this.walkPt(p, p.dx, p.dz, dt)) {
+        if (Math.abs(p.dx) < 3.7 && p.dz < 5.7 && p.g.position.z > 6.5) {
+          this.walkPt(p, p.sd * 4.3, 6.2, dt);
+        } else if (this.walkPt(p, p.dx, p.dz, dt)) {
           p.state = 'atDesk';
           p.tyaw = p.df;
           setPose(p, p.dpose, this.P_LIB);
         }
-      } else if (this.walkPt(p, p.sd * (LIFTX - p.sd * 1.45), LANE, dt)) {
+      } else if (p.g.position.z > 10.6 && Math.abs(p.g.position.x) < 10.5) {
+        this.walkPt(p, p.sd * 8.5, 9.8, dt);
+      } else if (Math.abs(p.g.position.x - gx) > 0.65) {
+        this.walkPt(p, gx, 9.8, dt);
+      } else if (this.walkPt(p, gx, LANE, dt, { allowLiftShaft: true })) {
         p.state = 'wait';
         p.tyaw = p.sd * Math.PI / 2;
       }
       return;
     }
     if (p.state === 'atDesk') {
-      if (!on) p.state = p.lv === 0 ? 'out' : 'toLift';
+      if (!on) {
+        const ag = this.freeAgents.get(p);
+        if (ag) {
+          ag.mode = 'home';
+          ag.queue = [];
+        }
+        p.state = p.lv === 0 ? 'out' : 'toLift';
+      } else {
+        this.stepFreeAgent(p, dt);
+      }
       return;
     }
     if (p.state === 'toLift') {
       if (p.pose !== 'stand') setPose(p, 'stand', this.P_LIB);
-      if (Math.abs(p.g.position.z - LANE) > 0.3) this.walkPt(p, p.g.position.x, LANE, dt);
-      else if (this.walkPt(p, gx, LANE, dt)) {
+      if (p.lv >= 4 && p.g.position.z < 3.6 && Math.abs(p.g.position.x - p.dx) < 1.8) {
+        const sideX = p.dx >= 12 ? p.dx - 2.15 : p.dx < -16 ? -14.55 : p.dx - 1.55;
+        this.walkPt(p, sideX, p.g.position.z, dt);
+      } else if (Math.abs(p.g.position.x - gx) > 1.2 && Math.abs(p.g.position.z - 9.8) > 0.3) {
+        this.walkPt(p, p.g.position.x, 9.8, dt);
+      } else if (Math.abs(p.g.position.x - gx) > 0.65) {
+        this.walkPt(p, gx, 9.8, dt);
+      } else if (this.walkPt(p, gx, LANE, dt, { allowLiftShaft: true })) {
         p.state = 'wait';
         p.tyaw = p.sd * Math.PI / 2;
       }
@@ -992,10 +1872,13 @@ export class AtriumSimulation {
     }
     if (p.state === 'toDesk') {
       if (p.pose !== 'stand') setPose(p, 'stand', this.P_LIB);
-      if (Math.abs(p.g.position.x - p.dx) > 0.4 && Math.abs(p.g.position.z - LANE) > 0.35) {
-        this.walkPt(p, p.g.position.x, LANE, dt);
-      } else if (Math.abs(p.g.position.x - p.dx) > 0.25) {
-        this.walkPt(p, p.dx, LANE, dt);
+      const bypassX = p.lv >= 4 && p.dz < 3.2 ? (p.dx >= 12 ? p.dx - 2.15 : p.dx < -16 ? -14.55 : p.dx - 1.55) : p.dx;
+      if (Math.abs(p.g.position.x - bypassX) > 0.45 && Math.abs(p.g.position.z - 9.8) > 0.35) {
+        this.walkPt(p, p.g.position.x, 9.8, dt, { allowLiftShaft: Math.abs(p.g.position.x) > 16.5 });
+      } else if (Math.abs(p.g.position.x - bypassX) > 0.25 && p.g.position.z > 8.5) {
+        this.walkPt(p, bypassX, 9.8, dt, { allowLiftShaft: Math.abs(p.g.position.x) > 16.5 });
+      } else if (Math.abs(p.g.position.z - p.dz) > 0.35 && Math.abs(p.g.position.x - bypassX) < 0.45 && bypassX !== p.dx) {
+        this.walkPt(p, bypassX, p.dz, dt);
       } else if (this.walkPt(p, p.dx, p.dz, dt)) {
         p.state = 'atDesk';
         p.tyaw = p.df;
@@ -1004,7 +1887,9 @@ export class AtriumSimulation {
       return;
     }
     if (p.state === 'out') {
-      if (this.walkPt(p, p.sd * 2.5, 17, dt)) {
+      if (Math.abs(p.g.position.x) < 3.7 && p.g.position.z < 5.7) {
+        this.walkPt(p, p.sd * 4.3, 6.2, dt);
+      } else if (this.walkPt(p, p.sd * 2.5, 17, dt)) {
         p.state = 'away';
         p.g.visible = false;
       }
@@ -1086,6 +1971,11 @@ export class AtriumSimulation {
     for (const p of this.WORKERS) {
       const w = this.wantOf(p, m);
       p.want = w;
+      const ag = this.freeAgents.get(p);
+      if (ag) {
+        ag.mode = 'home';
+        ag.queue = [];
+      }
       if (w === 'desk') {
         p.state = 'atDesk';
         p.g.visible = true;
@@ -1100,16 +1990,43 @@ export class AtriumSimulation {
     }
     const dayOn = m >= 480 && m < 1050;
     for (const p of this.DAYONLY) {
+      const ag = this.freeAgents.get(p);
+      if (ag) {
+        ag.mode = 'home';
+        ag.queue = [];
+      }
       if (dayOn) {
         p.state = 'atDesk';
         p.g.visible = true;
-        p.g.position.set(p.dx, LV[p.lv], p.dz);
+        p.g.position.set(p.dx, liftY(p.lv), p.dz);
         p.yaw = p.tyaw = p.df;
         p.g.rotation.y = p.df;
         setPose(p, p.dpose, this.P_LIB);
       } else {
         p.state = 'away';
         p.g.visible = false;
+      }
+    }
+    if (this.secOffActor) {
+      const ag = this.freeAgents.get(this.secOffActor);
+      if (ag) {
+        ag.mode = 'home';
+        ag.queue = [];
+        this.secOffActor.g.position.set(ag.homeX, liftY(ag.lv), ag.homeZ);
+        this.secOffActor.yaw = this.secOffActor.tyaw = ag.homeFace;
+        this.secOffActor.g.rotation.y = ag.homeFace;
+        setPose(this.secOffActor, ag.homePose, this.P_LIB);
+      }
+    }
+    for (const b of this.BASEMENT_STAFF) {
+      const ag = this.freeAgents.get(b);
+      if (ag) {
+        ag.mode = 'home';
+        ag.queue = [];
+        b.g.position.set(ag.homeX, liftY(ag.lv), ag.homeZ);
+        b.yaw = b.tyaw = ag.homeFace;
+        b.g.rotation.y = ag.homeFace;
+        setPose(b, ag.homePose, this.P_LIB);
       }
     }
     for (const v of this.TRAF) {
@@ -1148,12 +2065,22 @@ export class AtriumSimulation {
     this.tourArr = false;
     this.tourHold = 0;
     this.guideActor.g.visible = true;
+    const gag = this.freeAgents.get(this.guideActor);
+    if (gag) {
+      gag.mode = 'home';
+      gag.queue = [];
+    }
     this.goStop(this.tourI, camera, controls);
   }
 
   public startTourAtRoom(roomName: string, camera: THREE.Camera, controls: OrbitControls) {
     const idx = this.STOPS.findIndex(
-      (s) => s.n === roomName || s.room?.n === roomName || (roomName.startsWith('Head of ') && s.n === 'Heads of Department')
+      (s) =>
+        s.n === roomName ||
+        s.room?.n === roomName ||
+        (roomName.startsWith('Head of ') && s.n === 'Heads of Department') ||
+        (roomName === 'Chief Executive Officer' && s.n === 'CEO Office') ||
+        ((roomName === 'Executive Lounge' || roomName === 'Board Secretary') && s.n === 'Board Room')
     );
     this.startTour(idx >= 0 ? idx : 0, camera, controls);
   }
@@ -1167,7 +2094,20 @@ export class AtriumSimulation {
     this.cabs[1].guide = false;
     this.cabs[-1].gw = false;
     this.cabs[1].gw = false;
+    this.tourLv = 0;
+    this.guideActor.g.position.set(14.5, 0, LANE);
+    this.guideActor.yaw = this.guideActor.tyaw = -0.3;
     setPose(this.guideActor, 'stand', this.P_LIB);
+    const gag = this.freeAgents.get(this.guideActor);
+    if (gag) {
+      gag.lv = 0;
+      gag.mode = 'home';
+      gag.queue = [];
+    }
+    if (this.guideActor.brain) {
+      const tp = pickThoughtForGoal(this.guideActor.brain, 'work');
+      setBrainThought(this.guideActor.brain, tp.mood, tp.actionLabel, tp.thought);
+    }
   }
 
   public goStop(i: number, camera?: THREE.Camera, controls?: OrbitControls) {
@@ -1182,6 +2122,14 @@ export class AtriumSimulation {
     this.cabs[1].guide = false;
     this.cabs[-1].gw = false;
     this.cabs[1].gw = false;
+    if (this.guideActor.brain) {
+      setBrainThought(
+        this.guideActor.brain,
+        'Social',
+        `Guiding tour to ${s.n}`,
+        `Heading over to ${s.n}—let me show you what this team builds.`
+      );
+    }
 
     if (camera && controls) {
       this.setTourCameraToStop(s, camera, controls);
@@ -1205,6 +2153,7 @@ export class AtriumSimulation {
     this.guideMarker.rotation.y += dt * 1.4;
 
     if (!this.tourOn) {
+      this.stepFreeAgent(this.guideActor, dt);
       updatePersonKinematics(this.guideActor, dt, t, 0);
       return;
     }
@@ -1216,7 +2165,11 @@ export class AtriumSimulation {
 
     if (this.tourSt === 'toLift') {
       const gx = sd * (LIFTX - sd * 1.45);
-      if (this.walkPt(this.guideActor, gx, LANE, dt)) {
+      if (Math.abs(this.guideActor.g.position.x - gx) > 0.8 && Math.abs(this.guideActor.g.position.z - 9.8) > 0.35) {
+        this.walkPt(this.guideActor, this.guideActor.g.position.x, 9.8, dt);
+      } else if (Math.abs(this.guideActor.g.position.x - gx) > 0.65) {
+        this.walkPt(this.guideActor, gx, 9.8, dt);
+      } else if (this.walkPt(this.guideActor, gx, LANE, dt, { allowLiftShaft: true })) {
         this.tourSt = 'waitCab';
         this.guideActor.tyaw = (sd * Math.PI) / 2;
         c.guide = true;
@@ -1224,7 +2177,7 @@ export class AtriumSimulation {
       }
     } else if (this.tourSt === 'waitCab') {
       if (c.ph === 'exchange' && Math.abs(c.y - liftY(this.tourLv)) < 0.1) {
-        if (this.walkPt(this.guideActor, cx, LANE, dt)) {
+        if (this.walkPt(this.guideActor, cx, LANE, dt, { allowLiftShaft: true })) {
           this.tourSt = 'toDest';
           this.tourLv = s.lv;
           this.guideActor.tyaw = (-sd * Math.PI) / 2;
@@ -1235,11 +2188,11 @@ export class AtriumSimulation {
       if (Math.abs(this.guideActor.g.position.y - LV[s.lv]) > 0.1) {
         this.guideActor.g.position.y = c.y;
         if (c.ph === 'exchange' && Math.abs(c.y - LV[s.lv]) < 0.1) {
-          this.walkPt(this.guideActor, sd * (LIFTX - sd * 1.55), LANE, dt);
+          this.walkPt(this.guideActor, sd * (LIFTX - sd * 1.55), LANE, dt, { allowLiftShaft: true });
         }
       } else {
         if (c.guide && Math.abs(this.guideActor.g.position.x) > GATE_STOP) {
-          this.walkPt(this.guideActor, sd * (LIFTX - sd * 1.55), LANE, dt);
+          this.walkPt(this.guideActor, sd * (LIFTX - sd * 1.55), LANE, dt, { allowLiftShaft: true });
           if (Math.abs(this.guideActor.g.position.x - sd * (LIFTX - sd * 1.55)) < 0.15) {
             c.guide = false;
             c.gw = false;
@@ -1247,16 +2200,24 @@ export class AtriumSimulation {
         } else {
           const destX = s.cx + (s.cx < 0 ? 1.8 : -1.8);
           const destZ = 8.4;
-          if (Math.abs(this.guideActor.g.position.x - destX) > 0.4 && Math.abs(this.guideActor.g.position.z - LANE) > 0.35) {
-            this.walkPt(this.guideActor, this.guideActor.g.position.x, LANE, dt);
+          if (Math.abs(this.guideActor.g.position.x - destX) > 0.4 && Math.abs(this.guideActor.g.position.z - 9.8) > 0.35) {
+            this.walkPt(this.guideActor, this.guideActor.g.position.x, 9.8, dt);
           } else if (Math.abs(this.guideActor.g.position.x - destX) > 0.2) {
-            this.walkPt(this.guideActor, destX, LANE, dt);
+            this.walkPt(this.guideActor, destX, 9.8, dt);
           } else if (this.walkPt(this.guideActor, destX, destZ, dt)) {
             this.tourSt = 'arrived';
             this.tourArr = true;
             this.tourHold = 0;
             this.guideActor.tyaw = 0.2;
             setPose(this.guideActor, 'present', this.P_LIB);
+            if (this.guideActor.brain) {
+              setBrainThought(
+                this.guideActor.brain,
+                'Inspired',
+                `Presenting ${s.n}`,
+                s.text || `Welcome to ${s.n}!`
+              );
+            }
           }
         }
       }
@@ -1447,6 +2408,17 @@ export class AtriumSimulation {
     this.ambientSources[base + 4].activity = Math.min(1, hodAct / 3.0);
     this.ambientSources[base + 5].activity = Math.min(1, ceoAct);
 
+    const b1Count = this.staffVisible
+      ? this.BASEMENT_STAFF.filter((b) => b.lv === -1 && b.g.visible).length
+      : 0;
+    const b2Count = this.staffVisible
+      ? this.BASEMENT_STAFF.filter((b) => b.lv === -2 && b.g.visible).length
+      : 0;
+    this.ambientSources[base + 6].activity = Math.min(1, b1Count / 4);
+    this.ambientSources[base + 6].chatterWeight = b1Count > 0 ? 0.22 : 0;
+    this.ambientSources[base + 7].activity = Math.min(1, b2Count / 4);
+    this.ambientSources[base + 7].chatterWeight = b2Count > 0 ? 0.22 : 0;
+
     return this.ambientSources;
   }
 
@@ -1588,11 +2560,18 @@ export class AtriumSimulation {
     }
 
     // Gentle boundaries inside building + plaza
-    this.walkPos.x = Math.max(-19.5, Math.min(19.5, this.walkPos.x));
+    this.walkPos.x = Math.max(-19.2, Math.min(19.2, this.walkPos.x));
     if (this.walkFloor > 0) {
-      this.walkPos.z = Math.max(1.2, Math.min(DEPTH - 0.65, this.walkPos.z));
+      this.walkPos.z = Math.max(0.85, Math.min(DEPTH - 0.65, this.walkPos.z));
     } else {
-      this.walkPos.z = Math.max(1.2, Math.min(54, this.walkPos.z));
+      this.walkPos.z = Math.max(0.85, Math.min(54, this.walkPos.z));
+    }
+
+    // Solid collision against architectural walls, partitions, desks, counters, planters & props
+    if (this.walkFloor > 0 || this.walkPos.z <= 18.6) {
+      const safeWalk = resolveObstaclePosition(this.walkFloor, this.walkPos.x, this.walkPos.z, { radius: 0.38 });
+      this.walkPos.x = safeWalk.x;
+      this.walkPos.z = safeWalk.z;
     }
 
     // Soft collision against furnishings & seated staff
@@ -1600,9 +2579,46 @@ export class AtriumSimulation {
       const dx = this.walkPos.x - p.x;
       const dz = this.walkPos.z - p.z;
       const d = Math.hypot(dx, dz);
-      if (d < p.r && d > 0.001) {
-        this.walkPos.x = p.x + (dx / d) * p.r;
-        this.walkPos.z = p.z + (dz / d) * p.r;
+      if (d < p.r) {
+        if (d > 0.001) {
+          this.walkPos.x = p.x + (dx / d) * p.r;
+          this.walkPos.z = p.z + (dz / d) * p.r;
+        } else {
+          this.walkPos.z = p.z + p.r;
+        }
+      }
+    }
+
+    // Collide against active standing/walking staff & guide on the current floor
+    if (this.peopleGroup.visible) {
+      const floorY = LV[this.walkFloor];
+      const charMinR = 0.62;
+      for (const P of this.STAFF) {
+        if (!P.g.visible || Math.abs(P.g.position.y - floorY) > 1.1) continue;
+        const dx = this.walkPos.x - P.g.position.x;
+        const dz = this.walkPos.z - P.g.position.z;
+        const d = Math.hypot(dx, dz);
+        if (d < charMinR) {
+          if (d > 0.001) {
+            this.walkPos.x = P.g.position.x + (dx / d) * charMinR;
+            this.walkPos.z = P.g.position.z + (dz / d) * charMinR;
+          } else {
+            this.walkPos.z = P.g.position.z + charMinR;
+          }
+        }
+      }
+      if (this.guideActor.g.visible && Math.abs(this.guideActor.g.position.y - floorY) <= 1.1) {
+        const dx = this.walkPos.x - this.guideActor.g.position.x;
+        const dz = this.walkPos.z - this.guideActor.g.position.z;
+        const d = Math.hypot(dx, dz);
+        if (d < charMinR) {
+          if (d > 0.001) {
+            this.walkPos.x = this.guideActor.g.position.x + (dx / d) * charMinR;
+            this.walkPos.z = this.guideActor.g.position.z + (dz / d) * charMinR;
+          } else {
+            this.walkPos.z = this.guideActor.g.position.z + charMinR;
+          }
+        }
       }
     }
 
@@ -1645,15 +2661,24 @@ export class AtriumSimulation {
     return this.staffVisible;
   }
 
-  public setCutawayMaxY(maxY: number | null) {
+  public isCameraFlying(): boolean {
+    return this.cameraFlight.active;
+  }
+
+  public setCutawayRange(minY: number | null, maxY: number | null) {
+    this.cutawayMinY = minY;
     this.cutawayMaxY = maxY;
   }
 
-  private applyActorCutaway(P: PersonActor) {
-    const show = this.cutawayMaxY === null || P.g.position.y <= this.cutawayMaxY;
+  private applyActorCutaway(P: PersonActor): boolean {
+    const py = P.g.position.y;
+    const aboveMin = this.cutawayMinY === null || py >= this.cutawayMinY;
+    const belowMax = this.cutawayMaxY === null || py <= this.cutawayMaxY;
+    const show = aboveMin && belowMax;
     for (let i = 0; i < P.g.children.length; i++) {
       P.g.children[i].visible = show;
     }
+    return show;
   }
   /* =========================================================
      PER-FRAME SIMULATION TICK
@@ -1680,6 +2705,12 @@ export class AtriumSimulation {
     this.cabCtl(1, dt);
     for (const w of this.WORKERS) this.wThink(w, dt);
     for (const d of this.DAYONLY) this.dThink(d, dt);
+    if (this.secOffActor && this.secOffActor.g.visible) {
+      this.stepFreeAgent(this.secOffActor, dt);
+    }
+    for (const b of this.BASEMENT_STAFF) {
+      if (b.g.visible) this.stepFreeAgent(b, dt);
+    }
 
     // Update all animated staff kinematics
     for (const P of this.STAFF) {
@@ -1688,16 +2719,21 @@ export class AtriumSimulation {
         const pt = P.route[P.ri || 0];
         if ((P.wait || 0) > 0) {
           P.wait = (P.wait || 0) - dt;
-          if ((P.wait || 0) <= 0 && pt.pose) setPose(P, pt.pose, this.P_LIB);
+          if ((P.wait || 0) <= 0) {
+            P.ri = ((P.ri || 0) + 1) % P.route.length;
+            setPose(P, P.walkPose || 'stand', this.P_LIB);
+          }
         } else {
           if (P.pose !== (P.walkPose || 'stand')) setPose(P, P.walkPose || 'stand', this.P_LIB);
           if (this.walkPt(P, pt.x, pt.z, dt)) {
-            P.ri = ((P.ri || 0) + 1) % P.route.length;
             P.wait = pt.wait || 2;
             if (pt.face != null) P.tyaw = pt.face;
+            if (pt.pose) setPose(P, pt.pose, this.P_LIB);
           }
         }
       }
+
+      if (!this.applyActorCutaway(P)) continue;
 
       // Subtle glance toward camera/player when nearby
       let glance = 0;
@@ -1709,7 +2745,6 @@ export class AtriumSimulation {
       }
 
       updatePersonKinematics(P, dt, t, glance);
-      this.applyActorCutaway(P);
     }
 
     // Vehicle traffic
@@ -1730,6 +2765,7 @@ export class AtriumSimulation {
         this.tourCam.on = false;
       }
       controls.update();
+      this.pushCameraOutsideCharacters(camera.position);
     } else if (this.cameraFlight.active) {
       const k = 1 - Math.exp(-dt * 3.8);
       camera.position.lerp(this.cameraFlight.pos, k);
@@ -1740,9 +2776,36 @@ export class AtriumSimulation {
         this.cameraFlight.active = false;
       }
       controls.update();
+      this.pushCameraOutsideCharacters(camera.position);
     } else {
       controls.update();
+      this.pushCameraOutsideCharacters(camera.position);
     }
+  }
+
+  private pushCameraOutsideCharacters(camPos: THREE.Vector3) {
+    if (!this.peopleGroup.visible) return;
+    const minR = 0.54;
+    const checkActor = (P: PersonActor) => {
+      if (!P.g.visible) return;
+      const py = P.g.position.y;
+      if (this.cutawayMinY !== null && py < this.cutawayMinY) return;
+      if (this.cutawayMaxY !== null && py > this.cutawayMaxY) return;
+      if (camPos.y < py - 0.15 || camPos.y > py + 2.0) return;
+      const dx = camPos.x - P.g.position.x;
+      const dz = camPos.z - P.g.position.z;
+      const d = Math.hypot(dx, dz);
+      if (d < minR) {
+        if (d > 0.001) {
+          camPos.x = P.g.position.x + (dx / d) * minR;
+          camPos.z = P.g.position.z + (dz / d) * minR;
+        } else {
+          camPos.z = P.g.position.z + minR;
+        }
+      }
+    };
+    for (const P of this.STAFF) checkActor(P);
+    checkActor(this.guideActor);
   }
 
   private describePoseBucket(actors: Array<{ pose: string; state?: string }>): string {
@@ -1792,30 +2855,68 @@ export class AtriumSimulation {
     }
 
     if (activeLevel === 'b1') {
+      const b1Crew = this.staffVisible ? this.BASEMENT_STAFF.filter((b) => b.lv === -1 && b.g.visible) : [];
+      const senior = b1Crew.filter((b) => b.seniority === 'senior');
+      const junior = b1Crew.filter((b) => b.seniority === 'junior');
+      const describeCrew = (list: BasementCrewActor[], fallback: string) => {
+        if (!this.staffVisible) return 'Staff hidden (Staff OFF)';
+        if (list.length === 0) return 'Off duty';
+        const walking = list.filter((b) => b.moving).length;
+        const inspecting = list.length - walking;
+        const parts: string[] = [];
+        if (inspecting > 0) parts.push(`${inspecting} ${fallback}`);
+        if (walking > 0) parts.push(`${walking} patrolling racks`);
+        return parts.join(' · ');
+      };
       return {
         levelTitle: 'Basement 1 · Server Room',
-        activeCount: 0,
+        activeCount: b1Crew.length,
         zones: [
           {
-            zone: 'Core NOC & Racks',
+            zone: 'Senior Server Engineers',
+            color: '#38bdf8',
+            count: senior.length,
+            status: `${describeCrew(senior, 'checking CRAC & NOC')} · 42 nodes`,
+          },
+          {
+            zone: 'Junior Maintenance Techs',
             color: '#6fe3a1',
-            count: 0,
-            status: '42 server nodes active · 18.4 TB/s · Lift access only',
+            count: junior.length,
+            status: `${describeCrew(junior, 'servicing racks & FM-200')}`,
           },
         ],
       };
     }
 
     if (activeLevel === 'b2') {
+      const b2Crew = this.staffVisible ? this.BASEMENT_STAFF.filter((b) => b.lv === -2 && b.g.visible) : [];
+      const senior = b2Crew.filter((b) => b.seniority === 'senior');
+      const junior = b2Crew.filter((b) => b.seniority === 'junior');
+      const describeCrew = (list: BasementCrewActor[], fallback: string) => {
+        if (!this.staffVisible) return 'Staff hidden (Staff OFF)';
+        if (list.length === 0) return 'Off duty';
+        const walking = list.filter((b) => b.moving).length;
+        const inspecting = list.length - walking;
+        const parts: string[] = [];
+        if (inspecting > 0) parts.push(`${inspecting} ${fallback}`);
+        if (walking > 0) parts.push(`${walking} patrolling bay`);
+        return parts.join(' · ');
+      };
       return {
         levelTitle: 'Basement 2 · Power Room',
-        activeCount: 0,
+        activeCount: b2Crew.length,
         zones: [
           {
-            zone: 'Solar Inverters & Battery',
-            color: '#ffb14a',
-            count: 0,
-            status: 'PV 18.4 kW · AC 17.9 kW · Grid 0',
+            zone: 'Senior Power Engineers',
+            color: '#f8fafc',
+            count: senior.length,
+            status: `${describeCrew(senior, 'auditing HV & inverters')} · PV 18.4 kW`,
+          },
+          {
+            zone: 'Junior Electrical Techs',
+            color: '#f2b705',
+            count: junior.length,
+            status: `${describeCrew(junior, 'maintaining battery & gear')}`,
           },
         ],
       };
@@ -1871,7 +2972,10 @@ export class AtriumSimulation {
     if (lv <= 3) {
       if (lv === 0) {
         const lobbyActors = this.DAYONLY.filter((d) => d.lv === 0 && d.g.visible && d.state !== 'away');
-        const secVisible = this.STAFF.some((p) => p.route && p.g.visible && Math.abs(p.g.position.y) < 0.5);
+        const secVisible =
+          Boolean(this.secOffActor) &&
+          this.secOffActor.g.visible &&
+          Math.abs(this.secOffActor.g.position.y) < 0.5;
         const lobbyCount = lobbyActors.length + (secVisible ? 1 : 0);
         activeCount += lobbyCount;
         const lobbyParts: string[] = [];
@@ -2016,6 +3120,13 @@ export class AtriumSimulation {
       (w) => w.d.lv === lv && Math.hypot(w.seat.x - seatX, w.seat.z - seatZ) < 0.85 && w.g.visible
     );
     if (worker) {
+      const ag = this.freeAgents.get(worker);
+      if (ag && ag.mode !== 'home' && worker.brain) {
+        return {
+          workerActivity: worker.brain.actionLabel,
+          isOccupied: false,
+        };
+      }
       return {
         workerActivity: describePose(worker.pose, worker.state),
         isOccupied: worker.state === 'atDesk',
@@ -2026,6 +3137,13 @@ export class AtriumSimulation {
       (d) => d.lv === lv && Math.hypot(d.dx - seatX, d.dz - seatZ) < 1.2 && d.g.visible
     );
     if (dayActor) {
+      const ag = this.freeAgents.get(dayActor);
+      if (ag && ag.mode !== 'home' && dayActor.brain) {
+        return {
+          workerActivity: dayActor.brain.actionLabel,
+          isOccupied: false,
+        };
+      }
       return {
         workerActivity: describePose(dayActor.pose, dayActor.state),
         isOccupied: dayActor.state === 'atDesk',
@@ -2040,9 +3158,10 @@ export class AtriumSimulation {
 
   public getSnapshot(
     activeLevel: string,
-    hoveredRoom: { title: string; sub: string; color: string } | null,
+    hoveredRoom: { title: string; sub: string; color: string; hint?: string } | null,
     audioEnabled: boolean,
-    inspectedMonitor: InspectedMonitor | null
+    inspectedMonitor: InspectedMonitor | null,
+    selectedCharacter: SelectedCharacterSnapshot | null
   ): HudSnapshot {
     const m = Math.floor(this.simMin) % 1440;
     const hh = String(Math.floor(m / 60)).padStart(2, '0');
@@ -2054,7 +3173,11 @@ export class AtriumSimulation {
     else if (m >= 840 && m < 1050) shiftLabel = 'Afternoon shift';
     else if (m >= 1050 && m < 1340) shiftLabel = 'Evening shift';
 
-    const activeStaff = this.WORKERS.filter((w) => w.g.visible).length + this.DAYONLY.filter((d) => d.g.visible).length;
+    const activeStaff =
+      this.WORKERS.filter((w) => w.g.visible).length +
+      this.DAYONLY.filter((d) => d.g.visible).length +
+      this.BASEMENT_STAFF.filter((b) => b.g.visible).length +
+      (this.secOffActor?.g.visible ? 1 : 0);
     const activeCars = this.TRAF.filter((v) => v.state === 'street').length;
 
     const stop = this.STOPS[this.tourI] || this.STOPS[0];
@@ -2082,6 +3205,7 @@ export class AtriumSimulation {
       hoveredRoom,
       floorActivity: this.getFloorActivity(activeLevel),
       inspectedMonitor,
+      selectedCharacter,
       audioEnabled,
     };
   }

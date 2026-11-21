@@ -1,21 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  Brain,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
   Compass,
+  Crosshair,
+  Eye,
   Footprints,
   Pause,
   Play,
+  Sparkles,
   Users,
-  UserSquare2,
   Volume2,
   VolumeX,
   X,
 } from 'lucide-react';
 import { TOUR_TEXT, type HudSnapshot } from '../scene/constants';
-import { CharacterStudioModal } from './CharacterStudioModal';
 import { WorkstationInspector } from './WorkstationInspector';
 
 interface HudOverlayProps {
@@ -35,6 +37,10 @@ interface HudOverlayProps {
   onJumpToTime: (minutes: number) => void;
   onCloseMonitor: () => void;
   getInspectedScreenCanvas: () => HTMLCanvasElement | null;
+  onCloseCharacter: () => void;
+  onFocusCharacter: () => void;
+  onToggleFollowCharacter: () => void;
+  onNudgeCharacter: () => void;
 }
 
 const LEVELS: Array<{ key: string; label: string }> = [
@@ -82,24 +88,28 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
   onJumpToTime,
   onCloseMonitor,
   getInspectedScreenCanvas,
+  onCloseCharacter,
+  onFocusCharacter,
+  onToggleFollowCharacter,
+  onNudgeCharacter,
 }) => {
   const [dockOpen, setDockOpen] = useState(true);
-  const [studioOpen, setStudioOpen] = useState(false);
   const joyRef = useRef<HTMLDivElement | null>(null);
   const [joyKnob, setJoyKnob] = useState({ x: 0, y: 0 });
   const joyActive = useRef(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code === 'KeyH' && !hud.walking && !studioOpen && !(e.target instanceof HTMLInputElement)) {
+      if (e.code === 'KeyH' && !hud.walking && !(e.target instanceof HTMLInputElement)) {
         setDockOpen((v) => !v);
-      } else if (e.code === 'Escape' && !studioOpen && !hud.walking && hud.inspectedMonitor) {
-        onCloseMonitor();
+      } else if (e.code === 'Escape' && !hud.walking) {
+        if (hud.inspectedMonitor) onCloseMonitor();
+        if (hud.selectedCharacter) onCloseCharacter();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [hud.walking, hud.inspectedMonitor, studioOpen, onCloseMonitor]);
+  }, [hud.walking, hud.inspectedMonitor, hud.selectedCharacter, onCloseMonitor, onCloseCharacter]);
 
   const updateJoystick = (clientX: number, clientY: number) => {
     const el = joyRef.current;
@@ -159,24 +169,165 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
         </div>
       </div>
 
-      {/* Hovered Bay Inspection Card */}
+      {/* Hovered Bay / Character / Monitor Card */}
       {hud.hoveredRoom && !hud.walking && !hud.tourActive && (
-        <div className="pointer-events-none fixed top-20 left-3 sm:left-4 max-w-xs border border-white/15 bg-[#0d121a]/94 px-3.5 py-3 rounded-md shadow-xl">
+        <div className="pointer-events-none fixed top-16 left-3 sm:left-4 w-[min(80vw,285px)] border border-white/15 bg-[#0d121a]/94 px-3 py-2.5 rounded-md shadow-xl">
           <div className="flex items-center gap-2">
             <span
               className="inline-block h-2.5 w-2.5 shrink-0 rounded-xs"
               style={{ backgroundColor: hud.hoveredRoom.color }}
             />
-            <h2 className="text-sm font-semibold text-white tracking-tight">{hud.hoveredRoom.title}</h2>
+            <h2 className="text-sm font-semibold text-white tracking-tight truncate">{hud.hoveredRoom.title}</h2>
           </div>
-          <p className="mt-0.5 text-[11px] font-medium text-slate-400">{hud.hoveredRoom.sub}</p>
+          <p className="mt-0.5 text-[11px] font-medium text-slate-300 leading-snug break-words">
+            {hud.hoveredRoom.sub}
+          </p>
           {hoverDescription && <p className="mt-1.5 text-xs leading-relaxed text-slate-200">{hoverDescription}</p>}
-          <div className="mt-2 text-[10px] uppercase tracking-wider text-emerald-400 font-medium">
-            {hoverDescription
-              ? 'Click bay to inspect with Zuri'
-              : hud.hoveredRoom.title.startsWith('Zuri')
-                ? 'Click to start guided tour'
-                : 'Click computer to view live screen & activity'}
+          <div className="mt-1.5 text-[10px] uppercase tracking-wider text-emerald-400 font-medium">
+            {hud.hoveredRoom.hint ||
+              (hoverDescription
+                ? 'Click room to go straight there'
+                : 'Click computer to view live screen & activity')}
+          </div>
+        </div>
+      )}
+
+      {/* Autonomous Character Mind & Thought Inspector */}
+      {hud.selectedCharacter && !hud.walking && (
+        <div className="pointer-events-auto fixed top-16 right-3 sm:right-4 w-[min(86vw,308px)] max-h-[calc(100vh-11.2rem)] overflow-y-auto border border-white/15 bg-[#0d121a]/95 px-3.5 py-3 rounded-md shadow-2xl">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-emerald-400">
+                <Brain className="w-3.5 h-3.5 shrink-0" />
+                <span>Autonomous Mind</span>
+                {hud.selectedCharacter.seniority && (
+                  <>
+                    <span className="text-slate-600">·</span>
+                    <span className="text-sky-300">{hud.selectedCharacter.seniority}</span>
+                  </>
+                )}
+              </div>
+              <div className="mt-1 flex items-center gap-2">
+                <span
+                  className="inline-block h-2.5 w-2.5 shrink-0 rounded-xs"
+                  style={{ backgroundColor: hud.selectedCharacter.accentColor }}
+                />
+                <h2 className="text-sm font-semibold text-white tracking-tight truncate">
+                  {hud.selectedCharacter.name}
+                </h2>
+              </div>
+              <p className="text-xs font-medium text-slate-200 leading-snug">{hud.selectedCharacter.role}</p>
+              <p className="text-[11px] text-slate-400 leading-snug break-words">
+                {hud.selectedCharacter.department} · {hud.selectedCharacter.levelLabel}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onCloseCharacter}
+              aria-label="Close Character Inspector"
+              className="p-1 text-slate-400 hover:text-white hover:bg-white/10 rounded transition-colors cursor-pointer shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Mood & Personality Badges */}
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+            <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 font-medium">
+              Mood: {hud.selectedCharacter.mood}
+            </span>
+            <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-slate-300">
+              {hud.selectedCharacter.personality}
+            </span>
+          </div>
+
+          {/* Current Free-Will Action & Live Thought */}
+          <div className="mt-2.5 rounded border border-white/12 bg-white/4 p-2.5">
+            <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold leading-snug break-words">
+              {hud.selectedCharacter.actionLabel}
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-white italic break-words">
+              “{hud.selectedCharacter.thought}”
+            </p>
+          </div>
+
+          {/* Internal Need Bars */}
+          <div className="mt-2.5 grid grid-cols-3 gap-1.5">
+            {[
+              { label: 'Focus', val: hud.selectedCharacter.focus, bar: 'bg-sky-400' },
+              { label: 'Energy', val: hud.selectedCharacter.energy, bar: 'bg-emerald-400' },
+              { label: 'Social', val: hud.selectedCharacter.social, bar: 'bg-amber-400' },
+            ].map((stat) => (
+              <div key={stat.label} className="bg-white/4 border border-white/8 rounded px-2 py-1.5">
+                <div className="flex items-center justify-between text-[10px] text-slate-400">
+                  <span>{stat.label}</span>
+                  <span className="font-mono-tabular text-slate-200">{stat.val}%</span>
+                </div>
+                <div className="mt-1 h-1 w-full bg-white/10 rounded-xs overflow-hidden">
+                  <div className={`h-full ${stat.bar} transition-all duration-300`} style={{ width: `${stat.val}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Recent Thoughts Stream */}
+          {hud.selectedCharacter.recentThoughts.length > 0 && (
+            <div className="mt-2.5 pt-2 border-t border-white/10">
+              <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
+                Earlier Thoughts
+              </div>
+              <ul className="mt-1 space-y-1">
+                {hud.selectedCharacter.recentThoughts.map((t, idx) => (
+                  <li key={`${idx}-${t.slice(0, 16)}`} className="text-[11px] text-slate-400 leading-snug break-words">
+                    • “{t}”
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Controls */}
+          <div className="mt-2.5 pt-2 border-t border-white/10 flex flex-wrap items-center gap-1.5">
+            {!(hud.selectedCharacter.isGuide && hud.tourActive) && (
+              <button
+                type="button"
+                onClick={onNudgeCharacter}
+                className="flex items-center gap-1 border border-emerald-500/40 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 px-2 py-1 text-[11px] font-medium rounded transition-colors cursor-pointer"
+              >
+                <Sparkles className="w-3 h-3" />
+                <span>Decide Next</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onFocusCharacter}
+              className="flex items-center gap-1 border border-white/12 bg-white/5 hover:bg-white/12 text-slate-200 px-2 py-1 text-[11px] font-medium rounded transition-colors cursor-pointer"
+            >
+              <Crosshair className="w-3 h-3" />
+              <span>Focus</span>
+            </button>
+            <button
+              type="button"
+              onClick={onToggleFollowCharacter}
+              className={`flex items-center gap-1 border px-2 py-1 text-[11px] font-medium rounded transition-colors cursor-pointer ${
+                hud.selectedCharacter.isFollowing
+                  ? 'border-sky-400/60 bg-sky-500/20 text-sky-200'
+                  : 'border-white/12 bg-white/5 hover:bg-white/12 text-slate-200'
+              }`}
+            >
+              <Eye className="w-3 h-3" />
+              <span>{hud.selectedCharacter.isFollowing ? 'Following' : 'Follow'}</span>
+            </button>
+            {hud.selectedCharacter.isGuide && !hud.tourActive && (
+              <button
+                type="button"
+                onClick={onStartTour}
+                className="flex items-center gap-1 border border-emerald-400/50 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-100 px-2 py-1 text-[11px] font-medium rounded transition-colors cursor-pointer"
+              >
+                <Compass className="w-3 h-3" />
+                <span>Start Tour</span>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -192,7 +343,11 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
 
       {/* Active Floor Cutaway Activity Card */}
       {hud.floorActivity && !hud.walking && !hud.tourActive && !hud.hoveredRoom && (
-        <div className="pointer-events-auto fixed top-20 left-3 sm:left-4 w-[min(88vw,320px)] max-h-[55vh] overflow-y-auto border border-white/15 bg-[#0d121a]/94 px-3.5 py-3 rounded-md shadow-xl">
+        <div
+          className={`pointer-events-auto fixed top-16 left-3 sm:left-4 w-[min(80vw,268px)] max-h-[calc(100vh-11.2rem)] overflow-y-auto border border-white/15 bg-[#0d121a]/94 px-3 py-2.5 rounded-md shadow-xl ${
+            hud.selectedCharacter || hud.inspectedMonitor ? 'hidden lg:block' : ''
+          }`}
+        >
           <div className="flex items-center justify-between gap-2">
             <div>
               <div className="text-[10px] uppercase tracking-wider font-semibold text-emerald-400">
@@ -221,7 +376,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
           </div>
 
           {hud.floorActivity.zones.length > 0 && (
-            <div className="mt-2.5 pt-2 border-t border-white/10 space-y-2">
+            <div className="mt-2 pt-2 border-t border-white/10 space-y-1.5">
               {hud.floorActivity.zones.map((z) => (
                 <div key={z.zone} className="flex items-start justify-between gap-2 text-xs">
                   <div className="min-w-0">
@@ -458,16 +613,6 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
 
               <button
                 type="button"
-                onClick={() => setStudioOpen(true)}
-                title="Inspect & Export 3D Rigged Office Characters (.GLB)"
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded border border-emerald-500/40 bg-emerald-500/14 text-emerald-100 hover:bg-emerald-500/24 transition-colors cursor-pointer whitespace-nowrap shrink-0"
-              >
-                <UserSquare2 className="w-3.5 h-3.5" />
-                <span>Characters · GLB</span>
-              </button>
-
-              <button
-                type="button"
                 onClick={onToggleAudio}
                 title="Toggle Ambient Office Audio"
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded border transition-colors cursor-pointer ${
@@ -518,8 +663,6 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
           </div>
         </div>
       )}
-
-      <CharacterStudioModal isOpen={studioOpen} onClose={() => setStudioOpen(false)} />
     </div>
   );
 };

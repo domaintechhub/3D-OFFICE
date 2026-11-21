@@ -63,6 +63,43 @@ export function loftRings(
     }
   }
 
+  // Detect whether (r -> r+1) x (s -> s+1) points outward or inward relative to each ring's centroid
+  let outwardDotSum = 0;
+  for (let r = 0; r < numRings - 1; r++) {
+    const ring = rings[r];
+    let cx = 0;
+    let cy = 0;
+    let cz = 0;
+    for (let s = 0; s < segs; s++) {
+      cx += ring[s].x;
+      cy += ring[s].y;
+      cz += ring[s].z;
+    }
+    cx /= segs;
+    cy /= segs;
+    cz /= segs;
+    for (let s = 0; s < segs; s++) {
+      const a = ring[s];
+      const b = ring[(s + 1) % segs];
+      const c = rings[r + 1][s];
+      const e1x = c.x - a.x;
+      const e1y = c.y - a.y;
+      const e1z = c.z - a.z;
+      const e2x = b.x - a.x;
+      const e2y = b.y - a.y;
+      const e2z = b.z - a.z;
+      // Normal of (a, c, b)
+      const nx = e1y * e2z - e1z * e2y;
+      const ny = e1z * e2x - e1x * e2z;
+      const nz = e1x * e2y - e1y * e2x;
+      const mx = (a.x + b.x + c.x) / 3 - cx;
+      const my = (a.y + b.y + c.y) / 3 - cy;
+      const mz = (a.z + b.z + c.z) / 3 - cz;
+      outwardDotSum += nx * mx + ny * my + nz * mz;
+    }
+  }
+  const invertSide = outwardDotSum < 0;
+
   const stride = segs + 1;
   for (let r = 0; r < numRings - 1; r++) {
     for (let s = 0; s < segs; s++) {
@@ -70,8 +107,13 @@ export function loftRings(
       const b = a + 1;
       const c = (r + 1) * stride + s;
       const d = c + 1;
-      indices.push(a, c, b);
-      indices.push(b, c, d);
+      if (invertSide) {
+        indices.push(a, b, c);
+        indices.push(b, d, c);
+      } else {
+        indices.push(a, c, b);
+        indices.push(b, c, d);
+      }
     }
   }
 
@@ -107,8 +149,8 @@ export function loftRings(
     }
   };
 
-  if (capBottom) addCap(0, true);
-  if (capTop) addCap(numRings - 1, false);
+  if (capBottom) addCap(0, invertSide);
+  if (capTop) addCap(numRings - 1, !invertSide);
 
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -299,7 +341,7 @@ export function buildUnifiedHeadNeckGeo(
     rings.push(ring);
   }
 
-  const geo = loftRings(rings, false, true, [0, 1], 1);
+  const geo = loftRings(rings, true, true, [0, 1], 1);
 
   // Assign spherical face UVs matching humanTextures.ts exact coordinates
   const pos = geo.attributes.position;
@@ -507,7 +549,7 @@ export function buildContinuousTorsoPelvisGeo(
     rings.push(ring);
   }
 
-  return loftRings(rings, true, false, [0, 1], 2);
+  return loftRings(rings, true, true, [0, 1], 2);
 }
 
 /* =========================================================

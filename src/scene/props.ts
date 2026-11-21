@@ -600,7 +600,6 @@ export function armchair(
   [-1, 1].forEach((s) => {
     const arm = new THREE.Mesh(armchairArmGeo!, mat);
     arm.position.set(s * 0.55, 0.48, 0);
-    arm.castShadow = true;
     arm.receiveShadow = true;
     g.add(arm);
   });
@@ -669,14 +668,12 @@ export function sofaWide(
   [-1, 1].forEach((s) => {
     const arm = new THREE.Mesh(armchairArmGeo!, mat);
     arm.position.set(s * 1.32, 0.48, 0);
-    arm.castShadow = true;
     arm.receiveShadow = true;
     g.add(arm);
 
     const pil = new THREE.Mesh(pillowGeo!, M.fabricGrey);
     pil.position.set(s * 1.04, 0.6, -0.17);
     pil.rotation.set(-0.26, s * 0.32, s * 0.12);
-    pil.castShadow = true;
     g.add(pil);
   });
 
@@ -772,7 +769,6 @@ export function officeChair(
 
     const pad = new THREE.Mesh(getRoundedBox(0.088, 0.028, 0.24, 0.012, 2), M.dark);
     pad.position.set(s * 0.285, 0.62, 0.025);
-    pad.castShadow = true;
     g.add(pad);
   });
 
@@ -874,7 +870,6 @@ export function monitor(
   // 2: Ultra-slim CNC anodized display chassis
   const bezel = new THREE.Mesh(getRoundedBox(0.76, 0.445, 0.02, 0.01, 2), M.dark);
   bezel.position.set(0, 0.36, 0);
-  bezel.castShadow = true;
   g.add(bezel);
 
   // 3: Live edge-to-edge display panel
@@ -1024,7 +1019,6 @@ export function shelfUnit(
   ];
   const vase = new THREE.Mesh(new THREE.LatheGeometry(vasePts, 18), M.ceramicMat);
   vase.position.set(-w * 0.24, H, 0);
-  vase.castShadow = true;
   g.add(vase);
 
   parent.add(g);

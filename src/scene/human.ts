@@ -21,6 +21,7 @@ import {
   buildTailoredBlazerOrCoatGeo,
 } from './humanGarments';
 import { buildSculptedBeardGeo, buildSculptedHairStyle, type BuiltHairParts } from './humanHair';
+import type { CharacterBrain } from './characterMind';
 import { getEyeIrisTexture, getHumanMicroMaps, getPhotorealFaceTexture } from './humanTextures';
 import type { MaterialLibrary } from './materials';
 import { contact, getRoundedBox } from './props';
@@ -96,6 +97,7 @@ export interface PersonActor {
   pose: string;
   asym: number;
   gl?: number;
+  brain?: CharacterBrain;
   meshes: THREE.Mesh[];
   mk: (
     geo: THREE.BufferGeometry,
@@ -153,7 +155,7 @@ export const POSES: Record<string, Record<string, number>> = {
 
 const PZ = (o: Record<string, number>): Record<string, number> => ({ ...POSES.stand, ...o });
 
-// Seated kinematics calibrated so soles rest flush at y=0.000 while pelvis rests naturally against chair lumbar
+// Seated kinematics calibrated so soles rest flush at y=0.000, knees clear under desks (y<0.75), and hands touch keyboards/tables (y~0.82, reach~0.50m)
 POSES.type = PZ({
   hipY: 0.526,
   hipZ: -0.04,
@@ -161,94 +163,142 @@ POSES.type = PZ({
   knee: 1.46,
   lean: 0.08,
   hx: 0.14,
-  sLx: -0.96,
-  sLz: -0.06,
-  eL: -0.52,
-  fLy: -1.15,
-  sRx: -0.96,
-  sRz: 0.06,
-  eR: -0.52,
-  fRy: 1.15,
+  sLx: -0.92,
+  sLz: -0.05,
+  eL: -0.62,
+  fLy: -1.12,
+  sRx: -0.92,
+  sRz: 0.05,
+  eR: -0.62,
+  fRy: 1.12,
 });
 POSES.sit = PZ({
   hipY: 0.524,
   hipZ: -0.04,
   thigh: -1.45,
   knee: 1.45,
-  lean: -0.03,
-  hx: 0.22,
-  sLx: -0.68,
-  eL: -0.95,
-  fLy: -1.1,
-  sRx: -0.68,
-  eR: -0.95,
-  fRy: 1.1,
+  lean: 0.06,
+  hx: 0.2,
+  sLx: -0.88,
   sLz: -0.05,
+  eL: -0.68,
+  fLy: -1.08,
+  sRx: -0.88,
   sRz: 0.05,
+  eR: -0.68,
+  fRy: 1.08,
 });
 POSES.present = PZ({ sRx: -1.26, sRz: -0.22, eR: -0.28, fRy: 0.55, sLx: -0.42, eL: -0.88, hy: -0.2, spineTwist: -0.1 });
 POSES.talk = PZ({ sRx: -0.68, eR: -1.02, fRy: 0.45, sLx: -0.2, eL: -0.64, hy: 0.16, spineTwist: 0.08 });
+POSES.sitTalk = {
+  ...POSES.talk,
+  hipY: 0.524,
+  hipZ: -0.04,
+  thigh: -1.45,
+  knee: 1.45,
+  lean: 0.04,
+  sLx: -0.78,
+  eL: -0.78,
+  fLy: -0.8,
+  sRx: -0.84,
+  eR: -0.96,
+};
+POSES.sitCollaborate = PZ({
+  hipY: 0.524,
+  hipZ: -0.04,
+  thigh: -1.45,
+  knee: 1.45,
+  lean: 0.08,
+  spineTwist: -0.16,
+  hy: -0.18,
+  sLx: -0.82,
+  sLz: -0.04,
+  eL: -0.76,
+  fLy: -0.85,
+  sRx: -0.88,
+  sRz: 0.08,
+  eR: -0.82,
+  fRy: 0.62,
+});
 POSES.meeting = PZ({
   hipY: 0.524,
   hipZ: -0.04,
   thigh: -1.45,
   knee: 1.45,
-  lean: -0.02,
-  hx: 0.04,
-  hy: 0.12,
-  sLx: -0.56,
-  sLz: -0.1,
-  eL: -1.08,
-  fLy: -0.75,
-  sRx: -0.56,
-  sRz: 0.1,
-  eR: -1.08,
-  fRy: 0.75,
+  lean: 0.08,
+  hx: 0.06,
+  hy: 0.1,
+  sLx: -0.84,
+  sLz: -0.08,
+  eL: -0.74,
+  fLy: -0.82,
+  sRx: -0.84,
+  sRz: 0.08,
+  eR: -0.74,
+  fRy: 0.82,
 });
 POSES.monitorLook = PZ({
   hipY: 0.526,
   hipZ: -0.04,
   thigh: -1.46,
   knee: 1.46,
-  lean: 0.04,
+  lean: 0.05,
   hx: -0.04,
-  sLx: -0.62,
-  sLz: -0.06,
-  eL: -0.94,
-  fLy: -0.9,
-  sRx: -0.62,
-  sRz: 0.06,
-  eR: -0.94,
-  fRy: 0.9,
+  sLx: -0.84,
+  sLz: -0.04,
+  eL: -0.74,
+  fLy: -0.96,
+  sRx: -0.84,
+  sRz: 0.04,
+  eR: -0.74,
+  fRy: 0.96,
 });
-POSES.hold = PZ({ sLx: -0.74, eL: -1.18, fLy: -0.45, sRx: -0.74, sRz: 0.05, sLz: -0.05, eR: -1.18, fRy: 0.45, hx: 0.28 });
+POSES.hold = PZ({
+  sLx: -0.34,
+  sLz: 0.04,
+  eL: -0.58,
+  fLy: -0.25,
+  sRx: -0.78,
+  sRz: 0.14,
+  eR: -1.16,
+  fRy: 0.65,
+  hx: 0.26,
+  hy: -0.06,
+});
 POSES.walk = PZ({ lean: 0.04, hx: 0.02, sLx: 0.04, sLz: 0.055, eL: -0.24, sRx: 0.04, sRz: -0.055, eR: -0.24 });
 POSES.readDoc = PZ({
   lean: 0.04,
-  hx: 0.3,
-  sLx: -0.78,
-  sLz: -0.09,
-  eL: -1.14,
-  fLy: -0.42,
-  sRx: -0.78,
-  sRz: 0.09,
-  eR: -1.14,
-  fRy: 0.42,
+  hx: 0.26,
+  sLx: -0.74,
+  sLz: -0.14,
+  eL: -1.1,
+  fLy: -0.35,
+  sRx: -0.74,
+  sRz: 0.14,
+  eR: -1.1,
+  fRy: 0.35,
 });
+POSES.sitReadDoc = {
+  ...POSES.readDoc,
+  hipY: 0.526,
+  hipZ: -0.04,
+  thigh: -1.46,
+  knee: 1.46,
+};
 POSES.writeNotes = PZ({
   hipY: 0.526,
   hipZ: -0.04,
   thigh: -1.46,
   knee: 1.46,
-  lean: 0.16,
-  hx: 0.26,
-  sLx: -0.84,
-  sLz: -0.1,
-  eL: -0.94,
-  fLy: -1.1,
-  sRx: -0.98,
-  sRz: 0.12,
-  eR: -0.74,
+  lean: 0.14,
+  hx: 0.22,
+  sLx: -0.86,
+  sLz: -0.08,
+  eL: -0.72,
+  fLy: -1.06,
+  sRx: -0.92,
+  sRz: 0.08,
+  eR: -0.66,
   fRy: 1.05,
 });
 POSES.think = PZ({
@@ -256,19 +306,22 @@ POSES.think = PZ({
   hipZ: -0.04,
   thigh: -1.46,
   knee: 1.46,
-  lean: 0.1,
+  lean: 0.08,
   hx: 0.08,
   hy: -0.12,
-  sLx: -0.58,
+  sLx: -0.84,
   sLz: -0.04,
-  eL: -1.04,
-  fLy: -0.7,
+  eL: -0.74,
+  fLy: -0.85,
   sRx: -1.32,
   sRz: 0.18,
   eR: -1.94,
   fRy: 0.25,
 });
+// Seated desk phone call
 POSES.phone = { ...POSES.type, sRx: -1.46, sRz: 0.1, eR: -2.14, fRy: 0.15, hx: -0.02, hy: 0.14 };
+// Standing mobile phone call (never bends legs into empty air)
+POSES.standPhone = PZ({ sRx: -1.46, sRz: 0.1, eR: -2.14, fRy: 0.15, hx: -0.02, hy: 0.14 });
 POSES.collaborate = PZ({
   lean: 0.08,
   spineTwist: -0.18,
@@ -285,32 +338,73 @@ POSES.leanScreen = PZ({
   hipZ: -0.04,
   thigh: -1.46,
   knee: 1.46,
-  lean: 0.22,
-  hx: -0.14,
-  sLx: -0.94,
-  sLz: -0.08,
-  eL: -0.58,
-  fLy: -1.15,
-  sRx: -0.94,
-  sRz: 0.08,
-  eR: -0.58,
-  fRy: 1.15,
-});
-POSES.point = { ...POSES.type, sRx: -1.48, sRz: -0.2, eR: -0.18, fRy: 0.65, hx: 0.02, hy: -0.18 };
-POSES.standType = PZ({
-  lean: 0.08,
-  hx: 0.2,
-  sLx: -0.94,
+  lean: 0.18,
+  hx: -0.1,
+  sLx: -0.9,
   sLz: -0.06,
-  eL: -0.52,
-  fLy: -1.15,
-  sRx: -0.94,
+  eL: -0.64,
+  fLy: -1.12,
+  sRx: -0.9,
   sRz: 0.06,
-  eR: -0.52,
-  fRy: 1.15,
+  eR: -0.64,
+  fRy: 1.12,
 });
-POSES.coffee = PZ({ sRx: -0.82, eR: -1.32, fRy: 0.2, sLx: 0.06, eL: -0.3, sRz: -0.05, sLz: 0.06, hx: 0.04, hy: -0.12 });
-POSES.carry = PZ({ sLx: -0.88, eL: -0.38, sRx: -0.88, eR: -0.38, sLz: -0.09, sRz: 0.09, hx: 0.14 });
+// Standing equipment/panel pointing (never bends knees into invisible chair)
+POSES.point = PZ({ lean: 0.08, sRx: -1.35, sRz: -0.06, eR: -0.28, fRy: 0.25, hx: -0.04, hy: -0.06 });
+// Standing counter typing at high reception desk (~1.12m)
+POSES.standType = PZ({
+  lean: 0.06,
+  hx: 0.14,
+  sLx: -0.64,
+  sLz: -0.05,
+  eL: -0.74,
+  fLy: -1.08,
+  sRx: -0.64,
+  sRz: 0.05,
+  eR: -0.74,
+  fRy: 1.08,
+});
+// Standing counter work at ~1.01-1.05m (Espresso bar)
+POSES.standCounter = PZ({
+  lean: 0.06,
+  hx: 0.18,
+  sLx: -0.56,
+  sLz: -0.05,
+  eL: -0.66,
+  fLy: -1.02,
+  sRx: -0.56,
+  sRz: 0.05,
+  eR: -0.66,
+  fRy: 1.02,
+});
+// Standing low workbench / service trolley (~0.88m)
+POSES.standLowCounter = PZ({
+  lean: 0.12,
+  hx: 0.24,
+  sLx: -0.5,
+  sLz: -0.05,
+  eL: -0.44,
+  fLy: -0.98,
+  sRx: -0.5,
+  sRz: 0.05,
+  eR: -0.44,
+  fRy: 0.98,
+});
+// Standing equipment panel inspection with right hand touching rack/cabinet surface (~1.35m)
+POSES.inspectPanel = PZ({
+  lean: 0.08,
+  hx: 0.04,
+  sLx: -0.34,
+  sLz: 0.04,
+  eL: -0.58,
+  fLy: -0.25,
+  sRx: -1.16,
+  sRz: 0.04,
+  eR: -0.48,
+  fRy: 0.35,
+});
+POSES.coffee = PZ({ sRx: -0.68, eR: -0.96, fRy: 0.35, sLx: 0.06, eL: -0.3, sRz: -0.05, sLz: 0.06, hx: 0.04, hy: -0.1 });
+POSES.carry = PZ({ lean: 0.06, sLx: -0.84, eL: -0.58, sRx: -0.84, eR: -0.58, sLz: -0.06, sRz: 0.06, fLy: -0.25, fRy: 0.25, hx: 0.14 });
 POSES.radio = PZ({ sRx: -1.44, sRz: 0.1, eR: -2.14, fRy: 0.12, hx: -0.04, hy: 0.1 });
 
 export const OFFICE_POSES_CATALOG: Array<{ key: string; label: string; description: string }> = [
@@ -500,6 +594,40 @@ function latheFromProfile(pts: Array<[number, number]>, segs = 14): THREE.LatheG
   return new THREE.LatheGeometry(curve.getPoints(16), segs);
 }
 
+/**
+ * Mirrors geometry across X while reversing triangle winding so normals stay outward-facing.
+ */
+function mirrorGeometryX(geo: THREE.BufferGeometry): THREE.BufferGeometry {
+  geo.scale(-1, 1, 1);
+  if (geo.index) {
+    const idx = geo.index.array;
+    for (let i = 0; i < idx.length; i += 3) {
+      const tmp = idx[i + 1];
+      (idx as number[] | Uint16Array | Uint32Array)[i + 1] = idx[i + 2];
+      (idx as number[] | Uint16Array | Uint32Array)[i + 2] = tmp;
+    }
+    geo.index.needsUpdate = true;
+  } else {
+    for (const key of Object.keys(geo.attributes)) {
+      const attr = geo.attributes[key] as THREE.BufferAttribute;
+      const itemSize = attr.itemSize;
+      const arr = attr.array as Float32Array;
+      for (let i = 0; i < attr.count; i += 3) {
+        const b = (i + 1) * itemSize;
+        const c = (i + 2) * itemSize;
+        for (let k = 0; k < itemSize; k++) {
+          const tmp = arr[b + k];
+          arr[b + k] = arr[c + k];
+          arr[c + k] = tmp;
+        }
+      }
+      attr.needsUpdate = true;
+    }
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
 /* =========================================================
    SHARED STATIC GEOMETRY CACHE PER DETAIL TIER
    ========================================================= */
@@ -574,6 +702,9 @@ interface AnatomyGeos {
   mugGeo: THREE.LatheGeometry;
   folderGeo: THREE.BufferGeometry;
   notebookGeo: THREE.BufferGeometry;
+  hardHatDome: THREE.BufferGeometry;
+  hardHatBrim: THREE.BufferGeometry;
+  hardHatRidge: THREE.BufferGeometry;
 }
 
 const ANAT_CACHE: Partial<Record<DetailLevel, AnatomyGeos>> = {};
@@ -684,6 +815,21 @@ function initAnatomyGeos(detail: DetailLevel = 'office'): AnatomyGeos {
     ),
     folderGeo: markShared(getRoundedBox(0.22, 0.29, 0.014, 0.004, 2)),
     notebookGeo: markShared(getRoundedBox(0.19, 0.012, 0.25, 0.004, 2)),
+    hardHatDome: latheFromProfile(
+      [
+        [0.001, 0.006],
+        [0.088, 0.006],
+        [0.108, 0.002],
+        [0.114, 0.014],
+        [0.105, 0.045],
+        [0.088, 0.074],
+        [0.056, 0.092],
+        [0.001, 0.098],
+      ],
+      20
+    ),
+    hardHatBrim: getRoundedBox(0.138, 0.012, 0.068, 0.004, 2),
+    hardHatRidge: getRoundedBox(0.024, 0.018, 0.165, 0.005, 2),
   };
 
   ANAT_CACHE[detail] = built;
@@ -694,20 +840,20 @@ function initAnatomyGeos(detail: DetailLevel = 'office'): AnatomyGeos {
    PALETTE & PBR MATERIAL FACTORY
    ========================================================= */
 export interface HumanPalette {
-  skins: THREE.MeshPhysicalMaterial[];
+  skins: THREE.MeshStandardMaterial[];
   skinHexes: number[];
-  shirts: THREE.MeshPhysicalMaterial[];
-  knits: THREE.MeshPhysicalMaterial[];
-  hairs: THREE.MeshPhysicalMaterial[];
+  shirts: THREE.MeshStandardMaterial[];
+  knits: THREE.MeshStandardMaterial[];
+  hairs: THREE.MeshStandardMaterial[];
   hairHexes: number[];
-  trous: THREE.MeshPhysicalMaterial[];
-  white: THREE.MeshPhysicalMaterial;
+  trous: THREE.MeshStandardMaterial[];
+  white: THREE.MeshStandardMaterial;
   dark: THREE.MeshStandardMaterial;
   lips: THREE.MeshStandardMaterial;
-  shoe: THREE.MeshPhysicalMaterial;
-  shoeBrown: THREE.MeshPhysicalMaterial;
-  shoeNude: THREE.MeshPhysicalMaterial;
-  sneaker: THREE.MeshPhysicalMaterial;
+  shoe: THREE.MeshStandardMaterial;
+  shoeBrown: THREE.MeshStandardMaterial;
+  shoeNude: THREE.MeshStandardMaterial;
+  sneaker: THREE.MeshStandardMaterial;
   sneakerSole: THREE.MeshStandardMaterial;
   dressSole: THREE.MeshStandardMaterial;
   belt: THREE.MeshStandardMaterial;
@@ -716,12 +862,13 @@ export interface HumanPalette {
   lanyard: THREE.MeshStandardMaterial;
   badge: THREE.MeshStandardMaterial;
   phone: THREE.MeshStandardMaterial;
+  laptopProp: THREE.MeshStandardMaterial;
   boxProp: THREE.MeshStandardMaterial;
   folderProp: THREE.MeshStandardMaterial;
   glassesFrame: THREE.MeshStandardMaterial;
-  glassesLens: THREE.MeshPhysicalMaterial;
+  glassesLens: THREE.MeshStandardMaterial;
   watchMat: THREE.MeshStandardMaterial;
-  headphoneMat: THREE.MeshPhysicalMaterial;
+  headphoneMat: THREE.MeshStandardMaterial;
 }
 
 export function createHumanPalette(_M: MaterialLibrary): HumanPalette {
@@ -745,59 +892,48 @@ export function createHumanPalette(_M: MaterialLibrary): HumanPalette {
     g.fillRect(68, 72, 30, 6);
   });
 
-  // Strictly matte PBR human skin (zero clearcoat, dermal pores normalMap, subtle subsurface sheen)
+  // Strictly matte PBR human skin (dermal pores normalMap, no heavy physical sheen/clearcoat)
   const mkSkin = (c: number) =>
-    new THREE.MeshPhysicalMaterial({
+    new THREE.MeshStandardMaterial({
       color: c,
       normalMap: micro.skinNormalTex,
       normalScale: new THREE.Vector2(0.28, 0.28),
       roughnessMap: micro.skinRoughTex,
       roughness: 0.68,
       metalness: 0,
-      clearcoat: 0,
-      sheen: 0.3,
-      sheenColor: new THREE.Color(0xd87c58),
-      sheenRoughness: 0.78,
       envMapIntensity: 0.2,
     });
 
   const mkCloth = (c: number, r = 0.88) =>
-    new THREE.MeshPhysicalMaterial({
+    new THREE.MeshStandardMaterial({
       color: c,
       normalMap: micro.weaveNormalTex,
       normalScale: new THREE.Vector2(0.45, 0.45),
       roughnessMap: micro.weaveRoughTex,
       roughness: r,
       metalness: 0,
-      sheen: 0.55,
-      sheenRoughness: 0.78,
       envMapIntensity: 0.2,
     });
 
   const mkKnit = (c: number) =>
-    new THREE.MeshPhysicalMaterial({
+    new THREE.MeshStandardMaterial({
       color: c,
       normalMap: micro.knitNormalTex,
       normalScale: new THREE.Vector2(0.75, 0.75),
       roughnessMap: micro.knitRoughTex,
       roughness: 0.94,
       metalness: 0,
-      sheen: 0.68,
-      sheenRoughness: 0.85,
       envMapIntensity: 0.16,
     });
 
   const mkHair = (c: number) =>
-    new THREE.MeshPhysicalMaterial({
+    new THREE.MeshStandardMaterial({
       color: c,
       map: micro.hairStrandTex,
       normalMap: micro.hairCoilNormalTex,
       normalScale: new THREE.Vector2(0.55, 0.55),
       roughness: 0.64,
       metalness: 0.02,
-      sheen: 0.35,
-      sheenRoughness: 0.62,
-      sheenColor: new THREE.Color(0x52463d),
       envMapIntensity: 0.24,
     });
 
@@ -827,33 +963,30 @@ export function createHumanPalette(_M: MaterialLibrary): HumanPalette {
     white: mkCloth(0xf2efe9, 0.82),
     dark: new THREE.MeshStandardMaterial({ color: 0x100e0c, roughness: 0.34 }),
     lips: new THREE.MeshStandardMaterial({ color: 0x703c35, roughness: 0.62 }),
-    shoe: new THREE.MeshPhysicalMaterial({
+    shoe: new THREE.MeshStandardMaterial({
       color: 0x181514,
       normalMap: micro.leatherNormalTex,
       normalScale: new THREE.Vector2(0.35, 0.35),
       roughness: 0.48,
       metalness: 0.02,
-      clearcoat: 0.0,
       envMapIntensity: 0.22,
     }),
-    shoeBrown: new THREE.MeshPhysicalMaterial({
+    shoeBrown: new THREE.MeshStandardMaterial({
       color: 0x623b21,
       normalMap: micro.leatherNormalTex,
       normalScale: new THREE.Vector2(0.35, 0.35),
       roughness: 0.5,
       metalness: 0.02,
-      clearcoat: 0.0,
       envMapIntensity: 0.22,
     }),
-    shoeNude: new THREE.MeshPhysicalMaterial({
+    shoeNude: new THREE.MeshStandardMaterial({
       color: 0x9b775b,
       normalMap: micro.leatherNormalTex,
       normalScale: new THREE.Vector2(0.28, 0.28),
       roughness: 0.54,
-      clearcoat: 0.0,
       envMapIntensity: 0.2,
     }),
-    sneaker: new THREE.MeshPhysicalMaterial({
+    sneaker: new THREE.MeshStandardMaterial({
       color: 0xe6e4de,
       normalMap: micro.weaveNormalTex,
       normalScale: new THREE.Vector2(0.3, 0.3),
@@ -874,29 +1007,28 @@ export function createHumanPalette(_M: MaterialLibrary): HumanPalette {
     lanyard: new THREE.MeshStandardMaterial({ color: 0x1a2842, roughness: 0.84 }),
     badge: new THREE.MeshStandardMaterial({ map: badgeTex, roughness: 0.56 }),
     phone: new THREE.MeshStandardMaterial({ color: 0x111418, roughness: 0.42, emissive: 0x2a6fc0, emissiveIntensity: 0.4 }),
+    laptopProp: new THREE.MeshStandardMaterial({ color: 0x2d343e, roughness: 0.38, metalness: 0.62 }),
     boxProp: new THREE.MeshStandardMaterial({ color: 0xb8895a, roughness: 0.84 }),
     folderProp: new THREE.MeshStandardMaterial({ color: 0xebe6db, roughness: 0.8 }),
     glassesFrame: new THREE.MeshStandardMaterial({ color: 0x24201c, metalness: 0.52, roughness: 0.38 }),
-    glassesLens: new THREE.MeshPhysicalMaterial({
+    glassesLens: new THREE.MeshStandardMaterial({
       color: 0xdff2ff,
       roughness: 0.14,
       transparent: true,
       opacity: 0.14,
-      clearcoat: 0.15,
       depthWrite: false,
     }),
     watchMat: new THREE.MeshStandardMaterial({ color: 0xc2c8cf, metalness: 0.75, roughness: 0.34 }),
-    headphoneMat: new THREE.MeshPhysicalMaterial({
+    headphoneMat: new THREE.MeshStandardMaterial({
       color: 0x1e222a,
       roughness: 0.52,
       metalness: 0.28,
-      clearcoat: 0.0,
     }),
   };
 }
 
 export interface MakePersonOptions {
-  skin: THREE.MeshPhysicalMaterial;
+  skin: THREE.MeshStandardMaterial;
   shirt: THREE.Material;
   hair: THREE.MeshStandardMaterial;
   trou: THREE.Material;
@@ -920,6 +1052,7 @@ export interface MakePersonOptions {
   headphones?: boolean;
   glasses?: boolean;
   lanyard?: boolean;
+  hardHat?: number;
   tie?: number;
   name?: string;
 }
@@ -1160,10 +1293,10 @@ export function makePerson(
   // Clone material swatches cleanly
   const skin = o.skin.clone();
   skin.color.offsetHSL((Math.random() - 0.5) * 0.012, 0, (Math.random() - 0.5) * 0.03);
-  const shirt = (o.shirt as THREE.MeshPhysicalMaterial).clone();
+  const shirt = (o.shirt as THREE.MeshStandardMaterial).clone();
   shirt.color.offsetHSL((Math.random() - 0.5) * 0.018, 0, (Math.random() - 0.5) * 0.04);
-  const trou = (o.trou as THREE.MeshPhysicalMaterial).clone();
-  const hair = (o.hair as THREE.MeshPhysicalMaterial).clone();
+  const trou = (o.trou as THREE.MeshStandardMaterial).clone();
+  const hair = (o.hair as THREE.MeshStandardMaterial).clone();
   hair.color.offsetHSL(0, 0, (Math.random() - 0.5) * 0.025);
 
   const seed = Math.abs((shirt.color.getHex() >> 3) + (skin.color.getHex() >> 4) + (hair.color.getHex() >> 2));
@@ -1259,29 +1392,23 @@ export function makePerson(
     hasFadeHairline: hairStyle === 'fade' || hairStyle === 'twists',
     freckleSeed: o.freckleSeed ?? seed,
     warmSmile: o.warmSmile ?? (seed % 2 === 0),
-    size: o.faceSize || (detail === 'studio' ? 1024 : 512),
+    size: o.faceSize || (detail === 'studio' ? 512 : 256),
   });
-  const faceMat = new THREE.MeshPhysicalMaterial({
+  const faceMat = new THREE.MeshStandardMaterial({
     map: faceTex,
     normalMap: micro.skinNormalTex,
     normalScale: new THREE.Vector2(0.24, 0.24),
     roughnessMap: micro.skinRoughTex,
     roughness: 0.68,
     metalness: 0,
-    clearcoat: 0,
-    sheen: 0.28,
-    sheenColor: new THREE.Color(0xd87c58),
-    sheenRoughness: 0.78,
     envMapIntensity: 0.18,
   });
 
-  // Wet corneal eyeball material (ONLY material on head with clearcoat!)
-  const eyeBallMat = new THREE.MeshPhysicalMaterial({
+  // Glossy corneal eyeball material
+  const eyeBallMat = new THREE.MeshStandardMaterial({
     map: getEyeIrisTexture(irisHex),
     roughness: 0.08,
     metalness: 0,
-    clearcoat: 0.4,
-    clearcoatRoughness: 0.06,
     envMapIntensity: 0.65,
   });
 
@@ -1392,13 +1519,11 @@ export function makePerson(
 
   // Contoured Necktie
   if (o.tie != null && !isFem) {
-    const tieMat = new THREE.MeshPhysicalMaterial({
+    const tieMat = new THREE.MeshStandardMaterial({
       color: o.tie,
       normalMap: micro.weaveNormalTex,
       normalScale: new THREE.Vector2(0.25, 0.25),
       roughness: 0.44,
-      sheen: 0.45,
-      sheenRoughness: 0.45,
     });
     pushPart(G.tieBladeMale, tieMat, (_x, y) => weightTorsoSpine(y));
   }
@@ -1493,6 +1618,25 @@ export function makePerson(
     });
   }
 
+  // Engineer / Technician Safety Hard Hat (for B2 power & electrical maintenance staff)
+  if (o.hardHat != null) {
+    const hatMat = new THREE.MeshStandardMaterial({
+      color: o.hardHat,
+      roughness: 0.34,
+      metalness: 0.06,
+      envMapIntensity: 0.35,
+    });
+    const dome = G.hardHatDome.clone().scale(0.95, 1.0, 1.06).translate(0, 1.69, -0.006);
+    const brim = G.hardHatBrim.clone().rotateX(0.14).translate(0, 1.694, 0.095);
+    const ridge = G.hardHatRidge.clone().translate(0, 1.78, -0.006);
+    pushPart(dome, hatMat, () => [5, 0, 0, 0, 1, 0, 0, 0]);
+    pushPart(brim, hatMat, () => [5, 0, 0, 0, 1, 0, 0, 0]);
+    pushPart(ridge, hatMat, () => [5, 0, 0, 0, 1, 0, 0, 0]);
+    dome.dispose();
+    brim.dispose();
+    ridge.dispose();
+  }
+
   // Volumetric Hairstyles + Alpha-Cutout Hair Cards + 3D Facial Hair
   const builtHair = (isFem ? G.hairFem : G.hairMale)[hairStyle];
   const hairCoreMat = hair.clone();
@@ -1517,11 +1661,9 @@ export function makePerson(
   }
 
   if (builtHair.bandGeo) {
-    const bandMat = new THREE.MeshPhysicalMaterial({
+    const bandMat = new THREE.MeshStandardMaterial({
       color: 0x1a1c22,
       roughness: 0.45,
-      sheen: 0.4,
-      sheenRoughness: 0.5,
     });
     pushPart(builtHair.bandGeo, bandMat, () => [5, 0, 0, 0, 1, 0, 0, 0]);
   }
@@ -1573,8 +1715,10 @@ export function makePerson(
 
     const ankleG = latheFromProfile(
       [
-        [0.031, 0.082],
+        [0.001, 0.026],
         [0.028, 0.026],
+        [0.031, 0.082],
+        [0.001, 0.082],
       ],
       12
     ).translate(lx, 0, 0);
@@ -1605,7 +1749,7 @@ export function makePerson(
 
     const addArmPart = (src: THREE.BufferGeometry, mat: THREE.Material) => {
       const c = src.clone();
-      if (!sideLeft) c.scale(-1, 1, 1);
+      if (!sideLeft) mirrorGeometryX(c);
       c.translate(ax, 0, 0);
       pushPart(c, mat, (x, y) => weightArm(sideLeft, x, y, shoulderX));
       c.dispose();
@@ -1632,8 +1776,14 @@ export function makePerson(
       wf.dispose();
     }
 
-    const handSkinG = G.handSkin.clone().scale(sx, 1, 1).rotateZ(sx * 0.04).translate(ax, 0.91, 0.002);
-    const handNailG = G.handNails.clone().scale(sx, 1, 1).rotateZ(sx * 0.04).translate(ax, 0.91, 0.002);
+    const handSkinG = G.handSkin.clone();
+    const handNailG = G.handNails.clone();
+    if (!sideLeft) {
+      mirrorGeometryX(handSkinG);
+      mirrorGeometryX(handNailG);
+    }
+    handSkinG.rotateZ(sx * 0.04).translate(ax, 0.91, 0.002);
+    handNailG.rotateZ(sx * 0.04).translate(ax, 0.91, 0.002);
     pushPart(handSkinG, skin, (x, y) => weightArm(sideLeft, x, y, shoulderX));
     pushPart(handNailG, nailMat, (x, y) => weightArm(sideLeft, x, y, shoulderX));
     handSkinG.dispose();
@@ -1699,38 +1849,37 @@ export function setPose(P: PersonActor, name: string, P_LIB: HumanPalette) {
   const G = initAnatomyGeos('office');
   P.pose = name;
   P.tgt = POSES[name] || POSES.stand;
-  P.typing = name === 'type' || name === 'standType' || name === 'writeNotes';
+  P.typing =
+    name === 'type' ||
+    name === 'standType' ||
+    name === 'standCounter' ||
+    name === 'standLowCounter' ||
+    name === 'writeNotes';
   P.swing = name === 'stand' || name === 'walk' || name === 'talk' || name === 'present' || name === 'collaborate' ? 1 : 0;
 
-  const frontPropPose = name === 'hold' || name === 'sit' || name === 'carry' || name === 'readDoc' || name === 'writeNotes';
+  // Two-handed or desk-supported props
+  const frontPropPose = name === 'sit' || name === 'carry' || name === 'readDoc' || name === 'sitReadDoc';
   if (frontPropPose) {
     if (!P.fp) {
-      P.fp = P.mk(G.phone, P_LIB.phone, P.tor, 0, 0, 0, 1, 1, 1, false);
+      P.fp = P.mk(G.laptop, P_LIB.laptopProp, P.tor, 0, 0, 0, 1, 1, 1, false);
     }
-    if (name === 'hold') {
-      P.fp.geometry = G.phone;
-      P.fp.material = P_LIB.phone;
-      P.fp.position.set(0, 0.36, 0.31);
-      P.fp.rotation.set(-0.4, 0, 0);
-    } else if (name === 'sit') {
+    if (name === 'sit') {
+      // Rests squarely on desk surface (y=0.80 world -> y_tor=0.28) directly under fingers
       P.fp.geometry = G.laptop;
-      P.fp.material = P_LIB.phone;
-      P.fp.position.set(0, 0.06, 0.38);
+      P.fp.material = P_LIB.laptopProp;
+      P.fp.position.set(0, 0.284, 0.46);
       P.fp.rotation.set(0, 0, 0);
-    } else if (name === 'readDoc') {
+    } else if (name === 'readDoc' || name === 'sitReadDoc') {
+      // Held between both left and right palms in front of torso
       P.fp.geometry = G.folderGeo;
       P.fp.material = P_LIB.folderProp;
-      P.fp.position.set(0, 0.32, 0.32);
-      P.fp.rotation.set(-0.65, 0, 0);
-    } else if (name === 'writeNotes') {
-      P.fp.geometry = G.notebookGeo;
-      P.fp.material = P_LIB.folderProp;
-      P.fp.position.set(0, 0.07, 0.36);
-      P.fp.rotation.set(0.05, 0.12, 0);
+      P.fp.position.set(0, 0.42, 0.46);
+      P.fp.rotation.set(-0.72, 0, 0);
     } else {
+      // Carry box gripped at x = +/-0.18 by both palms
       P.fp.geometry = G.boxProp;
       P.fp.material = P_LIB.boxProp;
-      P.fp.position.set(0, 0.22, 0.4);
+      P.fp.position.set(0, 0.33, 0.45);
       P.fp.rotation.set(0, 0, 0);
     }
     P.fp.visible = true;
@@ -1738,23 +1887,31 @@ export function setPose(P: PersonActor, name: string, P_LIB: HumanPalette) {
     P.fp.visible = false;
   }
 
-  const ear = name === 'phone' || name === 'radio';
+  // Single-hand props locked directly onto RightHand bone so hands never touch air
+  const ear = name === 'phone' || name === 'standPhone' || name === 'radio';
   const hasCup = name === 'coffee';
-  if ((ear || hasCup) && !P.pe) {
-    P.pe = P.mk(ear ? G.phone : G.mugGeo, ear ? P_LIB.phone : P_LIB.white, P.bones.RightHand, 0, -0.02, 0.036, 1, 1, 1, false);
+  const holdingPhone = name === 'hold';
+  if ((ear || hasCup || holdingPhone) && !P.pe) {
+    P.pe = P.mk(G.phone, P_LIB.phone, P.bones.RightHand, 0.024, -0.05, 0.025, 1, 1, 1, false);
   }
   if (P.pe) {
     if (ear) {
       P.pe.geometry = G.phone;
       P.pe.material = P_LIB.phone;
-      P.pe.position.set(0, -0.02, 0.036);
-      P.pe.rotation.set(0, 0, 0);
+      P.pe.position.set(0.028, -0.05, 0.022);
+      P.pe.rotation.set(0.05, 0, -0.15);
+      P.pe.visible = true;
+    } else if (holdingPhone) {
+      P.pe.geometry = G.phone;
+      P.pe.material = P_LIB.phone;
+      P.pe.position.set(0.026, -0.055, 0.024);
+      P.pe.rotation.set(Math.PI * 0.42, 0.18, 0);
       P.pe.visible = true;
     } else if (hasCup) {
       P.pe.geometry = G.mugGeo;
       P.pe.material = P_LIB.white;
-      P.pe.position.set(0.015, -0.035, 0.036);
-      P.pe.rotation.set(0.25, 0, 0);
+      P.pe.position.set(0.02, -0.055, 0.042);
+      P.pe.rotation.set(1.58, 0, -0.15);
       P.pe.visible = true;
     } else {
       P.pe.visible = false;
@@ -1770,15 +1927,12 @@ export function createGuideActor(
   marker: THREE.Group;
   meshes: THREE.Mesh[];
 } {
-  const blazerMat = new THREE.MeshPhysicalMaterial({
+  const blazerMat = new THREE.MeshStandardMaterial({
     color: 0x22784e,
     normalMap: getHumanMicroMaps().weaveNormalTex,
     normalScale: new THREE.Vector2(0.45, 0.45),
     roughness: 0.82,
     metalness: 0,
-    sheen: 0.58,
-    sheenRoughness: 0.7,
-    sheenColor: new THREE.Color(0x70e8a8),
     envMapIntensity: 0.24,
   });
 

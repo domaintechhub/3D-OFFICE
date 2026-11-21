@@ -1,14 +1,25 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 import { buildSceneArchitecture, type ArchitectureHandles, type MonitorPickTarget } from './architecture';
-import { BASE, COLX, EXEC, LV, ROOMS, VIEWS, type HudSnapshot, type InspectedMonitor } from './constants';
+import {
+  BASE,
+  COLX,
+  EXEC,
+  LV,
+  ROOMS,
+  VIEWS,
+  type HudSnapshot,
+  type InspectedMonitor,
+  type RoomDef,
+  type SelectedCharacterSnapshot,
+} from './constants';
+import type { PersonActor } from './human';
 import { createMaterials } from './materials';
 import { createScreenRegistry, updateAllScreens, type ScreenRegistry } from './screens';
 import { AtriumSimulation } from './simulation';
 import { AmbientAudioManager } from './audio';
-import { setMaxAnisotropy } from './textures';
+import { getMaxAnisotropy, setMaxAnisotropy } from './textures';
 
 function detectSoftwareGl(): boolean {
   try {
@@ -46,15 +57,22 @@ export class AtriumEngine {
   private readonly pointerNdc = new THREE.Vector2(-9, -9);
 
   private activeLevel = 'overview';
-  private hoveredRoom: { title: string; sub: string; color: string } | null = null;
+  private hoveredRoom: { title: string; sub: string; color: string; hint?: string } | null = null;
   private inspectedMonitor: MonitorPickTarget | null = null;
+  private selectedActor: PersonActor | null = null;
+  private followSelectedActor = false;
   private readonly monitorMeshMap = new Map<THREE.Object3D, MonitorPickTarget>();
   private downX = 0;
   private downY = 0;
   private rafId = 0;
+  private timerId = 0;
   private lastTs = 0;
+  private lastRenderTs = 0;
+  private lastInteractionTs = 0;
+  private lastMoveRayTs = 0;
   private elapsed = 0;
   private hudEmitAccum = 0;
+  private cutawayAnimating = false;
   private onHudChange: (snapshot: HudSnapshot) => void;
   private unwireWalk: () => void;
   private disposed = false;
@@ -72,6 +90,14 @@ export class AtriumEngine {
     color: string;
   }> = [];
 
+  // 3D Thought bubble & selection ring for clicked autonomous character
+  private readonly thoughtBubbleCanvas: HTMLCanvasElement;
+  private readonly thoughtBubbleCtx: CanvasRenderingContext2D | null;
+  private readonly thoughtBubbleTex: THREE.CanvasTexture;
+  private readonly thoughtBubbleSprite: THREE.Sprite;
+  private lastDrawnThoughtKey = '';
+  private readonly selectionRing: THREE.Mesh;
+
   // Scratch vectors
   private readonly _sunCol = new THREE.Color();
   private readonly _zenith = new THREE.Color();
@@ -79,6 +105,11 @@ export class AtriumEngine {
   private readonly _fogCol = new THREE.Color();
   private readonly _skyGround = new THREE.Color();
   private readonly _camRight = new THREE.Vector3();
+  private readonly _segA = new THREE.Vector3();
+  private readonly _segB = new THREE.Vector3();
+  private readonly _rayPt = new THREE.Vector3();
+  private readonly _segPt = new THREE.Vector3();
+  private readonly _lastActorPos = new THREE.Vector3();
 
   constructor(container: HTMLElement, onHudChange: (snapshot: HudSnapshot) => void) {
     this.container = container;
@@ -90,18 +121,17 @@ export class AtriumEngine {
 
     this.renderer = new THREE.WebGLRenderer({
       antialias: !this.isSoftwareGl,
-      powerPreference: 'high-performance',
+      powerPreference: 'low-power',
     });
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.92;
-    this.renderer.shadowMap.enabled = !this.isSoftwareGl;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMappingExposure = 0.96;
+    this.renderer.shadowMap.enabled = false;
     container.appendChild(this.renderer.domElement);
 
-    setMaxAnisotropy(this.renderer.capabilities.getMaxAnisotropy());
+    setMaxAnisotropy(this.isSoftwareGl ? 1 : Math.min(8, this.renderer.capabilities.getMaxAnisotropy()));
 
     this.scene = new THREE.Scene();
     this.fog = new THREE.FogExp2(0x1b2434, 0.0022);
@@ -112,12 +142,12 @@ export class AtriumEngine {
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     pmrem.dispose();
 
-    this.camera = new THREE.PerspectiveCamera(40, width / height, 0.2, 600);
+    this.camera = new THREE.PerspectiveCamera(40, width / height, 0.08, 420);
     this.camera.position.set(0, 16, 49);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.target.set(0, 12.2, 4);
-    this.controls.enableDamping = true;
+    this.controls.enableDamping = !this.isSoftwareGl;
     this.controls.dampingFactor = 0.07;
     this.controls.minDistance = 1.6;
     this.controls.maxDistance = 175;
@@ -125,7 +155,11 @@ export class AtriumEngine {
     this.controls.update();
 
     this.controls.addEventListener('start', () => {
+      this.markInteraction();
       this.sim.cancelFlight();
+    });
+    this.controls.addEventListener('change', () => {
+      this.markInteraction();
     });
 
     // Procedural atmospheric gradient sky dome
@@ -163,29 +197,17 @@ export class AtriumEngine {
     const skyDome = new THREE.Mesh(new THREE.SphereGeometry(320, 24, 16), this.skyMat);
     this.scene.add(skyDome);
 
-    // Three-point + architectural sky/sun illumination
-    this.hemiLight = new THREE.HemisphereLight(0xc8e0ff, 0x4b4640, 0.72);
+    // Three-point + architectural sky/sun illumination (zero real-time shadow pass overhead)
+    this.hemiLight = new THREE.HemisphereLight(0xc8e0ff, 0x565048, 0.84);
     this.scene.add(this.hemiLight);
 
-    this.sunLight = new THREE.DirectionalLight(0xfff1d6, 1.9);
+    this.sunLight = new THREE.DirectionalLight(0xfff1d6, 1.85);
     this.sunLight.position.set(42, 64, 54);
-    if (!this.isSoftwareGl) {
-      this.sunLight.castShadow = true;
-      this.sunLight.shadow.mapSize.set(2048, 2048);
-      this.sunLight.shadow.camera.near = 10;
-      this.sunLight.shadow.camera.far = 210;
-      this.sunLight.shadow.camera.left = -64;
-      this.sunLight.shadow.camera.right = 64;
-      this.sunLight.shadow.camera.top = 56;
-      this.sunLight.shadow.camera.bottom = -36;
-      this.sunLight.shadow.bias = -0.00035;
-      this.sunLight.shadow.normalBias = 0.018;
-      this.sunLight.shadow.radius = 2.4;
-    }
+    this.sunLight.castShadow = false;
     this.scene.add(this.sunLight);
 
     // Subtle cool northern sky-bounce fill light for realistic architectural shadow wrap
-    this.skyFillLight = new THREE.DirectionalLight(0xbcd6f6, 0.36);
+    this.skyFillLight = new THREE.DirectionalLight(0xbcd6f6, 0.4);
     this.skyFillLight.position.set(-40, 26, 46);
     this.scene.add(this.skyFillLight);
 
@@ -194,34 +216,54 @@ export class AtriumEngine {
     this.screenReg = createScreenRegistry();
     this.arch = buildSceneArchitecture(this.scene, M, this.screenReg);
 
-    // Architectural softbox RectAreaLights for Reception Atrium, Board Room, & upper office bays
-    if (!this.isSoftwareGl) {
-      RectAreaLightUniformsLib.init();
-      const recPanel = new THREE.RectAreaLight(0xfff3e0, 0.45, 13, 4.2);
-      recPanel.position.set(0, 4.9, 4.8);
-      recPanel.lookAt(0, 0, 5.2);
-      this.scene.add(recPanel);
-
-      const boardPanel = new THREE.RectAreaLight(0xfff5e6, 0.4, 11, 2.6);
-      boardPanel.position.set(0, 21.8, 4.9);
-      boardPanel.lookAt(0, 18.2, 4.9);
-      this.scene.add(boardPanel);
-
-      // Subtle architectural ceiling bounce strips on L1-L3 & L5 executive suite
-      [LV[1], LV[2], LV[3], LV[5]].forEach((ly) => {
-        [-10.2, 10.2].forEach((lx) => {
-          const bayLight = new THREE.RectAreaLight(0xfff6ea, 0.22, 16, 2.2);
-          bayLight.position.set(lx, ly + 3.55, 4.4);
-          bayLight.lookAt(lx, ly, 4.4);
-          this.scene.add(bayLight);
-        });
-      });
-    }
-
     // Build dynamic office simulation (staff, Zuri, vehicles, walk controls)
-    this.sim = new AtriumSimulation(this.scene, M, this.arch.cabs, () => this.audio.playFootstep());
+    this.sim = new AtriumSimulation(
+      this.scene,
+      M,
+      this.arch.cabs,
+      this.arch.officeChairs,
+      () => this.audio.playFootstep()
+    );
     this.unwireWalk = this.sim.wireWalk(this.renderer.domElement, this.camera, this.controls);
     this.initOverheadBadges();
+
+    // 3D Floating Thought Bubble & Selection Ring
+    this.thoughtBubbleCanvas = document.createElement('canvas');
+    this.thoughtBubbleCanvas.width = 1024;
+    this.thoughtBubbleCanvas.height = 300;
+    this.thoughtBubbleCtx = this.thoughtBubbleCanvas.getContext('2d');
+    this.thoughtBubbleTex = new THREE.CanvasTexture(this.thoughtBubbleCanvas);
+    this.thoughtBubbleTex.colorSpace = THREE.SRGBColorSpace;
+    this.thoughtBubbleTex.anisotropy = getMaxAnisotropy();
+    this.thoughtBubbleSprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: this.thoughtBubbleTex,
+        transparent: true,
+        depthWrite: false,
+        depthTest: false,
+      })
+    );
+    this.thoughtBubbleSprite.scale.set(1.85, 0.54, 1);
+    this.thoughtBubbleSprite.renderOrder = 26;
+    this.thoughtBubbleSprite.visible = false;
+    this.scene.add(this.thoughtBubbleSprite);
+
+    const ringGeo = new THREE.RingGeometry(0.32, 0.42, 24);
+    ringGeo.rotateX(-Math.PI / 2);
+    this.selectionRing = new THREE.Mesh(
+      ringGeo,
+      new THREE.MeshBasicMaterial({
+        color: 0x6fe3a1,
+        transparent: true,
+        opacity: 0.92,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      })
+    );
+    this.selectionRing.renderOrder = 10;
+    this.selectionRing.visible = false;
+    this.scene.add(this.selectionRing);
+
     for (const mp of this.arch.monitorPicks) {
       for (const m of mp.meshes) {
         this.monitorMeshMap.set(m, mp);
@@ -230,17 +272,81 @@ export class AtriumEngine {
 
     // Wire events & audio gesture unlock
     window.addEventListener('resize', this.handleResize);
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
     window.addEventListener('pointerdown', this.handleAudioUnlock, { passive: true });
     window.addEventListener('keydown', this.handleAudioUnlock, { passive: true });
     this.renderer.domElement.addEventListener('pointerdown', this.handlePointerDown, { passive: true });
     this.renderer.domElement.addEventListener('pointermove', this.handlePointerMove);
+    this.renderer.domElement.addEventListener('wheel', this.handleWheel, { passive: true });
     this.renderer.domElement.addEventListener('click', this.handleClick);
     this.renderer.domElement.addEventListener('webglcontextlost', this.handleContextLost);
 
     this.updateTimeOfDayLighting(this.sim.simMin);
     this.emitHud();
-    this.lastTs = performance.now();
-    this.rafId = requestAnimationFrame(this.loop);
+    const now = performance.now();
+    this.lastTs = now;
+    this.lastRenderTs = now;
+    this.lastInteractionTs = now;
+    this.scheduleNextTick();
+  }
+
+  private markInteraction() {
+    this.lastInteractionTs = performance.now();
+  }
+
+  private handleWheel = () => {
+    this.markInteraction();
+  };
+
+  private handleVisibilityChange = () => {
+    if (this.disposed) return;
+    if (document.hidden) {
+      cancelAnimationFrame(this.rafId);
+      clearTimeout(this.timerId);
+    } else {
+      const now = performance.now();
+      this.lastTs = now;
+      this.lastRenderTs = 0;
+      this.markInteraction();
+      this.scheduleNextTick();
+    }
+  };
+
+  private scheduleNextTick() {
+    if (this.disposed || document.hidden) return;
+    if (this.isSoftwareGl) {
+      this.afterDraw(() => {
+        if (!this.disposed && !document.hidden) {
+          this.loop(performance.now());
+        }
+      });
+    } else {
+      this.rafId = requestAnimationFrame(this.loop);
+    }
+  }
+
+  private afterDraw(cb: () => void) {
+    const gl = this.renderer.getContext() as WebGL2RenderingContext;
+    const sync = typeof gl.fenceSync === 'function' ? gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0) : null;
+    if (!sync) {
+      this.timerId = window.setTimeout(cb, 80);
+      return;
+    }
+    gl.flush();
+    const poll = () => {
+      if (this.disposed || document.hidden) {
+        gl.deleteSync(sync);
+        return;
+      }
+      const state = gl.getSyncParameter(sync, gl.SYNC_STATUS);
+      if (state === gl.UNSIGNALED) {
+        this.timerId = window.setTimeout(poll, 5);
+      } else {
+        gl.deleteSync(sync);
+        this.timerId = window.setTimeout(cb, 80);
+      }
+    };
+    this.timerId = window.setTimeout(poll, 5);
   }
 
   private initOverheadBadges() {
@@ -248,12 +354,13 @@ export class AtriumEngine {
 
     const addBadge = (lv: number, zone: string, x: number, y: number, z: number, color: string) => {
       const canvas = document.createElement('canvas');
-      canvas.width = 512;
-      canvas.height = 128;
+      canvas.width = 1024;
+      canvas.height = 256;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       const tex = new THREE.CanvasTexture(canvas);
       tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = getMaxAnisotropy();
       const mat = new THREE.SpriteMaterial({
         map: tex,
         transparent: true,
@@ -262,7 +369,7 @@ export class AtriumEngine {
       });
       const sprite = new THREE.Sprite(mat);
       sprite.position.set(x, y, z);
-      sprite.scale.set(4.9, 1.22, 1);
+      sprite.scale.set(3.4, 0.85, 1);
       sprite.renderOrder = 20;
       sprite.visible = false;
       this.overheadBadgesGroup.add(sprite);
@@ -288,6 +395,10 @@ export class AtriumEngine {
     addBadge(5, EXEC.fin.n, EXEC.fin.cx, LV[5] + 3.45, 1.55, '#2d7a5a');
     addBadge(5, EXEC.ops.n, EXEC.ops.cx, LV[5] + 3.45, 1.55, '#c9762e');
     addBadge(5, EXEC.ceo.n, EXEC.ceo.cx, LV[5] + 3.45, 1.55, '#8a1f2e');
+    addBadge(-1, 'Senior Server Engineers', -7.2, BASE[0].y + 3.45, 2.2, '#38bdf8');
+    addBadge(-1, 'Junior Maintenance Techs', 4.5, BASE[0].y + 3.45, 2.2, '#6fe3a1');
+    addBadge(-2, 'Senior Power Engineers', -6.0, BASE[1].y + 3.35, 2.2, '#f8fafc');
+    addBadge(-2, 'Junior Electrical Techs', 4.5, BASE[1].y + 3.35, 2.2, '#f2b705');
   }
 
   private drawOverheadBadge(
@@ -297,16 +408,18 @@ export class AtriumEngine {
     if (b.lastStatus === status) return;
     b.lastStatus = status;
     const { ctx, canvas, color, zone } = b;
-    const W = canvas.width;
-    const H = canvas.height;
+    const W = 512;
+    const H = 128;
+    ctx.save();
+    ctx.setTransform(2, 0, 0, 2, 0, 0);
     ctx.clearRect(0, 0, W, H);
 
     // Rounded dark card
-    ctx.fillStyle = 'rgba(13, 18, 26, 0.9)';
+    ctx.fillStyle = 'rgba(7, 11, 18, 0.96)';
     ctx.beginPath();
     ctx.roundRect(8, 12, W - 16, H - 24, 16);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.36)';
     ctx.lineWidth = 3;
     ctx.stroke();
 
@@ -317,16 +430,17 @@ export class AtriumEngine {
     ctx.fill();
 
     // Zone title
-    ctx.fillStyle = '#f8fafc';
-    ctx.font = '700 26px "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 28px "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText(zone, 60, 46, W - 82);
 
     // Activity status
-    ctx.fillStyle = '#6fe3a1';
-    ctx.font = '500 22px "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif';
-    ctx.fillText(status, 30, 86, W - 56);
+    ctx.fillStyle = '#86efac';
+    ctx.font = '600 22px "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif';
+    ctx.fillText(status, 30, 88, W - 56);
+    ctx.restore();
 
     b.tex.needsUpdate = true;
   }
@@ -352,44 +466,45 @@ export class AtriumEngine {
 
     if (cut === null) {
       this.arch.roofShellGroup.visible = true;
-      this.arch.roofShellGroup.position.y = THREE.MathUtils.damp(
-        this.arch.roofShellGroup.position.y,
-        0,
-        7.5,
-        dt
-      );
+      const prevRoofY = this.arch.roofShellGroup.position.y;
+      this.arch.roofShellGroup.position.y = Math.abs(prevRoofY) < 0.01 ? 0 : THREE.MathUtils.damp(prevRoofY, 0, 7.5, dt);
+      let moving = Math.abs(this.arch.roofShellGroup.position.y) > 0.01;
       for (let s = 0; s < this.arch.levelGroups.length; s++) {
         const lg = this.arch.levelGroups[s];
         lg.visible = true;
-        lg.position.y = THREE.MathUtils.damp(lg.position.y, 0, 7.5, dt);
+        lg.position.y = Math.abs(lg.position.y) < 0.01 ? 0 : THREE.MathUtils.damp(lg.position.y, 0, 7.5, dt);
+        if (Math.abs(lg.position.y) > 0.01) moving = true;
         this.arch.levelCeilings[s].visible = true;
       }
+      this.cutawayAnimating = moving;
       this.arch.b1Group.visible = true;
       this.arch.b1Ceiling.visible = true;
       this.arch.b2Group.visible = true;
       this.arch.b2Ceiling.visible = true;
-      this.sim.setCutawayMaxY(null);
+      this.sim.setCutawayRange(-0.5, null);
       for (const b of this.overheadBadges) b.sprite.visible = false;
       return;
     }
 
     // Lift & clear roof when inspecting any floor below roof
-    this.arch.roofShellGroup.position.y = THREE.MathUtils.damp(
-      this.arch.roofShellGroup.position.y,
-      26,
-      7.0,
-      dt
-    );
+    this.arch.roofShellGroup.position.y =
+      Math.abs(26 - this.arch.roofShellGroup.position.y) < 0.02
+        ? 26
+        : THREE.MathUtils.damp(this.arch.roofShellGroup.position.y, 26, 7.0, dt);
     this.arch.roofShellGroup.visible = this.arch.roofShellGroup.position.y < 14;
+    let moving = Math.abs(26 - this.arch.roofShellGroup.position.y) > 0.02;
 
     for (let s = 0; s < this.arch.levelGroups.length; s++) {
       const lg = this.arch.levelGroups[s];
       const isAbove = s > cut;
       const targetY = isAbove ? 26 : 0;
-      lg.position.y = THREE.MathUtils.damp(lg.position.y, targetY, 7.0, dt);
+      lg.position.y =
+        Math.abs(targetY - lg.position.y) < 0.02 ? targetY : THREE.MathUtils.damp(lg.position.y, targetY, 7.0, dt);
+      if (Math.abs(targetY - lg.position.y) > 0.02) moving = true;
       lg.visible = isAbove ? lg.position.y < 14 : true;
       this.arch.levelCeilings[s].visible = s !== cut;
     }
+    this.cutawayAnimating = moving;
 
     if (cut === -1) {
       this.arch.basementGroup.visible = true;
@@ -397,16 +512,16 @@ export class AtriumEngine {
       this.arch.b1Ceiling.visible = false;
       this.arch.b2Group.visible = true;
       this.arch.b2Ceiling.visible = true;
-      this.sim.setCutawayMaxY(BASE[0].y + 3.8);
+      this.sim.setCutawayRange(BASE[0].y - 0.5, BASE[0].y + 3.8);
     } else if (cut === -2) {
       this.arch.basementGroup.visible = true;
       this.arch.b1Group.visible = false;
       this.arch.b2Group.visible = true;
       this.arch.b2Ceiling.visible = false;
-      this.sim.setCutawayMaxY(BASE[1].y + 3.8);
+      this.sim.setCutawayRange(BASE[1].y - 0.5, BASE[1].y + 3.8);
     } else {
       this.arch.basementGroup.visible = false;
-      this.sim.setCutawayMaxY(LV[cut] + 3.7);
+      this.sim.setCutawayRange(-0.5, LV[cut] + 3.7);
     }
   }
 
@@ -426,8 +541,170 @@ export class AtriumEngine {
     const h = Math.max(1, this.container.clientHeight);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setSize(w, h);
   };
+
+  private pickActorUnderPointer(): { actor: PersonActor; distance: number } | null {
+    if (!this.sim.isStaffVisible()) return null;
+    const actors = this.sim.getAllActors();
+    const maxRadiusSq = 0.34 * 0.34;
+    let bestActor: PersonActor | null = null;
+    let bestDistSq = Infinity;
+
+    for (let i = 0; i < actors.length; i++) {
+      const a = actors[i];
+      if (!a.g.visible || !a.brain) continue;
+      if (a.g.children.length > 0 && !a.g.children[0].visible) continue;
+      const st = (a as { state?: string }).state;
+      if (st === 'away' || st === 'inCab') continue;
+
+      const px = a.g.position.x;
+      const py = a.g.position.y;
+      const pz = a.g.position.z;
+      this._segA.set(px, py + 0.06, pz);
+      this._segB.set(px, py + 1.78, pz);
+      const dSq = this.raycaster.ray.distanceSqToSegment(this._segA, this._segB, this._rayPt, this._segPt);
+      if (dSq <= maxRadiusSq) {
+        const camDistSq = this._rayPt.distanceToSquared(this.camera.position);
+        if (camDistSq > 0.04 && camDistSq < bestDistSq) {
+          bestDistSq = camDistSq;
+          bestActor = a;
+        }
+      }
+    }
+
+    return bestActor ? { actor: bestActor, distance: Math.sqrt(bestDistSq) } : null;
+  }
+
+  private drawThoughtBubble(actor: PersonActor) {
+    const brain = actor.brain;
+    const ctx = this.thoughtBubbleCtx;
+    if (!brain || !ctx) return;
+
+    const key = `${brain.identity.id}:${brain.mood}:${brain.thought}`;
+    if (this.lastDrawnThoughtKey === key) return;
+    this.lastDrawnThoughtKey = key;
+
+    const W = 512;
+    const H = 150;
+    ctx.save();
+    ctx.setTransform(2, 0, 0, 2, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    // Solid dark card + thought tail pointer (no background bleed-through)
+    ctx.fillStyle = '#090e18';
+    ctx.beginPath();
+    ctx.roundRect(10, 8, W - 20, H - 30, 18);
+    ctx.fill();
+    ctx.strokeStyle = brain.identity.accentColor;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Pointer triangle at bottom center
+    ctx.fillStyle = '#090e18';
+    ctx.beginPath();
+    ctx.moveTo(W / 2 - 11, H - 23);
+    ctx.lineTo(W / 2 + 11, H - 23);
+    ctx.lineTo(W / 2, H - 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = brain.identity.accentColor;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(W / 2 - 10, H - 22);
+    ctx.lineTo(W / 2, H - 6);
+    ctx.lineTo(W / 2 + 10, H - 22);
+    ctx.stroke();
+
+    // Accent dot + Name
+    ctx.fillStyle = brain.identity.accentColor;
+    ctx.beginPath();
+    ctx.arc(32, 32, 7, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 20px "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(brain.identity.name, 48, 32, 270);
+
+    // Mood tag on right
+    ctx.fillStyle = '#86efac';
+    ctx.font = '600 15px "IBM Plex Mono", ui-monospace, monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(brain.mood.toUpperCase(), W - 28, 32, 145);
+
+    // Multi-line wrapped quoted thought
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '500 18px "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif';
+    const maxLineW = W - 56;
+    const words = `"${brain.thought}"`.split(' ');
+    const lines: string[] = [];
+    let cur = '';
+    for (const w of words) {
+      const test = cur ? `${cur} ${w}` : w;
+      if (ctx.measureText(test).width > maxLineW && cur) {
+        lines.push(cur);
+        cur = w;
+      } else {
+        cur = test;
+      }
+    }
+    if (cur) lines.push(cur);
+    const displayLines = lines.slice(0, 3);
+    if (lines.length > 3) {
+      displayLines[2] = displayLines[2].replace(/\s+\S*$/, '') + '…"';
+    }
+    for (let i = 0; i < displayLines.length; i++) {
+      ctx.fillText(displayLines[i], 28, 66 + i * 24, maxLineW);
+    }
+
+    ctx.restore();
+    this.thoughtBubbleTex.needsUpdate = true;
+  }
+
+  private updateSelectedVisuals() {
+    const a = this.selectedActor;
+    if (
+      !a ||
+      !a.brain ||
+      !this.sim.isStaffVisible() ||
+      !a.g.visible ||
+      (a.g.children.length > 0 && !a.g.children[0].visible) ||
+      (a as { state?: string }).state === 'away' ||
+      this.sim.walkOn
+    ) {
+      this.thoughtBubbleSprite.visible = false;
+      this.selectionRing.visible = false;
+      return;
+    }
+
+    const pos = a.g.position;
+    this.selectionRing.visible = true;
+    this.selectionRing.position.set(pos.x, pos.y + 0.03, pos.z);
+    (this.selectionRing.material as THREE.MeshBasicMaterial).color.set(a.brain.identity.accentColor);
+
+    this.thoughtBubbleSprite.visible = true;
+    const camDist = this.camera.position.distanceTo(pos);
+    const bubbleW = THREE.MathUtils.clamp(camDist * 0.21, 0.9, 2.6);
+    const bubbleH = bubbleW * (300 / 1024);
+    this.thoughtBubbleSprite.scale.set(bubbleW, bubbleH, 1);
+    this.thoughtBubbleSprite.position.set(pos.x, pos.y + 1.88 + bubbleH * 0.56, pos.z);
+    this.drawThoughtBubble(a);
+  }
+
+  private selectActor(actor: PersonActor) {
+    this.markInteraction();
+    this.inspectedMonitor = null;
+    this.selectedActor = actor;
+    this.followSelectedActor = true;
+    this.lastDrawnThoughtKey = '';
+    this.updateSelectedVisuals();
+    this.focusSelectedCharacter();
+    this.emitHud();
+  }
 
   private handlePointerMove = (e: PointerEvent) => {
     if (this.sim.walkOn) {
@@ -437,6 +714,10 @@ export class AtriumEngine {
       }
       return;
     }
+    const now = performance.now();
+    if (now - this.lastMoveRayTs < 65) return;
+    this.lastMoveRayTs = now;
+
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointerNdc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     this.pointerNdc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -447,24 +728,31 @@ export class AtriumEngine {
     const visibleMonitorMeshes = this.arch.monitorPicks
       .filter((m) => cut === null || m.lv <= cut)
       .flatMap((m) => m.meshes);
-    const targets = [...visibleMonitorMeshes, ...this.sim.guideMeshes, ...visiblePicks.map((p) => p.mesh)];
+    const targets = [...visibleMonitorMeshes, ...visiblePicks.map((p) => p.mesh)];
     const hits = this.raycaster.intersectObjects(targets, false);
-    let nextHover: { title: string; sub: string; color: string } | null = null;
-    if (hits.length > 0) {
-      const hitObj = hits[0].object;
-      const monMatch = this.monitorMeshMap.get(hitObj);
-      if (monMatch) {
-        const ws = this.sim.getMonitorWorkerStatus(monMatch.lv, monMatch.seatX, monMatch.seatZ);
+    const actorHit = this.pickActorUnderPointer();
+
+    let nextHover: { title: string; sub: string; color: string; hint?: string } | null = null;
+    const firstHit = hits[0];
+    const firstMonMatch = firstHit ? this.monitorMeshMap.get(firstHit.object) : undefined;
+
+    if (actorHit && (!firstMonMatch || actorHit.distance <= firstHit.distance + 0.15)) {
+      const brain = actorHit.actor.brain!;
+      nextHover = {
+        title: brain.identity.name,
+        sub: `${brain.identity.role} · "${brain.thought}"`,
+        color: brain.identity.accentColor,
+        hint: 'Click character to read thoughts & follow',
+      };
+    } else if (firstHit) {
+      const hitObj = firstHit.object;
+      if (firstMonMatch) {
+        const ws = this.sim.getMonitorWorkerStatus(firstMonMatch.lv, firstMonMatch.seatX, firstMonMatch.seatZ);
         nextHover = {
-          title: monMatch.role,
-          sub: `${monMatch.zone} · ${ws.workerActivity}`,
-          color: monMatch.color,
-        };
-      } else if (this.sim.guideMeshes.includes(hitObj as THREE.Mesh)) {
-        nextHover = {
-          title: 'Zuri · Office Guide',
-          sub: 'Click to start or resume the guided tour across all 17 stops',
-          color: '#6fe3a1',
+          title: firstMonMatch.role,
+          sub: `${firstMonMatch.zone} · ${ws.workerActivity}`,
+          color: firstMonMatch.color,
+          hint: 'Click computer to view live screen & activity',
         };
       } else {
         const match = visiblePicks.find((p) => p.mesh === hitObj);
@@ -474,6 +762,7 @@ export class AtriumEngine {
             title: r.n,
             sub: r.sub || `Level ${r.lv} · Department Bay`,
             color: `#${r.c.toString(16).padStart(6, '0')}`,
+            hint: 'Click room to go straight there',
           };
         }
       }
@@ -481,13 +770,15 @@ export class AtriumEngine {
 
     const changed =
       (nextHover?.title || '') !== (this.hoveredRoom?.title || '') ||
-      (nextHover?.sub || '') !== (this.hoveredRoom?.sub || '');
+      (nextHover?.sub || '') !== (this.hoveredRoom?.sub || '') ||
+      (nextHover?.hint || '') !== (this.hoveredRoom?.hint || '');
     this.hoveredRoom = nextHover;
     this.renderer.domElement.style.cursor = nextHover ? 'pointer' : 'grab';
     if (changed) this.emitHud();
   };
 
   private handlePointerDown = (e: PointerEvent) => {
+    this.markInteraction();
     this.downX = e.clientX;
     this.downY = e.clientY;
   };
@@ -505,37 +796,67 @@ export class AtriumEngine {
     const visibleMonitorMeshes = this.arch.monitorPicks
       .filter((m) => cut === null || m.lv <= cut)
       .flatMap((m) => m.meshes);
-    const targets = [...visibleMonitorMeshes, ...this.sim.guideMeshes, ...visiblePicks.map((p) => p.mesh)];
+    const targets = [...visibleMonitorMeshes, ...visiblePicks.map((p) => p.mesh)];
     const hits = this.raycaster.intersectObjects(targets, false);
-    if (hits.length === 0) return;
+    const actorHit = this.pickActorUnderPointer();
+    const firstHit = hits[0];
+    const firstMonMatch = firstHit ? this.monitorMeshMap.get(firstHit.object) : undefined;
 
-    const hitObj = hits[0].object;
-    const monMatch = this.monitorMeshMap.get(hitObj);
-    if (monMatch) {
-      this.inspectMonitor(monMatch);
+    if (actorHit && (!firstMonMatch || actorHit.distance <= firstHit.distance + 0.15)) {
+      this.selectActor(actorHit.actor);
       return;
     }
 
-    if (this.sim.guideMeshes.includes(hitObj as THREE.Mesh)) {
-      this.inspectedMonitor = null;
-      this.startTour(this.sim.tourI);
+    if (!firstHit) return;
+
+    const hitObj = firstHit.object;
+    if (firstMonMatch) {
+      this.inspectMonitor(firstMonMatch);
       return;
     }
+
     const match = visiblePicks.find((p) => p.mesh === hitObj);
     if (match) {
+      this.markInteraction();
+      if (this.sim.tourOn) this.sim.endTour();
       this.inspectedMonitor = null;
-      this.selectLevel(String(match.room.lv));
-      this.sim.startTourAtRoom(match.room.n, this.camera, this.controls);
-      this.activeLevel = 'tour';
+      this.selectedActor = null;
+      this.followSelectedActor = false;
+      this.arch.basementGroup.visible = false;
+      this.arch.plazaGroup.visible = true;
+      this.activeLevel = String(match.room.lv);
+      const cx =
+        'cx' in match.room && match.room.cx != null
+          ? match.room.cx
+          : COLX[(match.room as RoomDef).col];
+      const y0 = LV[match.room.lv];
+      const dist =
+        match.room.n === 'Board Room'
+          ? 16.5
+          : match.room.n === 'Chief Executive Officer'
+            ? 15.5
+            : match.room.n === 'Reception Atrium'
+              ? 16.0
+              : 13.8;
+      this.sim.flyTo(
+        new THREE.Vector3(cx + (cx > 8 ? -1.2 : cx < -8 ? 1.2 : 0), y0 + 2.8, dist),
+        new THREE.Vector3(cx, y0 + 1.45, 3.8)
+      );
       this.emitHud();
     }
   };
 
   private inspectMonitor(mon: MonitorPickTarget) {
+    this.markInteraction();
     if (this.sim.tourOn) this.sim.endTour();
+    this.selectedActor = null;
+    this.followSelectedActor = false;
     this.inspectedMonitor = mon;
+    this.arch.basementGroup.visible = false;
+    this.arch.plazaGroup.visible = true;
+    this.activeLevel = String(mon.lv);
     mon.screenRef.next = 0;
-    // Fly camera to an angled 3/4 over-the-shoulder view so the worker and screen are both clearly visible with zero clipping
+    // Fly camera straight to an angled 3/4 over-the-shoulder view so the worker and screen are clearly visible
     const fx = Math.sin(mon.rotY);
     const fz = Math.cos(mon.rotY);
     const rx = Math.cos(mon.rotY);
@@ -551,6 +872,7 @@ export class AtriumEngine {
   private handleContextLost = (e: Event) => {
     e.preventDefault();
     cancelAnimationFrame(this.rafId);
+    clearTimeout(this.timerId);
   };
 
   private updateTimeOfDayLighting(simMinutes: number) {
@@ -614,10 +936,24 @@ export class AtriumEngine {
   }
 
   private loop = (now: number) => {
-    if (this.disposed) return;
-    this.rafId = requestAnimationFrame(this.loop);
+    if (this.disposed || document.hidden) return;
 
-    const dt = Math.min(0.05, Math.max(0.001, (now - this.lastTs) / 1000));
+    if (!this.isSoftwareGl) {
+      this.rafId = requestAnimationFrame(this.loop);
+      const isActive =
+        now - this.lastInteractionTs < 1400 ||
+        this.sim.walkOn ||
+        this.sim.tourOn ||
+        this.sim.isCameraFlying() ||
+        this.cutawayAnimating;
+      const minFrameMs = isActive ? 33 : this.sim.simRate === 0 ? 333 : 66;
+      if (this.lastRenderTs > 0 && now - this.lastRenderTs < minFrameMs) {
+        return;
+      }
+      this.lastRenderTs = now;
+    }
+
+    const dt = Math.min(0.15, Math.max(0.001, (now - this.lastTs) / 1000));
     this.lastTs = now;
     this.elapsed += dt;
 
@@ -638,7 +974,37 @@ export class AtriumEngine {
     this.updateTimeOfDayLighting(this.sim.simMin);
 
     // Staff, lifts, traffic, tour & first-person walk
+    if (this.selectedActor) {
+      this._lastActorPos.copy(this.selectedActor.g.position);
+    }
     this.sim.update(dt, this.elapsed, this.camera, this.controls);
+
+    if (this.selectedActor) {
+      if (
+        this.followSelectedActor &&
+        !this.sim.walkOn &&
+        !this.sim.tourOn &&
+        !this.sim.isCameraFlying()
+      ) {
+        const curPos = this.selectedActor.g.position;
+        const dx = curPos.x - this._lastActorPos.x;
+        const dy = curPos.y - this._lastActorPos.y;
+        const dz = curPos.z - this._lastActorPos.z;
+        if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > 0.0001) {
+          this.controls.target.x += dx;
+          this.controls.target.y += dy;
+          this.controls.target.z += dz;
+          this.camera.position.x += dx;
+          this.camera.position.y += dy;
+          this.camera.position.z += dz;
+          this.controls.update();
+        }
+      }
+      this.updateSelectedVisuals();
+    } else {
+      this.thoughtBubbleSprite.visible = false;
+      this.selectionRing.visible = false;
+    }
 
     // Spatialized ambient office audio (HVAC hum, soft typing, distant chatter)
     this._camRight.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
@@ -648,12 +1014,13 @@ export class AtriumEngine {
       simRate: this.sim.simRate,
     });
 
-    // Animated office screens & wall TVs (only draws screens inside camera frustum)
-    updateAllScreens(this.screenReg, this.camera, this.elapsed);
+    // Animated office screens & wall TVs (only draws visible screens on active floors)
+    const cut = this.getCutawayLevelIndex();
+    updateAllScreens(this.screenReg, this.camera, this.elapsed, cut !== null && cut >= 0 ? cut : null);
     if (this.inspectedMonitor) {
       const s = this.inspectedMonitor.screenRef;
       if (this.elapsed >= s.next) {
-        s.next = this.elapsed + 0.1;
+        s.next = this.elapsed + 0.18;
         s.g.clearRect(0, 0, s.g.canvas.width, s.g.canvas.height);
         s.fn(s.g, s.g.canvas.width, s.g.canvas.height, this.elapsed + s.off);
         (s.tx as THREE.CanvasTexture).needsUpdate = true;
@@ -663,9 +1030,13 @@ export class AtriumEngine {
     this.renderer.render(this.scene, this.camera);
 
     this.hudEmitAccum += dt;
-    if (this.hudEmitAccum >= 0.1) {
+    if (this.hudEmitAccum >= 0.18) {
       this.hudEmitAccum = 0;
       this.emitHud();
+    }
+
+    if (this.isSoftwareGl) {
+      this.scheduleNextTick();
     }
   };
 
@@ -688,15 +1059,65 @@ export class AtriumEngine {
     };
   }
 
+  private buildSelectedCharacterHud(): SelectedCharacterSnapshot | null {
+    const a = this.selectedActor;
+    if (!a || !a.brain || !this.sim.isStaffVisible()) return null;
+    const b = a.brain;
+    const y = a.g.position.y;
+    let levelLabel = 'Ground (G)';
+    if (y < -6.5) levelLabel = 'Basement 2 (B2)';
+    else if (y < -2.0) levelLabel = 'Basement 1 (B1)';
+    else {
+      let bestLv = 0;
+      let bestDiff = Infinity;
+      for (let i = 0; i < LV.length; i++) {
+        const d = Math.abs(y - LV[i]);
+        if (d < bestDiff) {
+          bestDiff = d;
+          bestLv = i;
+        }
+      }
+      levelLabel = bestLv === 0 ? 'Ground (G)' : `Level ${bestLv}`;
+    }
+    return {
+      id: b.identity.id,
+      name: b.identity.name,
+      role: b.identity.role,
+      department: b.identity.department,
+      seniority: b.identity.seniority,
+      accentColor: b.identity.accentColor,
+      personality: b.identity.personality,
+      mood: b.mood,
+      goal: b.goal,
+      actionLabel: b.actionLabel,
+      thought: b.thought,
+      recentThoughts: [...b.recentThoughts],
+      focus: Math.round(b.focus),
+      energy: Math.round(b.energy),
+      social: Math.round(b.social),
+      levelLabel,
+      isFollowing: this.followSelectedActor,
+      isGuide: a === this.sim.guideActor,
+    };
+  }
+
   private emitHud() {
     const snap = this.sim.getSnapshot(
       this.activeLevel,
       this.hoveredRoom,
       this.audio.isEnabled(),
-      this.buildInspectedMonitorHud()
+      this.buildInspectedMonitorHud(),
+      this.buildSelectedCharacterHud()
     );
     const cut = this.getCutawayLevelIndex();
-    if (cut !== null && cut >= 0 && snap.floorActivity && !this.sim.walkOn && !this.sim.tourOn) {
+    if (
+      cut !== null &&
+      snap.floorActivity &&
+      !this.sim.walkOn &&
+      !this.sim.tourOn &&
+      !this.selectedActor &&
+      !this.inspectedMonitor
+    ) {
       const zoneMap = new Map(snap.floorActivity.zones.map((z) => [z.zone, z.status]));
       for (const b of this.overheadBadges) {
         const show = b.lv === cut;
@@ -725,10 +1146,54 @@ export class AtriumEngine {
     return (this.inspectedMonitor?.screenRef.g.canvas as HTMLCanvasElement) || null;
   }
 
+  public closeCharacterInspector() {
+    this.selectedActor = null;
+    this.followSelectedActor = false;
+    this.thoughtBubbleSprite.visible = false;
+    this.selectionRing.visible = false;
+    this.emitHud();
+  }
+
+  public focusSelectedCharacter() {
+    const a = this.selectedActor;
+    if (!a) return;
+    this.markInteraction();
+    const pos = a.g.position;
+    const cut = this.getCutawayLevelIndex();
+    const camX = pos.x + (pos.x > 0 ? -0.55 : 0.55);
+    const camY = pos.y + (cut !== null ? 3.2 : 2.35);
+    const camZ = Math.min(19.5, pos.z + 7.6);
+    this.sim.flyTo(
+      new THREE.Vector3(camX, camY, camZ),
+      new THREE.Vector3(pos.x + 0.55, pos.y + 1.25, pos.z)
+    );
+  }
+
+  public toggleFollowCharacter() {
+    if (!this.selectedActor) return;
+    this.followSelectedActor = !this.followSelectedActor;
+    if (this.followSelectedActor) {
+      this.focusSelectedCharacter();
+    }
+    this.emitHud();
+  }
+
+  public nudgeSelectedCharacter() {
+    if (!this.selectedActor) return;
+    this.markInteraction();
+    this.sim.nudgeCharacterFreeWill(this.selectedActor);
+    this.lastDrawnThoughtKey = '';
+    this.updateSelectedVisuals();
+    this.emitHud();
+  }
+
   public selectLevel(key: string) {
+    this.markInteraction();
     if (this.sim.walkOn) this.sim.exitWalk(this.camera, this.controls);
     if (this.sim.tourOn) this.sim.endTour();
     this.inspectedMonitor = null;
+    this.selectedActor = null;
+    this.followSelectedActor = false;
     this.activeLevel = key;
 
     const isBasement = key === 'b1' || key === 'b2';
@@ -745,7 +1210,10 @@ export class AtriumEngine {
   }
 
   public startTour(index = 0) {
+    this.markInteraction();
     this.inspectedMonitor = null;
+    this.selectedActor = null;
+    this.followSelectedActor = false;
     this.arch.basementGroup.visible = false;
     this.arch.plazaGroup.visible = true;
     this.activeLevel = 'tour';
@@ -754,32 +1222,39 @@ export class AtriumEngine {
   }
 
   public endTour() {
+    this.markInteraction();
     this.sim.endTour();
     this.activeLevel = 'overview';
     this.emitHud();
   }
 
   public prevStop() {
+    this.markInteraction();
     this.sim.prevStop(this.camera, this.controls);
     this.emitHud();
   }
 
   public nextStop() {
+    this.markInteraction();
     this.sim.nextStop(this.camera, this.controls);
     this.emitHud();
   }
 
   public toggleTourPlay() {
+    this.markInteraction();
     this.sim.toggleTourPlay();
     this.emitHud();
   }
 
   public toggleWalk() {
+    this.markInteraction();
     if (this.sim.walkOn) {
       this.sim.exitWalk(this.camera, this.controls);
       this.activeLevel = 'overview';
     } else {
       this.inspectedMonitor = null;
+      this.selectedActor = null;
+      this.followSelectedActor = false;
       this.arch.basementGroup.visible = false;
       this.arch.plazaGroup.visible = true;
       this.activeLevel = 'walk';
@@ -789,25 +1264,36 @@ export class AtriumEngine {
   }
 
   public setWalkFloor(lv: number) {
+    this.markInteraction();
     this.sim.setWalkFloor(lv);
     this.emitHud();
   }
 
   public setTouchJoystick(nx: number, ny: number) {
+    this.markInteraction();
     this.sim.setTouchJoystick(nx, ny);
   }
 
   public toggleStaff() {
-    this.sim.toggleStaff();
+    this.markInteraction();
+    const visible = this.sim.toggleStaff();
+    if (!visible) {
+      this.selectedActor = null;
+      this.followSelectedActor = false;
+      this.thoughtBubbleSprite.visible = false;
+      this.selectionRing.visible = false;
+    }
     this.emitHud();
   }
 
   public setRate(rate: number) {
+    this.markInteraction();
     this.sim.setRate(rate);
     this.emitHud();
   }
 
   public jumpToTime(minutes: number) {
+    this.markInteraction();
     this.sim.setClock(minutes);
     this.updateTimeOfDayLighting(this.sim.simMin);
     this.emitHud();
@@ -821,11 +1307,14 @@ export class AtriumEngine {
   public dispose() {
     this.disposed = true;
     cancelAnimationFrame(this.rafId);
+    clearTimeout(this.timerId);
     window.removeEventListener('resize', this.handleResize);
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     window.removeEventListener('pointerdown', this.handleAudioUnlock);
     window.removeEventListener('keydown', this.handleAudioUnlock);
     this.renderer.domElement.removeEventListener('pointerdown', this.handlePointerDown);
     this.renderer.domElement.removeEventListener('pointermove', this.handlePointerMove);
+    this.renderer.domElement.removeEventListener('wheel', this.handleWheel);
     this.renderer.domElement.removeEventListener('click', this.handleClick);
     this.renderer.domElement.removeEventListener('webglcontextlost', this.handleContextLost);
     this.unwireWalk();
@@ -835,6 +1324,10 @@ export class AtriumEngine {
       b.tex.dispose();
       (b.sprite.material as THREE.SpriteMaterial).dispose();
     }
+    this.thoughtBubbleTex.dispose();
+    (this.thoughtBubbleSprite.material as THREE.SpriteMaterial).dispose();
+    this.selectionRing.geometry.dispose();
+    (this.selectionRing.material as THREE.Material).dispose();
     this.controls.dispose();
 
     const geometries = new Set<THREE.BufferGeometry>();
