@@ -1,3 +1,5 @@
+import type { BuildingId } from './districtData';
+
 export interface RoomDef {
   n: string;
   c: number;
@@ -94,6 +96,11 @@ export interface HudSnapshot {
   timeText: string;
   shiftLabel: string;
   statsLabel: string;
+  activeBuilding: BuildingId;
+  activeBuildingName: string;
+  activeBuildingNiche: string;
+  activeBuildingAccent: string;
+  buildingFloors: number;
   activeLevel: string;
   staffVisible: boolean;
   walking: boolean;

@@ -1,3 +1,5 @@
+import { DISTRICT_WORK_THOUGHTS } from './districtData';
+
 export type CharacterMood =
   | 'Focused'
   | 'Curious'
@@ -367,7 +369,7 @@ const GOAL_THOUGHTS: Record<Exclude<FreeGoal, 'work'>, string[]> = {
 };
 
 export function createCharacterBrain(identity: CharacterIdentity): CharacterBrain {
-  const workList = WORK_THOUGHTS[identity.topicKey] || WORK_THOUGHTS.web;
+  const workList = WORK_THOUGHTS[identity.topicKey] || DISTRICT_WORK_THOUGHTS[identity.topicKey] || WORK_THOUGHTS.web;
   const seed = Math.abs(Math.round(identity.homeX * 13 + identity.homeZ * 7 + identity.homeLv * 31));
   const initialThought = workList[seed % workList.length];
   return {
@@ -406,7 +408,7 @@ export function pickThoughtForGoal(
 ): { mood: CharacterMood; actionLabel: string; thought: string } {
   const pool =
     goal === 'work'
-      ? WORK_THOUGHTS[brain.identity.topicKey] || WORK_THOUGHTS.web
+      ? WORK_THOUGHTS[brain.identity.topicKey] || DISTRICT_WORK_THOUGHTS[brain.identity.topicKey] || WORK_THOUGHTS.web
       : GOAL_THOUGHTS[goal];
   const raw = pool[Math.floor(Math.random() * pool.length)];
 

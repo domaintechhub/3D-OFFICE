@@ -51,7 +51,7 @@ export interface WallTVRef {
 export interface ScreenRegistry {
   wallTVs: WallTVRef[];
   workScreens: WorkScreenRef[];
-  boardScreens: Array<{ g: CanvasRenderingContext2D; tx: THREE.CanvasTexture; mat: THREE.MeshStandardMaterial; w: number; h: number; fn: (g: CanvasRenderingContext2D, w: number, h: number, t: number) => void }>;
+  boardScreens: Array<{ g: CanvasRenderingContext2D; tx: THREE.CanvasTexture; mat: THREE.MeshStandardMaterial; w: number; h: number; mesh?: THREE.Mesh; fn: (g: CanvasRenderingContext2D, w: number, h: number, t: number) => void }>;
 }
 
 export function createScreenRegistry(): ScreenRegistry {
@@ -1426,6 +1426,47 @@ export function createBoardScreenMat(reg: ScreenRegistry): THREE.MeshStandardMat
   return mat;
 }
 
+export function createCustomBoardScreen(
+  reg: ScreenRegistry,
+  logicalW: number,
+  logicalH: number,
+  fn: (g: CanvasRenderingContext2D, w: number, h: number, t: number) => void
+): { mat: THREE.MeshStandardMaterial; setMesh: (m: THREE.Mesh) => void } {
+  const cv = document.createElement('canvas');
+  cv.width = logicalW * 2;
+  cv.height = logicalH * 2;
+  const tx = new THREE.CanvasTexture(cv);
+  tx.colorSpace = THREE.SRGBColorSpace;
+  tx.anisotropy = getMaxAnisotropy();
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x000000,
+    roughness: 0.55,
+    metalness: 0.05,
+    emissive: 0xffffff,
+    emissiveMap: tx,
+    emissiveIntensity: 1.15,
+  });
+
+  const entry: ScreenRegistry['boardScreens'][number] = {
+    g: cv.getContext('2d')!,
+    tx,
+    mat,
+    w: logicalW,
+    h: logicalH,
+    fn,
+  };
+  reg.boardScreens.push(entry);
+  fn(entry.g, logicalW, logicalH, 0);
+  tx.needsUpdate = true;
+  return {
+    mat,
+    setMesh: (m: THREE.Mesh) => {
+      entry.mesh = m;
+    },
+  };
+}
+
 const _tvFr = new THREE.Frustum();
 const _tvM = new THREE.Matrix4();
 const _wsV = new THREE.Vector3();
@@ -1446,6 +1487,9 @@ export function updateAllScreens(
   if (t - scrLast >= 0.65) {
     scrLast = t;
     for (const b of reg.boardScreens) {
+      if (b.mesh && (!_tvFr.intersectsObject(b.mesh) || b.mesh.position.distanceTo(camera.position) > 135)) {
+        continue;
+      }
       b.fn(b.g, b.w, b.h, t);
       b.tx.needsUpdate = true;
     }

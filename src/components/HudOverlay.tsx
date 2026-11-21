@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Brain,
+  Building2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -18,10 +19,12 @@ import {
   X,
 } from 'lucide-react';
 import { TOUR_TEXT, type HudSnapshot } from '../scene/constants';
+import { DISTRICT_BUILDINGS, type BuildingId } from '../scene/districtData';
 import { WorkstationInspector } from './WorkstationInspector';
 
 interface HudOverlayProps {
   hud: HudSnapshot;
+  onSelectBuilding: (id: BuildingId) => void;
   onSelectLevel: (key: string) => void;
   onStartTour: () => void;
   onEndTour: () => void;
@@ -44,18 +47,20 @@ interface HudOverlayProps {
   onOpenCharacters: () => void;
 }
 
-const LEVELS: Array<{ key: string; label: string }> = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'roof', label: 'Roof' },
-  { key: '5', label: 'L5' },
-  { key: '4', label: 'L4' },
-  { key: '3', label: 'L3' },
-  { key: '2', label: 'L2' },
-  { key: '1', label: 'L1' },
-  { key: '0', label: 'G' },
-  { key: 'b1', label: 'B1' },
-  { key: 'b2', label: 'B2' },
-];
+function getFloorButtons(buildingId: BuildingId, totalFloors: number): Array<{ key: string; label: string }> {
+  const out: Array<{ key: string; label: string }> = [
+    { key: 'overview', label: 'Overview' },
+    { key: 'roof', label: 'Roof' },
+  ];
+  for (let lv = totalFloors - 1; lv >= 1; lv--) {
+    out.push({ key: String(lv), label: `L${lv}` });
+  }
+  out.push({ key: '0', label: 'G' });
+  if (buildingId === 'hub') {
+    out.push({ key: 'b1', label: 'B1' }, { key: 'b2', label: 'B2' });
+  }
+  return out;
+}
 
 const RATES = [
   { rate: 0, label: 'Pause' },
@@ -74,6 +79,7 @@ const TIME_PRESETS = [
 
 export const HudOverlay: React.FC<HudOverlayProps> = ({
   hud,
+  onSelectBuilding,
   onSelectLevel,
   onStartTour,
   onEndTour,
@@ -137,14 +143,24 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
   };
 
   const hoverDescription = hud.hoveredRoom ? TOUR_TEXT[hud.hoveredRoom.title] : undefined;
+  const floorButtons = getFloorButtons(hud.activeBuilding, hud.buildingFloors);
+  const walkFloorIndices = Array.from({ length: Math.max(1, hud.buildingFloors) }, (_, i) => i);
 
   return (
     <div className="pointer-events-none fixed inset-0 z-10 select-none text-slate-100">
       {/* Top Bar: Identity + Clock + Dock Toggle */}
       <div className="flex items-start justify-between gap-4 p-3 sm:p-4">
         <div className="pointer-events-auto border border-white/12 bg-[#0d121a]/92 px-3.5 py-2.5 rounded-md shadow-lg">
-          <div className="flex items-center text-xs tracking-wider uppercase text-emerald-400 font-semibold">
-            <span>DomainTechHub Office</span>
+          <div className="flex flex-wrap items-center gap-2 text-xs tracking-wider uppercase font-semibold">
+            <span
+              className="inline-block h-2 w-2 rounded-xs shrink-0"
+              style={{ backgroundColor: hud.activeBuildingAccent }}
+            />
+            <span style={{ color: hud.activeBuildingAccent }}>{hud.activeBuildingName}</span>
+            <span className="text-slate-500 font-normal">·</span>
+            <span className="text-[11px] font-medium normal-case tracking-normal text-slate-300">
+              {hud.activeBuildingNiche}
+            </span>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-300">
             <span className="font-mono-tabular font-semibold text-white">{hud.timeText}</span>
@@ -511,12 +527,12 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
               </div>
 
               <div className="flex items-center gap-1">
-                {[0, 1, 2, 3, 4, 5].map((lv) => (
+                {walkFloorIndices.map((lv) => (
                   <button
                     key={lv}
                     type="button"
                     onClick={() => onSetWalkFloor(lv)}
-                    className={`px-2 py-1 text-[11px] font-mono-tabular rounded transition-colors cursor-pointer ${
+                    className={`px-2 py-1 text-[11px] font-mono-tabular rounded transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                       hud.walkFloor === lv
                         ? 'bg-emerald-500 text-slate-950 font-semibold'
                         : 'bg-white/8 text-slate-300 hover:bg-white/15'
@@ -528,14 +544,14 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                 <button
                   type="button"
                   onClick={onToggleWalk}
-                  className="ml-2 border border-rose-500/40 bg-rose-500/15 hover:bg-rose-500/25 text-rose-200 px-2.5 py-1 text-xs font-medium rounded cursor-pointer"
+                  className="ml-2 border border-rose-500/40 bg-rose-500/15 hover:bg-rose-500/25 text-rose-200 px-2.5 py-1 text-xs font-medium rounded cursor-pointer whitespace-nowrap shrink-0"
                 >
                   Exit [Esc]
                 </button>
               </div>
             </div>
             <p className="mt-1.5 text-[11px] text-slate-400 font-mono-tabular">
-              WASD move · Shift run · 0–5 or R/F floor · Click canvas to lock mouse look · Esc exit
+              WASD move across plaza & into open doors · Shift run · 0–{Math.max(0, hud.buildingFloors - 1)} or R/F floor · Esc exit
             </p>
           </div>
 
@@ -564,18 +580,48 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
 
       {/* Collapsible Bottom Control Dock */}
       {!hud.walking && dockOpen && (
-        <div className="pointer-events-auto fixed bottom-3 left-1/2 -translate-x-1/2 w-[min(96vw,1060px)] border border-white/12 bg-[#0d121a]/92 px-3 py-2.5 rounded-md shadow-2xl">
+        <div className="pointer-events-auto fixed bottom-3 left-1/2 -translate-x-1/2 w-[min(96vw,1080px)] border border-white/12 bg-[#0d121a]/92 px-3 py-2.5 rounded-md shadow-2xl">
+          {/* Building Switcher Row */}
+          <div className="pb-2 mb-2 border-b border-white/10 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-slate-400 mr-1 shrink-0">
+              <Building2 className="w-3.5 h-3.5 text-slate-400" />
+              <span>District</span>
+            </span>
+            {DISTRICT_BUILDINGS.map((b) => {
+              const active = hud.activeBuilding === b.id;
+              return (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={() => onSelectBuilding(b.id)}
+                  title={`${b.name} · ${b.niche}`}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                    active
+                      ? 'bg-white/15 border-white/35 text-white font-semibold'
+                      : 'bg-white/4 border-white/8 text-slate-300 hover:bg-white/10 hover:text-white'
+                  }`}
+                >
+                  <span
+                    className="inline-block h-2 w-2 rounded-xs shrink-0"
+                    style={{ backgroundColor: b.accent }}
+                  />
+                  <span>{b.shortName}</span>
+                </button>
+              );
+            })}
+          </div>
+
           <div className="flex flex-wrap items-center justify-between gap-2.5">
             {/* Floor Selector */}
             <div className="flex items-center gap-1 overflow-x-auto no-scrollbar max-w-full">
-              {LEVELS.map((lv) => {
+              {floorButtons.map((lv) => {
                 const active = hud.activeLevel === lv.key;
                 return (
                   <button
                     key={lv.key}
                     type="button"
                     onClick={() => onSelectLevel(lv.key)}
-                    className={`px-2.5 py-1.5 text-xs font-medium rounded transition-colors cursor-pointer shrink-0 ${
+                    className={`px-2.5 py-1.5 text-xs font-medium rounded transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                       active
                         ? 'bg-emerald-500 text-slate-950 font-semibold'
                         : 'bg-white/5 text-slate-300 hover:bg-white/12 hover:text-white'

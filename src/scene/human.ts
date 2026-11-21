@@ -135,6 +135,20 @@ export const JK = [
   'fRy',
 ] as const;
 
+export const SEATED_POSES: ReadonlySet<string> = new Set([
+  'type',
+  'sit',
+  'sitTalk',
+  'sitCollaborate',
+  'meeting',
+  'monitorLook',
+  'sitReadDoc',
+  'writeNotes',
+  'think',
+  'phone',
+  'leanScreen',
+]);
+
 export const POSES: Record<string, Record<string, number>> = {
   stand: {
     hipY: 0.9,
@@ -1969,10 +1983,10 @@ export function setPose(P: PersonActor, name: string, P_LIB: HumanPalette) {
       P.fp = P.mk(G.laptop, P_LIB.laptopProp, P.tor, 0, 0, 0, 1, 1, 1, false);
     }
     if (name === 'sit') {
-      // Rests squarely on desk surface (y=0.80 world -> y_tor=0.256) directly under fingers
+      // Rests squarely on desk surface (y=0.80 world -> center y=0.808 -> y_tor=0.246) directly under fingers
       P.fp.geometry = G.laptop;
       P.fp.material = P_LIB.laptopProp;
-      P.fp.position.set(0, 0.256, 0.47);
+      P.fp.position.set(0, 0.246, 0.47);
       P.fp.rotation.set(0, 0, 0);
     } else if (name === 'readDoc' || name === 'sitReadDoc') {
       // Held between both left and right palms in front of torso

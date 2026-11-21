@@ -15,6 +15,12 @@ import {
   type SelectedCharacterSnapshot,
 } from './constants';
 import type { PersonActor } from './human';
+import {
+  DISTRICT_BUILDING_MAP,
+  getBuildingFloorView,
+  getBuildingRoofView,
+  type BuildingId,
+} from './districtData';
 import { createMaterials } from './materials';
 import { createScreenRegistry, updateAllScreens, type ScreenRegistry } from './screens';
 import { AtriumSimulation } from './simulation';
@@ -56,12 +62,15 @@ export class AtriumEngine {
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointerNdc = new THREE.Vector2(-9, -9);
 
+  private activeBuilding: BuildingId = 'hub';
   private activeLevel = 'overview';
   private hoveredRoom: { title: string; sub: string; color: string; hint?: string } | null = null;
   private inspectedMonitor: MonitorPickTarget | null = null;
   private selectedActor: PersonActor | null = null;
   private followSelectedActor = false;
   private readonly monitorMeshMap = new Map<THREE.Object3D, MonitorPickTarget>();
+  private readonly buildingPickMap = new Map<THREE.Object3D, BuildingId>();
+  private readonly buildingPickList: Array<{ mesh: THREE.Object3D; buildingId: BuildingId }> = [];
   private downX = 0;
   private downY = 0;
   private rafId = 0;
@@ -216,11 +225,13 @@ export class AtriumEngine {
     this.screenReg = createScreenRegistry();
     this.arch = buildSceneArchitecture(this.scene, M, this.screenReg);
 
-    // Build dynamic office simulation (staff, Zuri, vehicles, walk controls)
+    // Build dynamic office simulation (staff, district NPCs, Zuri, vehicles, walk controls)
     this.sim = new AtriumSimulation(
       this.scene,
       M,
       this.arch.cabs,
+      this.arch.officeChairs,
+      this.arch.districtBuildings,
       () => this.audio.playFootstep()
     );
     this.unwireWalk = this.sim.wireWalk(this.renderer.domElement, this.camera, this.controls);
@@ -266,6 +277,12 @@ export class AtriumEngine {
     for (const mp of this.arch.monitorPicks) {
       for (const m of mp.meshes) {
         this.monitorMeshMap.set(m, mp);
+      }
+    }
+    for (const [bId, db] of this.arch.districtBuildings) {
+      for (const m of db.pickMeshes) {
+        this.buildingPickMap.set(m, bId);
+        this.buildingPickList.push({ mesh: m, buildingId: bId });
       }
     }
 
@@ -448,14 +465,7 @@ export class AtriumEngine {
   private getCutawayLevelIndex(): number | null {
     if (this.activeLevel === 'b1') return -1;
     if (this.activeLevel === 'b2') return -2;
-    if (
-      this.activeLevel === '0' ||
-      this.activeLevel === '1' ||
-      this.activeLevel === '2' ||
-      this.activeLevel === '3' ||
-      this.activeLevel === '4' ||
-      this.activeLevel === '5'
-    ) {
+    if (/^\d+$/.test(this.activeLevel)) {
       return Number(this.activeLevel);
     }
     return null;
@@ -463,12 +473,16 @@ export class AtriumEngine {
 
   private updateFloorCutaway(dt: number) {
     const cut = this.getCutawayLevelIndex();
+    let moving = false;
 
-    if (cut === null) {
+    // 1. Animate Hub floors & roof (only active when activeBuilding === 'hub' and cut !== null)
+    const hubCut = this.activeBuilding === 'hub' ? cut : null;
+    if (hubCut === null) {
       this.arch.roofShellGroup.visible = true;
       const prevRoofY = this.arch.roofShellGroup.position.y;
-      this.arch.roofShellGroup.position.y = Math.abs(prevRoofY) < 0.01 ? 0 : THREE.MathUtils.damp(prevRoofY, 0, 7.5, dt);
-      let moving = Math.abs(this.arch.roofShellGroup.position.y) > 0.01;
+      this.arch.roofShellGroup.position.y =
+        Math.abs(prevRoofY) < 0.01 ? 0 : THREE.MathUtils.damp(prevRoofY, 0, 7.5, dt);
+      if (Math.abs(this.arch.roofShellGroup.position.y) > 0.01) moving = true;
       for (let s = 0; s < this.arch.levelGroups.length; s++) {
         const lg = this.arch.levelGroups[s];
         lg.visible = true;
@@ -476,53 +490,109 @@ export class AtriumEngine {
         if (Math.abs(lg.position.y) > 0.01) moving = true;
         this.arch.levelCeilings[s].visible = true;
       }
-      this.cutawayAnimating = moving;
-      this.arch.b1Group.visible = true;
-      this.arch.b1Ceiling.visible = true;
-      this.arch.b2Group.visible = true;
-      this.arch.b2Ceiling.visible = true;
-      this.sim.setCutawayRange(-0.5, null);
-      for (const b of this.overheadBadges) b.sprite.visible = false;
-      return;
-    }
-
-    // Lift & clear roof when inspecting any floor below roof
-    this.arch.roofShellGroup.position.y =
-      Math.abs(26 - this.arch.roofShellGroup.position.y) < 0.02
-        ? 26
-        : THREE.MathUtils.damp(this.arch.roofShellGroup.position.y, 26, 7.0, dt);
-    this.arch.roofShellGroup.visible = this.arch.roofShellGroup.position.y < 14;
-    let moving = Math.abs(26 - this.arch.roofShellGroup.position.y) > 0.02;
-
-    for (let s = 0; s < this.arch.levelGroups.length; s++) {
-      const lg = this.arch.levelGroups[s];
-      const isAbove = s > cut;
-      const targetY = isAbove ? 26 : 0;
-      lg.position.y =
-        Math.abs(targetY - lg.position.y) < 0.02 ? targetY : THREE.MathUtils.damp(lg.position.y, targetY, 7.0, dt);
-      if (Math.abs(targetY - lg.position.y) > 0.02) moving = true;
-      lg.visible = isAbove ? lg.position.y < 14 : true;
-      this.arch.levelCeilings[s].visible = s !== cut;
-    }
-    this.cutawayAnimating = moving;
-
-    if (cut === -1) {
-      this.arch.basementGroup.visible = true;
-      this.arch.b1Group.visible = true;
-      this.arch.b1Ceiling.visible = false;
-      this.arch.b2Group.visible = true;
-      this.arch.b2Ceiling.visible = true;
-      this.sim.setCutawayRange(BASE[0].y - 0.5, BASE[0].y + 3.8);
-    } else if (cut === -2) {
-      this.arch.basementGroup.visible = true;
-      this.arch.b1Group.visible = false;
-      this.arch.b2Group.visible = true;
-      this.arch.b2Ceiling.visible = false;
-      this.sim.setCutawayRange(BASE[1].y - 0.5, BASE[1].y + 3.8);
+      if (this.activeBuilding !== 'hub') {
+        this.arch.basementGroup.visible = false;
+      } else {
+        this.arch.b1Group.visible = true;
+        this.arch.b1Ceiling.visible = true;
+        this.arch.b2Group.visible = true;
+        this.arch.b2Ceiling.visible = true;
+      }
     } else {
-      this.arch.basementGroup.visible = false;
-      this.sim.setCutawayRange(-0.5, LV[cut] + 3.7);
+      this.arch.roofShellGroup.position.y =
+        Math.abs(26 - this.arch.roofShellGroup.position.y) < 0.02
+          ? 26
+          : THREE.MathUtils.damp(this.arch.roofShellGroup.position.y, 26, 7.0, dt);
+      this.arch.roofShellGroup.visible = this.arch.roofShellGroup.position.y < 14;
+      if (Math.abs(26 - this.arch.roofShellGroup.position.y) > 0.02) moving = true;
+
+      for (let s = 0; s < this.arch.levelGroups.length; s++) {
+        const lg = this.arch.levelGroups[s];
+        const isAbove = s > hubCut;
+        const targetY = isAbove ? 26 : 0;
+        lg.position.y =
+          Math.abs(targetY - lg.position.y) < 0.02 ? targetY : THREE.MathUtils.damp(lg.position.y, targetY, 7.0, dt);
+        if (Math.abs(targetY - lg.position.y) > 0.02) moving = true;
+        lg.visible = isAbove ? lg.position.y < 14 : true;
+        this.arch.levelCeilings[s].visible = s !== hubCut;
+      }
+
+      if (hubCut === -1) {
+        this.arch.basementGroup.visible = true;
+        this.arch.b1Group.visible = true;
+        this.arch.b1Ceiling.visible = false;
+        this.arch.b2Group.visible = true;
+        this.arch.b2Ceiling.visible = true;
+        this.sim.setCutawayRange(BASE[0].y - 0.5, BASE[0].y + 3.8, 'hub');
+      } else if (hubCut === -2) {
+        this.arch.basementGroup.visible = true;
+        this.arch.b1Group.visible = false;
+        this.arch.b2Group.visible = true;
+        this.arch.b2Ceiling.visible = false;
+        this.sim.setCutawayRange(BASE[1].y - 0.5, BASE[1].y + 3.8, 'hub');
+      } else {
+        this.arch.basementGroup.visible = false;
+        this.sim.setCutawayRange(-0.5, LV[hubCut] + 3.7, 'hub');
+      }
     }
+
+    // 2. Animate all 7 district buildings (open selected building when cut >= 0, close others)
+    let activeDistrictCutApplied = false;
+    for (const [bId, db] of this.arch.districtBuildings) {
+      const bCut = this.activeBuilding === bId && cut !== null && cut >= 0 ? cut : null;
+      if (bCut === null) {
+        db.roofShellGroup.visible = true;
+        const py = db.roofShellGroup.position.y;
+        db.roofShellGroup.position.y = Math.abs(py) < 0.01 ? 0 : THREE.MathUtils.damp(py, 0, 7.5, dt);
+        if (Math.abs(db.roofShellGroup.position.y) > 0.01) moving = true;
+        for (let s = 0; s < db.levelGroups.length; s++) {
+          const lg = db.levelGroups[s];
+          const cg = db.levelCeilings[s];
+          lg.visible = true;
+          lg.position.y = Math.abs(lg.position.y) < 0.01 ? 0 : THREE.MathUtils.damp(lg.position.y, 0, 7.5, dt);
+          if (cg) {
+            cg.position.y = lg.position.y;
+            cg.visible = true;
+          }
+          if (Math.abs(lg.position.y) > 0.01) moving = true;
+        }
+      } else {
+        activeDistrictCutApplied = true;
+        db.roofShellGroup.position.y =
+          Math.abs(24 - db.roofShellGroup.position.y) < 0.02
+            ? 24
+            : THREE.MathUtils.damp(db.roofShellGroup.position.y, 24, 7.0, dt);
+        db.roofShellGroup.visible = db.roofShellGroup.position.y < 14;
+        if (Math.abs(24 - db.roofShellGroup.position.y) > 0.02) moving = true;
+
+        for (let s = 0; s < db.levelGroups.length; s++) {
+          const lg = db.levelGroups[s];
+          const cg = db.levelCeilings[s];
+          const isAbove = s > bCut;
+          const targetY = isAbove ? 24 : 0;
+          lg.position.y =
+            Math.abs(targetY - lg.position.y) < 0.02 ? targetY : THREE.MathUtils.damp(lg.position.y, targetY, 7.0, dt);
+          if (Math.abs(targetY - lg.position.y) > 0.02) moving = true;
+          lg.visible = isAbove ? lg.position.y < 14 : true;
+          if (cg) {
+            cg.position.y = lg.position.y;
+            cg.visible = isAbove ? cg.position.y < 14 : s !== bCut;
+          }
+        }
+        const minY = db.spec.groundY - 0.3;
+        const maxY = db.spec.groundY + (bCut + 1) * db.spec.floorH - 0.15;
+        this.sim.setCutawayRange(minY, maxY, bId);
+      }
+    }
+
+    if (!activeDistrictCutApplied && hubCut === null) {
+      this.sim.setCutawayRange(-0.5, null, 'hub');
+      for (const b of this.overheadBadges) b.sprite.visible = false;
+    } else if (this.activeBuilding !== 'hub') {
+      for (const b of this.overheadBadges) b.sprite.visible = false;
+    }
+
+    this.cutawayAnimating = moving;
   }
 
   private handleAudioUnlock = () => {
@@ -724,17 +794,28 @@ export class AtriumEngine {
     this.raycaster.setFromCamera(this.pointerNdc, this.camera);
 
     const cut = this.getCutawayLevelIndex();
-    const visiblePicks = this.arch.picks.filter((p) => cut === null || p.room.lv <= cut);
+    const visiblePicks =
+      this.activeBuilding === 'hub' ? this.arch.picks.filter((p) => cut === null || p.room.lv <= cut) : [];
     const visibleMonitorMeshes = this.arch.monitorPicks
-      .filter((m) => cut === null || m.lv <= cut)
+      .filter((m) => {
+        const bId = m.buildingId ?? 'hub';
+        if (cut !== null) {
+          return bId === this.activeBuilding && m.lv <= cut;
+        }
+        return m.lv === 0 || bId === 'hub';
+      })
       .flatMap((m) => m.meshes);
-    const targets = [...visibleMonitorMeshes, ...visiblePicks.map((p) => p.mesh)];
+    const visibleBuildingMeshes = this.buildingPickList
+      .filter((b) => b.buildingId !== this.activeBuilding)
+      .map((b) => b.mesh);
+    const targets = [...visibleMonitorMeshes, ...visiblePicks.map((p) => p.mesh), ...visibleBuildingMeshes];
     const hits = this.raycaster.intersectObjects(targets, false);
     const actorHit = this.pickActorUnderPointer();
 
     let nextHover: { title: string; sub: string; color: string; hint?: string } | null = null;
     const firstHit = hits[0];
     const firstMonMatch = firstHit ? this.monitorMeshMap.get(firstHit.object) : undefined;
+    const firstBuildingId = firstHit ? this.buildingPickMap.get(firstHit.object) : undefined;
 
     if (actorHit && (!firstMonMatch || actorHit.distance <= firstHit.distance + 0.15)) {
       const brain = actorHit.actor.brain!;
@@ -747,7 +828,8 @@ export class AtriumEngine {
     } else if (firstHit) {
       const hitObj = firstHit.object;
       if (firstMonMatch) {
-        const ws = this.sim.getMonitorWorkerStatus(firstMonMatch.lv, firstMonMatch.seatX, firstMonMatch.seatZ);
+        const bId = firstMonMatch.buildingId ?? 'hub';
+        const ws = this.sim.getMonitorWorkerStatus(firstMonMatch.lv, firstMonMatch.seatX, firstMonMatch.seatZ, bId);
         nextHover = {
           title: firstMonMatch.role,
           sub: `${firstMonMatch.zone} · ${ws.workerActivity}`,
@@ -763,6 +845,14 @@ export class AtriumEngine {
             sub: r.sub || `Level ${r.lv} · Department Bay`,
             color: `#${r.c.toString(16).padStart(6, '0')}`,
             hint: 'Click room to go straight there',
+          };
+        } else if (firstBuildingId) {
+          const bSpec = DISTRICT_BUILDING_MAP[firstBuildingId];
+          nextHover = {
+            title: bSpec.name,
+            sub: `${bSpec.niche} · ${bSpec.floors} Floors`,
+            color: bSpec.accent,
+            hint: 'Click building to enter & explore floors',
           };
         }
       }
@@ -792,15 +882,26 @@ export class AtriumEngine {
     this.raycaster.setFromCamera(this.pointerNdc, this.camera);
 
     const cut = this.getCutawayLevelIndex();
-    const visiblePicks = this.arch.picks.filter((p) => cut === null || p.room.lv <= cut);
+    const visiblePicks =
+      this.activeBuilding === 'hub' ? this.arch.picks.filter((p) => cut === null || p.room.lv <= cut) : [];
     const visibleMonitorMeshes = this.arch.monitorPicks
-      .filter((m) => cut === null || m.lv <= cut)
+      .filter((m) => {
+        const bId = m.buildingId ?? 'hub';
+        if (cut !== null) {
+          return bId === this.activeBuilding && m.lv <= cut;
+        }
+        return m.lv === 0 || bId === 'hub';
+      })
       .flatMap((m) => m.meshes);
-    const targets = [...visibleMonitorMeshes, ...visiblePicks.map((p) => p.mesh)];
+    const visibleBuildingMeshes = this.buildingPickList
+      .filter((b) => b.buildingId !== this.activeBuilding)
+      .map((b) => b.mesh);
+    const targets = [...visibleMonitorMeshes, ...visiblePicks.map((p) => p.mesh), ...visibleBuildingMeshes];
     const hits = this.raycaster.intersectObjects(targets, false);
     const actorHit = this.pickActorUnderPointer();
     const firstHit = hits[0];
     const firstMonMatch = firstHit ? this.monitorMeshMap.get(firstHit.object) : undefined;
+    const firstBuildingId = firstHit ? this.buildingPickMap.get(firstHit.object) : undefined;
 
     if (actorHit && (!firstMonMatch || actorHit.distance <= firstHit.distance + 0.15)) {
       this.selectActor(actorHit.actor);
@@ -824,6 +925,7 @@ export class AtriumEngine {
       this.followSelectedActor = false;
       this.arch.basementGroup.visible = false;
       this.arch.plazaGroup.visible = true;
+      this.activeBuilding = 'hub';
       this.activeLevel = String(match.room.lv);
       const cx =
         'cx' in match.room && match.room.cx != null
@@ -843,6 +945,11 @@ export class AtriumEngine {
         new THREE.Vector3(cx, y0 + 1.45, 3.8)
       );
       this.emitHud();
+      return;
+    }
+
+    if (firstBuildingId) {
+      this.selectBuilding(firstBuildingId);
     }
   };
 
@@ -854,6 +961,7 @@ export class AtriumEngine {
     this.inspectedMonitor = mon;
     this.arch.basementGroup.visible = false;
     this.arch.plazaGroup.visible = true;
+    this.activeBuilding = mon.buildingId ?? 'hub';
     this.activeLevel = String(mon.lv);
     mon.screenRef.next = 0;
     // Fly camera straight to an angled 3/4 over-the-shoulder view so the worker and screen are clearly visible
@@ -1043,7 +1151,7 @@ export class AtriumEngine {
   private buildInspectedMonitorHud(): InspectedMonitor | null {
     const m = this.inspectedMonitor;
     if (!m) return null;
-    const ws = this.sim.getMonitorWorkerStatus(m.lv, m.seatX, m.seatZ);
+    const ws = this.sim.getMonitorWorkerStatus(m.lv, m.seatX, m.seatZ, m.buildingId ?? 'hub');
     return {
       id: m.id,
       stationKey: m.stationKey,
@@ -1063,21 +1171,29 @@ export class AtriumEngine {
     const a = this.selectedActor;
     if (!a || !a.brain || !this.sim.isStaffVisible()) return null;
     const b = a.brain;
-    const y = a.g.position.y;
+    const distActor = a as PersonActor & { buildingId?: string; lv?: number };
     let levelLabel = 'Ground (G)';
-    if (y < -6.5) levelLabel = 'Basement 2 (B2)';
-    else if (y < -2.0) levelLabel = 'Basement 1 (B1)';
-    else {
-      let bestLv = 0;
-      let bestDiff = Infinity;
-      for (let i = 0; i < LV.length; i++) {
-        const d = Math.abs(y - LV[i]);
-        if (d < bestDiff) {
-          bestDiff = d;
-          bestLv = i;
+    if (distActor.buildingId === 'street') {
+      levelLabel = 'Street Promenade (G)';
+    } else if (distActor.buildingId && distActor.buildingId !== 'hub') {
+      const dlv = distActor.lv ?? 0;
+      levelLabel = dlv === 0 ? 'Ground (G)' : `Level ${dlv}`;
+    } else {
+      const y = a.g.position.y;
+      if (y < -6.5) levelLabel = 'Basement 2 (B2)';
+      else if (y < -2.0) levelLabel = 'Basement 1 (B1)';
+      else {
+        let bestLv = 0;
+        let bestDiff = Infinity;
+        for (let i = 0; i < LV.length; i++) {
+          const d = Math.abs(y - LV[i]);
+          if (d < bestDiff) {
+            bestDiff = d;
+            bestLv = i;
+          }
         }
+        levelLabel = bestLv === 0 ? 'Ground (G)' : `Level ${bestLv}`;
       }
-      levelLabel = bestLv === 0 ? 'Ground (G)' : `Level ${bestLv}`;
     }
     return {
       id: b.identity.id,
@@ -1107,10 +1223,12 @@ export class AtriumEngine {
       this.hoveredRoom,
       this.audio.isEnabled(),
       this.buildInspectedMonitorHud(),
-      this.buildSelectedCharacterHud()
+      this.buildSelectedCharacterHud(),
+      this.activeBuilding
     );
     const cut = this.getCutawayLevelIndex();
     if (
+      this.activeBuilding === 'hub' &&
       cut !== null &&
       snap.floorActivity &&
       !this.sim.walkOn &&
@@ -1160,9 +1278,12 @@ export class AtriumEngine {
     this.markInteraction();
     const pos = a.g.position;
     const cut = this.getCutawayLevelIndex();
+    const distA = a as PersonActor & { buildingId?: BuildingId };
+    const bSpec = distA.buildingId && DISTRICT_BUILDING_MAP[distA.buildingId];
+    const zOffset = bSpec && bSpec.doorSide === 'north' ? -7.6 : 7.6;
     const camX = pos.x + (pos.x > 0 ? -0.55 : 0.55);
     const camY = pos.y + (cut !== null ? 3.2 : 2.35);
-    const camZ = Math.min(19.5, pos.z + 7.6);
+    const camZ = pos.z + zOffset;
     this.sim.flyTo(
       new THREE.Vector3(camX, camY, camZ),
       new THREE.Vector3(pos.x + 0.55, pos.y + 1.25, pos.z)
@@ -1187,6 +1308,22 @@ export class AtriumEngine {
     this.emitHud();
   }
 
+  public selectBuilding(id: BuildingId) {
+    this.markInteraction();
+    if (this.sim.walkOn) this.sim.exitWalk(this.camera, this.controls);
+    if (this.sim.tourOn) this.sim.endTour();
+    this.inspectedMonitor = null;
+    this.selectedActor = null;
+    this.followSelectedActor = false;
+    this.activeBuilding = id;
+    this.activeLevel = 'overview';
+    this.arch.basementGroup.visible = false;
+    this.arch.plazaGroup.visible = true;
+    const spec = DISTRICT_BUILDING_MAP[id];
+    this.sim.flyTo(new THREE.Vector3(...spec.overviewCam.p), new THREE.Vector3(...spec.overviewCam.t));
+    this.emitHud();
+  }
+
   public selectLevel(key: string) {
     this.markInteraction();
     if (this.sim.walkOn) this.sim.exitWalk(this.camera, this.controls);
@@ -1196,15 +1333,32 @@ export class AtriumEngine {
     this.followSelectedActor = false;
     this.activeLevel = key;
 
-    const isBasement = key === 'b1' || key === 'b2';
-    this.arch.basementGroup.visible = isBasement;
-    this.arch.plazaGroup.visible = !isBasement;
+    if (this.activeBuilding === 'hub') {
+      const isBasement = key === 'b1' || key === 'b2';
+      this.arch.basementGroup.visible = isBasement;
+      this.arch.plazaGroup.visible = !isBasement;
 
-    if (key === 'overview') {
-      this.sim.flyTo(new THREE.Vector3(0, 16, 49), new THREE.Vector3(0, 12.2, 4));
-    } else if (VIEWS[key]) {
-      const v = VIEWS[key];
-      this.sim.flyTo(new THREE.Vector3(...v.p), new THREE.Vector3(...v.t));
+      if (key === 'overview') {
+        this.sim.flyTo(new THREE.Vector3(0, 16, 49), new THREE.Vector3(0, 12.2, 4));
+      } else if (VIEWS[key]) {
+        const v = VIEWS[key];
+        this.sim.flyTo(new THREE.Vector3(...v.p), new THREE.Vector3(...v.t));
+      }
+    } else {
+      this.arch.basementGroup.visible = false;
+      this.arch.plazaGroup.visible = true;
+      const spec = DISTRICT_BUILDING_MAP[this.activeBuilding];
+      if (key === 'overview') {
+        this.sim.flyTo(new THREE.Vector3(...spec.overviewCam.p), new THREE.Vector3(...spec.overviewCam.t));
+      } else if (key === 'roof') {
+        const rv = getBuildingRoofView(spec);
+        this.sim.flyTo(new THREE.Vector3(...rv.p), new THREE.Vector3(...rv.t));
+      } else {
+        const lv = Math.max(0, Math.min(spec.floors - 1, Number(key) || 0));
+        this.activeLevel = String(lv);
+        const fv = getBuildingFloorView(spec, lv);
+        this.sim.flyTo(new THREE.Vector3(...fv.p), new THREE.Vector3(...fv.t));
+      }
     }
     this.emitHud();
   }
@@ -1214,6 +1368,7 @@ export class AtriumEngine {
     this.inspectedMonitor = null;
     this.selectedActor = null;
     this.followSelectedActor = false;
+    this.activeBuilding = 'hub';
     this.arch.basementGroup.visible = false;
     this.arch.plazaGroup.visible = true;
     this.activeLevel = 'tour';
@@ -1258,7 +1413,7 @@ export class AtriumEngine {
       this.arch.basementGroup.visible = false;
       this.arch.plazaGroup.visible = true;
       this.activeLevel = 'walk';
-      this.sim.enterWalk(this.camera, this.controls);
+      this.sim.enterWalk(this.camera, this.controls, this.activeBuilding);
     }
     this.emitHud();
   }

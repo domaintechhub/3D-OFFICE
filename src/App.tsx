@@ -10,6 +10,11 @@ const INITIAL_HUD: HudSnapshot = {
   timeText: '09:25',
   shiftLabel: 'Morning shift',
   statsLabel: 'Initializing office scene…',
+  activeBuilding: 'hub',
+  activeBuildingName: 'DomainTechHub Office',
+  activeBuildingNiche: 'Software & Digital Agency',
+  activeBuildingAccent: '#6fe3a1',
+  buildingFloors: 6,
   activeLevel: 'overview',
   staffVisible: true,
   walking: false,
@@ -74,6 +79,7 @@ export default function App() {
       <div ref={mountRef} className="w-full h-full" />
       <HudOverlay
         hud={hud}
+        onSelectBuilding={(id) => engineRef.current?.selectBuilding(id)}
         onSelectLevel={(k) => engineRef.current?.selectLevel(k)}
         onStartTour={() => engineRef.current?.startTour(0)}
         onEndTour={() => engineRef.current?.endTour()}

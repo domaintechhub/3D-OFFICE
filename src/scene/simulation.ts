@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import type { LiftCabState } from './architecture';
+import type { LiftCabState, OfficeChairHandle } from './architecture';
 import type { AmbientSource } from './audio';
 import {
   BASE,
@@ -25,11 +25,19 @@ import {
   type TourStop,
 } from './constants';
 import {
+  DISTRICT_BUILDINGS,
+  DISTRICT_BUILDING_MAP,
+  type BuildingId,
+} from './districtData';
+import type { DistrictBuildingHandle } from './districtBuildings';
+import { DistrictSim } from './districtSim';
+import {
   createGuideActor,
   createHumanPalette,
   makePerson,
   MODES,
   pickMode,
+  SEATED_POSES,
   setPose,
   updatePersonKinematics,
   type HumanPalette,
@@ -49,9 +57,14 @@ import type { MaterialLibrary } from './materials';
 import { getRoundedBox, makeCar } from './props';
 import {
   buildObstacleAwarePath,
+  clearTrackedChairs,
   getChairDockPoint,
+  hasLineOfSight,
+  registerTrackedChairsForFloor,
+  resolveDistrictObstacle,
   resolveObstaclePosition,
-  type IgnoreChairCircle,
+  type TrackedChairCollider,
+  type VehicleObb,
 } from './obstacles';
 import { plateTex } from './textures';
 
@@ -69,6 +82,8 @@ type WorkerActor = PersonActor & {
   _w2?: number;
   navQueue?: Array<{ x: number; z: number }>;
   navKey?: string;
+  chair?: OfficeChairHandle;
+  chairCollider?: TrackedChairCollider;
 };
 
 type DayVisitorActor = PersonActor & {
@@ -84,6 +99,8 @@ type DayVisitorActor = PersonActor & {
   _w2?: number;
   navQueue?: Array<{ x: number; z: number }>;
   navKey?: string;
+  chair?: OfficeChairHandle;
+  chairCollider?: TrackedChairCollider;
 };
 
 type BasementCrewActor = PersonActor & {
@@ -105,8 +122,11 @@ interface FreeAgentState {
   walkSpeed: number;
   isDeskWorker: boolean;
   stuckTime: number;
+  replanCount: number;
   lastX: number;
   lastZ: number;
+  chair?: OfficeChairHandle;
+  chairCollider?: TrackedChairCollider;
 }
 
 const DEPT_ROLE: Record<string, string> = {
@@ -176,6 +196,12 @@ export class AtriumSimulation {
   private readonly BASEMENT_STAFF: BasementCrewActor[] = [];
   private secOffActor!: PersonActor;
   private readonly freeAgents = new Map<PersonActor, FreeAgentState>();
+  private readonly chairPairs: Array<{
+    handle: OfficeChairHandle;
+    collider: TrackedChairCollider;
+    occupants: PersonActor[];
+  }> = [];
+  private readonly _walkVehicles: VehicleObb[] = [];
   private readonly TRAF: TrafficVehicle[] = [];
   private readonly LOT: Array<{ sd: number; x: number; z: number; face: number }> = [];
   private readonly PLOCK: Array<{ x: number; z: number; r: number }> = [];
@@ -210,6 +236,7 @@ export class AtriumSimulation {
   // First-person walk state
   public walkOn = false;
   public walkLocked = false;
+  private walkBuildingId: BuildingId = 'hub';
   private walkFloor = 0;
   private walkPos = new THREE.Vector3(0, 1.65, 22);
   private walkYaw = 0;
@@ -226,6 +253,7 @@ export class AtriumSimulation {
   private readonly ambientSources: AmbientSource[] = [];
   private cutawayMinY: number | null = null;
   private cutawayMaxY: number | null = null;
+  private readonly districtSim: DistrictSim;
 
   // Pre-allocated scratch vectors for zero-GC update loops
   private readonly _v1 = new THREE.Vector3();
@@ -247,12 +275,44 @@ export class AtriumSimulation {
     scene: THREE.Scene,
     M: MaterialLibrary,
     cabs: Record<number, LiftCabState>,
+    officeChairs: OfficeChairHandle[],
+    districtBuildings: Map<BuildingId, DistrictBuildingHandle>,
     onFootstep?: () => void
   ) {
     this.scene = scene;
     this.P_LIB = createHumanPalette(M);
     this.cabs = cabs;
     this.onFootstep = onFootstep;
+
+    clearTrackedChairs();
+    const byFloor = new Map<number, TrackedChairCollider[]>();
+    for (const ch of officeChairs) {
+      const r =
+        ch.lv === 4 && Math.abs(ch.restX) > 6
+          ? 0.36
+          : ch.lv === 5 && Math.abs(ch.restX - 13) < 0.5
+            ? 0.36
+            : (ch.lv === 4 && Math.abs(ch.restX) <= 6.2) || ch.lv === 5
+              ? 0.35
+              : 0.34;
+      const collider: TrackedChairCollider = {
+        restX: ch.restX,
+        restZ: ch.restZ,
+        curX: ch.curX,
+        curZ: ch.curZ,
+        r,
+      };
+      this.chairPairs.push({ handle: ch, collider, occupants: [] });
+      let list = byFloor.get(ch.lv);
+      if (!list) {
+        list = [];
+        byFloor.set(ch.lv, list);
+      }
+      list.push(collider);
+    }
+    for (const [lv, list] of byFloor) {
+      registerTrackedChairsForFloor(lv, list);
+    }
 
     scene.add(this.peopleGroup);
     scene.add(this.trafficGroup);
@@ -275,7 +335,7 @@ export class AtriumSimulation {
     this.guideActor = guide.actor;
     this.guideMarker = guide.marker;
     this.guideMeshes = guide.meshes;
-    this.guideActor.g.position.set(14.5, 0, LANE);
+    this.guideActor.g.position.set(14.5, 0, 9.65);
     this.guideActor.tyaw = -0.3;
     setPose(this.guideActor, 'stand', this.P_LIB);
     this.peopleGroup.add(this.guideActor.g);
@@ -292,7 +352,7 @@ export class AtriumSimulation {
         topicKey: 'guide',
         homeLv: 0,
         homeX: 14.5,
-        homeZ: LANE,
+        homeZ: 9.65,
         homeFace: -0.3,
         homePose: 'stand',
       },
@@ -302,9 +362,55 @@ export class AtriumSimulation {
 
     this.STOPS = this.buildTourStops();
     this.populateOfficeStaff(M);
+    this.bindChairsToStaff();
+    this.districtSim = new DistrictSim(scene, M, this.P_LIB, districtBuildings);
     this.populateTrafficAndParking();
     this.initAmbientSources();
     this.snapAll();
+  }
+
+  private bindChairsToStaff() {
+    const findChairPair = (lv: number, x: number, z: number) => {
+      let best: (typeof this.chairPairs)[number] | null = null;
+      let bestDist = 0.35;
+      for (const pair of this.chairPairs) {
+        if (pair.handle.lv !== lv) continue;
+        const d = Math.hypot(pair.handle.restX - x, pair.handle.restZ - z);
+        if (d < bestDist) {
+          bestDist = d;
+          best = pair;
+        }
+      }
+      return best;
+    };
+
+    for (const w of this.WORKERS) {
+      const pair = findChairPair(w.d.lv, w.seat.x, w.seat.z);
+      if (pair) {
+        w.chair = pair.handle;
+        w.chairCollider = pair.collider;
+        pair.occupants.push(w);
+        const ag = this.freeAgents.get(w);
+        if (ag) {
+          ag.chair = pair.handle;
+          ag.chairCollider = pair.collider;
+        }
+      }
+    }
+
+    for (const d of this.DAYONLY) {
+      const pair = findChairPair(d.lv, d.dx, d.dz);
+      if (pair) {
+        d.chair = pair.handle;
+        d.chairCollider = pair.collider;
+        pair.occupants.push(d);
+        const ag = this.freeAgents.get(d);
+        if (ag) {
+          ag.chair = pair.handle;
+          ag.chairCollider = pair.collider;
+        }
+      }
+    }
   }
 
   private attachBrain(
@@ -327,6 +433,7 @@ export class AtriumSimulation {
       walkSpeed,
       isDeskWorker,
       stuckTime: 0,
+      replanCount: 0,
       lastX: identity.homeX,
       lastZ: identity.homeZ,
     });
@@ -404,7 +511,7 @@ export class AtriumSimulation {
           const p = this.addPerson(
             d.lv,
             cx + ox,
-            4.82,
+            4.79,
             Math.PI,
             pickMode(modes),
             {
@@ -429,7 +536,7 @@ export class AtriumSimulation {
           p.d = d;
           p.sh_shift = sh;
           p.sd = cx < 0 ? -1 : 1;
-          p.seat = { x: cx + ox, z: 4.82 };
+          p.seat = { x: cx + ox, z: 4.79 };
           p.state = sh === 0 ? 'atDesk' : 'away';
           p.cab = 0;
           p.ex = 0;
@@ -449,7 +556,7 @@ export class AtriumSimulation {
               topicKey: d.t,
               homeLv: d.lv,
               homeX: cx + ox,
-              homeZ: 4.82,
+              homeZ: 4.79,
               homeFace: Math.PI,
               homePose: p.pose,
             },
@@ -515,8 +622,8 @@ export class AtriumSimulation {
     // Receptionist (emerald/navy tailored blazer, low chignon bun & warm smile)
     addDayVisitor(
       0,
-      -1.26,
-      5.26,
+      -1.22,
+      5.18,
       -0.14,
       'standType',
       {
@@ -544,8 +651,8 @@ export class AtriumSimulation {
     // Ground lobby visitor in tailored dark coat checking smartphone / reading briefs
     addDayVisitor(
       0,
-      1.8,
-      9.15,
+      1.45,
+      9.25,
       -Math.PI / 2 - 0.3,
       'hold',
       {
@@ -653,7 +760,7 @@ export class AtriumSimulation {
     addDayVisitor(
       4,
       -17.6,
-      0.45,
+      0.44,
       0,
       'standCounter',
       {
@@ -681,8 +788,8 @@ export class AtriumSimulation {
     // Executive Lounge collaborating pair
     addDayVisitor(
       4,
-      -14.8,
-      4.1,
+      -14.9,
+      3.95,
       Math.PI / 2 - 0.15,
       'coffee',
       {
@@ -708,8 +815,8 @@ export class AtriumSimulation {
     );
     addDayVisitor(
       4,
-      -13.5,
-      4.15,
+      -13.4,
+      4.05,
       -Math.PI / 2 + 0.15,
       'collaborate',
       {
@@ -788,12 +895,12 @@ export class AtriumSimulation {
     (
       [
         [4, 15, 2.58, 0, 'sitReadDoc', 0x165e4c, 1, 0, 'dress', 'braids', 'Faith Nyambura', 'Board Secretary', 'Level 4 · Secretariat', 'secr', '#64748b'],
-        [5, -17.5, 2.64, 0, 'type', 0x1e2c44, 0, 0x2e64b8, 'suit', 'fade', 'Kelvin Ochieng', 'Head of Technology', 'Level 5 · Executive Suite', 'hod', '#34598f'],
-        [5, -12.5, 2.64, 0, 'phone', 0x422238, 1, 0, 'suit', 'puff', 'Zawadi Kimani', 'Head of Marketing', 'Level 5 · Executive Suite', 'hod', '#7a2f5a'],
-        [5, -7.5, 2.64, 0, 'think', 0x2b303a, 0, 0, 'knit', 'twists', 'Collins Kioko', 'Head of Finance', 'Level 5 · Executive Suite', 'hod', '#2d7a5a'],
-        [5, -2.5, 2.64, 0, 'writeNotes', 0x3c2e22, 1, 0, 'blouseSkirt', 'bob', 'Makena Chege', 'Head of Operations', 'Level 5 · Executive Suite', 'hod', '#c9762e'],
-        [5, 3, 2.56, 0, 'sit', 0x181a20, 1, 0, 'dress', 'pixie', 'Sifa Wambui', 'Executive Assistant', 'Level 5 · Executive Suite', 'secr', '#5d6b7a'],
-        [5, 13, 2.56, 0, 'phone', 0x141a26, 0, 0x8a1f2e, 'suit', 'fade', 'Samuel Njoroge', 'Chief Executive Officer', 'Level 5 · CEO Office', 'ceo', '#c9a24b'],
+        [5, -17.5, 2.66, 0, 'type', 0x1e2c44, 0, 0x2e64b8, 'suit', 'fade', 'Kelvin Ochieng', 'Head of Technology', 'Level 5 · Executive Suite', 'hod', '#34598f'],
+        [5, -12.5, 2.66, 0, 'phone', 0x422238, 1, 0, 'suit', 'puff', 'Zawadi Kimani', 'Head of Marketing', 'Level 5 · Executive Suite', 'hod', '#7a2f5a'],
+        [5, -7.5, 2.66, 0, 'think', 0x2b303a, 0, 0, 'knit', 'twists', 'Collins Kioko', 'Head of Finance', 'Level 5 · Executive Suite', 'hod', '#2d7a5a'],
+        [5, -2.5, 2.66, 0, 'writeNotes', 0x3c2e22, 1, 0, 'blouseSkirt', 'bob', 'Makena Chege', 'Head of Operations', 'Level 5 · Executive Suite', 'hod', '#c9762e'],
+        [5, 3, 2.58, 0, 'sit', 0x181a20, 1, 0, 'dress', 'pixie', 'Sifa Wambui', 'Executive Assistant', 'Level 5 · Executive Suite', 'secr', '#5d6b7a'],
+        [5, 13, 2.58, 0, 'phone', 0x141a26, 0, 0x8a1f2e, 'suit', 'fade', 'Samuel Njoroge', 'Chief Executive Officer', 'Level 5 · CEO Office', 'ceo', '#c9a24b'],
       ] as const
     ).forEach(([lv, x, z, rot, pose, col, fem, tie, outfit, hairStyle, name, role, dept, topicKey, acc], i) => {
       addDayVisitor(
@@ -1194,15 +1301,109 @@ export class AtriumSimulation {
     return bestLv;
   }
 
-  private groundElevationAt(lv: number, x: number, z: number): number {
-    if (lv !== 0) return liftY(lv);
-    if (z <= 11.025) return 0;
-    if (Math.abs(x) <= 15.0 && z <= 13.975) {
+  private groundElevationAt(lv: number, x: number, z: number, buildingId: BuildingId = 'hub'): number {
+    if (lv !== 0) {
+      if (buildingId !== 'hub') {
+        const spec = DISTRICT_BUILDING_MAP[buildingId];
+        return spec.groundY + lv * spec.floorH + 0.12;
+      }
+      return liftY(lv);
+    }
+    if (Math.abs(x) <= 20.0 && z >= 0 && z <= 11.025) return 0;
+    if (Math.abs(x) <= 15.0 && z > 11.025 && z <= 13.975) {
       if (z <= 12.025) return 0;
       if (z <= 12.975) return -0.2;
       return -0.4;
     }
+    for (let i = 0; i < DISTRICT_BUILDINGS.length; i++) {
+      const b = DISTRICT_BUILDINGS[i];
+      if (b.id === 'hub') continue;
+      if (Math.abs(x - b.cx) <= b.w * 0.5 && Math.abs(z - b.cz) <= b.d * 0.5) {
+        return b.groundY + 0.12;
+      }
+    }
     return -0.608;
+  }
+
+  private setSafePose(P: PersonActor, requestedPose: string) {
+    let pose = requestedPose;
+    if (SEATED_POSES.has(pose)) {
+      const ag = this.freeAgents.get(P);
+      const chair = ag?.chair;
+      const actorState = (P as { state?: string }).state;
+      const onChair = Boolean(
+        chair &&
+          P.g.visible &&
+          (actorState === undefined || actorState === 'atDesk') &&
+          Math.abs(P.g.position.y - liftY(chair.lv)) < 0.35 &&
+          Math.hypot(P.g.position.x - chair.restX, P.g.position.z - chair.restZ) <= 0.18
+      );
+      if (!onChair) {
+        if (pose === 'sitReadDoc') pose = 'readDoc';
+        else if (pose === 'sitTalk') pose = 'talk';
+        else if (pose === 'sitCollaborate') pose = 'collaborate';
+        else if (pose === 'phone') pose = 'standPhone';
+        else pose = 'stand';
+      }
+    }
+    setPose(P, pose, this.P_LIB);
+  }
+
+  private updateChairs(dt: number) {
+    const k = 1 - Math.exp(-dt * 6.5);
+    for (let i = 0; i < this.chairPairs.length; i++) {
+      const pair = this.chairPairs[i];
+      const ch = pair.handle;
+      const col = pair.collider;
+      const floorY = liftY(ch.lv);
+
+      let targetPull = 0;
+      let targetSwivel = 0;
+
+      for (let j = 0; j < pair.occupants.length; j++) {
+        const occ = pair.occupants[j];
+        if (!occ.g.visible) continue;
+        const st = (occ as { state?: string }).state;
+        if (st === 'away' || st === 'inCab') continue;
+        if (Math.abs(occ.g.position.y - floorY) > 0.45) continue;
+        const d = Math.hypot(occ.g.position.x - ch.restX, occ.g.position.z - ch.restZ);
+        if (SEATED_POSES.has(occ.pose) && d < 0.16) {
+          targetPull = 0;
+          targetSwivel = 0;
+          break;
+        }
+        if (d < 1.05 && !SEATED_POSES.has(occ.pose)) {
+          targetPull = Math.min(ch.maxPush * 0.78, 0.36);
+          targetSwivel = ch.swivelDir * 0.55;
+        }
+      }
+
+      const backX = -Math.sin(ch.restRot);
+      const backZ = -Math.cos(ch.restRot);
+      const tx = ch.restX + backX * targetPull;
+      const tz = ch.restZ + backZ * targetPull;
+      const trot = ch.restRot + targetSwivel;
+
+      ch.curX += (tx - ch.curX) * k;
+      ch.curZ += (tz - ch.curZ) * k;
+      ch.curRot += (trot - ch.curRot) * k;
+
+      // Hard bound: chair can never deviate beyond maxPush
+      const offX = ch.curX - ch.restX;
+      const offZ = ch.curZ - ch.restZ;
+      const offLen = Math.hypot(offX, offZ);
+      if (offLen > ch.maxPush) {
+        const scale = ch.maxPush / offLen;
+        ch.curX = ch.restX + offX * scale;
+        ch.curZ = ch.restZ + offZ * scale;
+      }
+
+      ch.group.position.x = ch.curX;
+      ch.group.position.z = ch.curZ;
+      ch.group.rotation.y = ch.curRot;
+      col.curX = ch.curX;
+      col.curZ = ch.curZ;
+    }
   }
 
   private resolveCharacterSeparation(
@@ -1211,7 +1412,7 @@ export class AtriumSimulation {
     nx: number,
     nz: number,
     allowLiftShaft?: boolean,
-    ignoreCircle?: IgnoreChairCircle,
+    ignoreChair?: TrackedChairCollider,
     radius?: number
   ): { x: number; z: number } {
     const minDist = 0.48;
@@ -1242,7 +1443,12 @@ export class AtriumSimulation {
     for (let i = 0; i < this.STAFF.length; i++) pushFrom(this.STAFF[i]);
     pushFrom(this.guideActor);
 
-    const safe = resolveObstaclePosition(lv, rx, rz, { allowLiftShaft, ignoreCircle, radius });
+    const safe = resolveObstaclePosition(lv, rx, rz, {
+      allowLiftShaft,
+      ignoreChair,
+      radius,
+      pedestrianOnly: true,
+    });
     return { x: safe.x, z: safe.z };
   }
 
@@ -1251,41 +1457,68 @@ export class AtriumSimulation {
     gx: number,
     gz: number,
     dt: number,
-    opts?: { allowLiftShaft?: boolean; ignoreCircle?: IgnoreChairCircle; radius?: number }
+    opts?: { allowLiftShaft?: boolean; ignoreChair?: TrackedChairCollider; radius?: number }
   ): boolean {
     const dx = gx - P.g.position.x;
     const dz = gz - P.g.position.z;
     const dist = Math.hypot(dx, dz);
+    const actorState = (P as { state?: string }).state;
+    const lv = this.levelFromY(P.g.position.y);
+
     if (dist < 0.09) {
-      P.g.position.x = gx;
-      P.g.position.z = gz;
-      const actorState = (P as { state?: string }).state;
-      if (actorState !== 'inCab' && this.levelFromY(P.g.position.y) === 0) {
-        P.g.position.y = this.groundElevationAt(0, gx, gz);
+      let fx = gx;
+      let fz = gz;
+      if (actorState !== 'inCab') {
+        const safe = resolveObstaclePosition(lv, gx, gz, {
+          allowLiftShaft: opts?.allowLiftShaft,
+          ignoreChair: opts?.ignoreChair,
+          radius: opts?.radius,
+          pedestrianOnly: true,
+        });
+        fx = safe.x;
+        fz = safe.z;
+      }
+      P.g.position.x = fx;
+      P.g.position.z = fz;
+      if (actorState !== 'inCab' && lv === 0) {
+        P.g.position.y = this.groundElevationAt(0, fx, fz);
       }
       P.moving = false;
       return true;
     }
 
-    const step = Math.min(dist, (P.speed || 2.3) * dt);
-    let nx = P.g.position.x + (dx / dist) * step;
-    let nz = P.g.position.z + (dz / dist) * step;
+    const totalStep = Math.min(dist, (P.speed || 2.3) * dt);
+    const subs = Math.max(1, Math.ceil(totalStep / 0.08));
+    const subLen = totalStep / subs;
+    const ux = dx / dist;
+    const uz = dz / dist;
 
-    const actorState = (P as { state?: string }).state;
+    let nx = P.g.position.x;
+    let nz = P.g.position.z;
+
+    for (let s = 0; s < subs; s++) {
+      nx += ux * subLen;
+      nz += uz * subLen;
+      if (actorState !== 'inCab') {
+        const safe = resolveObstaclePosition(lv, nx, nz, {
+          allowLiftShaft: opts?.allowLiftShaft,
+          ignoreChair: opts?.ignoreChair,
+          radius: opts?.radius,
+          pedestrianOnly: true,
+        });
+        nx = safe.x;
+        nz = safe.z;
+      }
+    }
+
     if (actorState !== 'inCab') {
-      const lv = this.levelFromY(P.g.position.y);
-      const safe = resolveObstaclePosition(lv, nx, nz, {
-        allowLiftShaft: opts?.allowLiftShaft,
-        ignoreCircle: opts?.ignoreCircle,
-        radius: opts?.radius,
-      });
       const sep = this.resolveCharacterSeparation(
         P,
         lv,
-        safe.x,
-        safe.z,
+        nx,
+        nz,
         opts?.allowLiftShaft,
-        opts?.ignoreCircle,
+        opts?.ignoreChair,
         opts?.radius
       );
       nx = sep.x;
@@ -1315,7 +1548,7 @@ export class AtriumSimulation {
     toZ: number,
     dt: number,
     options?: {
-      useHomeDock?: { homeX: number; homeZ: number };
+      useHomeDock?: { homeX: number; homeZ: number; chairCollider?: TrackedChairCollider; behindCounter?: boolean };
       endBeforeDock?: boolean;
       allowLiftShaftAtEnd?: boolean;
     }
@@ -1333,7 +1566,9 @@ export class AtriumSimulation {
         fromZ = dock.z;
       }
       const targetDock = options?.endBeforeDock && dock ? dock : { x: toX, z: toZ };
-      const body = buildObstacleAwarePath(lv, fromX, fromZ, targetDock.x, targetDock.z);
+      const body = buildObstacleAwarePath(lv, fromX, fromZ, targetDock.x, targetDock.z, {
+        ignoreChair: options?.useHomeDock?.chairCollider,
+      });
       if (options?.endBeforeDock && dock) {
         body.push({ x: toX, z: toZ });
       }
@@ -1351,19 +1586,21 @@ export class AtriumSimulation {
 
     const wp = P.navQueue[0];
     const isLast = P.navQueue.length === 1;
-    const nearHomeChair = options?.useHomeDock
+    const nearHomeSeat = options?.useHomeDock
       ? Math.hypot(P.g.position.x - options.useHomeDock.homeX, P.g.position.z - options.useHomeDock.homeZ) < 0.85 ||
         Math.hypot(wp.x - options.useHomeDock.homeX, wp.z - options.useHomeDock.homeZ) < 0.25
       : false;
-    const ignoreCircle =
-      nearHomeChair && options?.useHomeDock
-        ? { x: options.useHomeDock.homeX, z: options.useHomeDock.homeZ, r: 0.45 }
+    const ignoreChair = nearHomeSeat ? options?.useHomeDock?.chairCollider : undefined;
+    const radius = ignoreChair
+      ? 0.11
+      : nearHomeSeat && options?.useHomeDock?.behindCounter
+        ? 0.14
         : undefined;
 
     const reached = this.walkPt(P, wp.x, wp.z, dt, {
       allowLiftShaft: isLast && options?.allowLiftShaftAtEnd,
-      ignoreCircle,
-      radius: ignoreCircle ? 0.14 : undefined,
+      ignoreChair,
+      radius,
     });
     if (reached) {
       P.navQueue.shift();
@@ -1557,6 +1794,111 @@ export class AtriumSimulation {
     return 'desk';
   }
 
+  private getDesignatedSpotsForActor(
+    lv: number,
+    homeX: number,
+    homeZ: number,
+    goal: 'stretch' | 'balcony' | 'coffeeBreak'
+  ): Array<{ x: number; z: number; face: number }> {
+    const out: Array<{ x: number; z: number; face: number }> = [];
+    const dock = getChairDockPoint(lv, homeX, homeZ);
+
+    if (goal === 'stretch') {
+      if (dock) {
+        out.push(
+          { x: dock.x, z: dock.z, face: (Math.random() - 0.5) * 1.2 },
+          { x: dock.x, z: Math.min(9.8, dock.z + 0.45), face: 0 }
+        );
+      } else if (lv === 0 && Math.abs(homeX) < 3.7 && homeZ < 5.7) {
+        out.push({ x: homeX < 0 ? -4.3 : 4.3, z: 4.4, face: 0 });
+      } else if (lv >= 0) {
+        out.push(
+          { x: homeX, z: Math.min(9.75, Math.max(2.0, homeZ + 0.7)), face: 0 },
+          { x: homeX < 0 ? homeX + 0.8 : homeX - 0.8, z: Math.min(9.75, Math.max(2.0, homeZ)), face: 0 }
+        );
+      } else {
+        out.push({ x: homeX, z: homeZ, face: 0 });
+      }
+      return out;
+    }
+
+    if (goal === 'coffeeBreak') {
+      if (lv === 4) {
+        out.push(
+          { x: -16.2, z: 2.8, face: Math.PI },
+          { x: -17.4, z: 2.85, face: Math.PI },
+          { x: -15.6, z: 3.3, face: -Math.PI * 0.75 },
+          { x: -13.8, z: 6.8, face: Math.PI }
+        );
+      } else if (lv === 0) {
+        out.push(
+          { x: -5.4, z: 9.55, face: 0 },
+          { x: 5.4, z: 9.55, face: 0 },
+          { x: -6.8, z: 9.45, face: 0.2 },
+          { x: 6.8, z: 9.45, face: -0.2 }
+        );
+      } else if (lv === 5) {
+        out.push(
+          { x: homeX < 0 ? Math.max(-17.8, Math.min(-2.2, homeX)) : 3.2, z: 9.72, face: 0 },
+          { x: -12.6, z: 9.75, face: 0 },
+          { x: 13.0, z: 9.75, face: 0 }
+        );
+      } else {
+        out.push(
+          { x: homeX < 0 ? -13.6 : 13.6, z: 9.72, face: 0 },
+          { x: homeX < 0 ? -5.8 : 5.8, z: 9.72, face: 0 },
+          { x: -15.4, z: 9.72, face: 0 },
+          { x: 15.4, z: 9.72, face: 0 }
+        );
+      }
+      return out;
+    }
+
+    // 'balcony' — curated open atrium walkway viewpoints per floor
+    if (lv === 0) {
+      out.push(
+        { x: -6.5, z: 9.65, face: 0 },
+        { x: -4.8, z: 9.65, face: 0 },
+        { x: 4.8, z: 9.65, face: 0 },
+        { x: 6.5, z: 9.65, face: 0 },
+        { x: -13.6, z: 9.65, face: 0 },
+        { x: 13.6, z: 9.65, face: 0 }
+      );
+    } else if (lv === 4) {
+      out.push(
+        { x: -15.4, z: 9.75, face: 0 },
+        { x: -12.8, z: 9.75, face: 0 },
+        { x: -5.4, z: 9.75, face: 0 },
+        { x: 0.0, z: 9.75, face: 0 },
+        { x: 5.4, z: 9.75, face: 0 },
+        { x: 13.4, z: 9.75, face: 0 },
+        { x: 16.2, z: 9.75, face: 0 }
+      );
+    } else if (lv === 5) {
+      out.push(
+        { x: -17.4, z: 9.75, face: 0 },
+        { x: -12.5, z: 9.75, face: 0 },
+        { x: -7.5, z: 9.75, face: 0 },
+        { x: -2.5, z: 9.75, face: 0 },
+        { x: 3.0, z: 9.75, face: 0 },
+        { x: 12.6, z: 9.75, face: 0 },
+        { x: 15.8, z: 9.75, face: 0 }
+      );
+    } else {
+      out.push(
+        { x: -16.2, z: 9.72, face: 0 },
+        { x: -13.5, z: 9.72, face: 0 },
+        { x: -6.5, z: 9.72, face: 0 },
+        { x: -3.5, z: 9.72, face: 0 },
+        { x: 3.5, z: 9.72, face: 0 },
+        { x: 6.5, z: 9.72, face: 0 },
+        { x: 13.5, z: 9.72, face: 0 },
+        { x: 16.2, z: 9.72, face: 0 }
+      );
+    }
+    return out;
+  }
+
   private decideFreeWill(actor: PersonActor, forceMove = false) {
     const ag = this.freeAgents.get(actor);
     const brain = actor.brain;
@@ -1609,12 +1951,20 @@ export class AtriumSimulation {
     const homeDock = getChairDockPoint(ag.lv, ag.homeX, ag.homeZ);
     const leaveWithDock = (destX: number, destZ: number) => {
       if (homeDock && Math.hypot(curX - ag.homeX, curZ - ag.homeZ) < 0.72) {
-        return [homeDock, ...buildObstacleAwarePath(ag.lv, homeDock.x, homeDock.z, destX, destZ)];
+        return [
+          homeDock,
+          ...buildObstacleAwarePath(ag.lv, homeDock.x, homeDock.z, destX, destZ, {
+            ignoreChair: ag.chairCollider,
+          }),
+        ];
       }
-      return buildObstacleAwarePath(ag.lv, curX, curZ, destX, destZ);
+      return buildObstacleAwarePath(ag.lv, curX, curZ, destX, destZ, {
+        ignoreChair: ag.chairCollider,
+      });
     };
 
     ag.stuckTime = 0;
+    ag.replanCount = 0;
     ag.lastX = curX;
     ag.lastZ = curZ;
 
@@ -1624,52 +1974,30 @@ export class AtriumSimulation {
       setBrainThought(brain, thoughtPack.mood, thoughtPack.actionLabel, thoughtPack.thought);
       brain.nextDecisionIn = 12 + Math.random() * 16;
       const distHome = Math.hypot(curX - ag.homeX, curZ - ag.homeZ);
-      if (distHome > 0.35) {
+      if (distHome > 0.22) {
         ag.mode = 'toHome';
         if (homeDock) {
-          ag.queue = [...buildObstacleAwarePath(ag.lv, curX, curZ, homeDock.x, homeDock.z), { x: ag.homeX, z: ag.homeZ }];
+          ag.queue = [
+            ...buildObstacleAwarePath(ag.lv, curX, curZ, homeDock.x, homeDock.z, {
+              ignoreChair: ag.chairCollider,
+            }),
+            { x: ag.homeX, z: ag.homeZ },
+          ];
         } else {
-          ag.queue = buildObstacleAwarePath(ag.lv, curX, curZ, ag.homeX, ag.homeZ);
+          ag.queue = buildObstacleAwarePath(ag.lv, curX, curZ, ag.homeX, ag.homeZ, {
+            ignoreChair: ag.chairCollider,
+          });
         }
         ag.targetPose = actor.modes ? pickMode(actor.modes) : ag.homePose;
         ag.targetFace = ag.homeFace;
-        setPose(actor, 'stand', this.P_LIB);
+        this.setSafePose(actor, 'stand');
       } else {
         ag.mode = 'home';
         ag.queue = [];
         actor.g.position.x = ag.homeX;
         actor.g.position.z = ag.homeZ;
         actor.tyaw = ag.homeFace;
-        setPose(actor, actor.modes ? pickMode(actor.modes) : ag.homePose, this.P_LIB);
-      }
-      return;
-    }
-
-    if (goal === 'stretch') {
-      brain.goal = 'stretch';
-      const thoughtPack = pickThoughtForGoal(brain, 'stretch');
-      setBrainThought(brain, thoughtPack.mood, thoughtPack.actionLabel, thoughtPack.thought);
-      brain.nextDecisionIn = 8 + Math.random() * 8;
-      const rawSx = homeDock
-        ? homeDock.x + (Math.random() - 0.5) * 0.4
-        : ag.lv < 0
-          ? curX
-          : Math.max(-17.5, Math.min(17.5, curX + (Math.random() - 0.5) * 0.9));
-      const rawSz = homeDock ? homeDock.z : ag.lv < 0 ? curZ : Math.min(9.4, Math.max(2.0, curZ));
-      const safeStretch = resolveObstaclePosition(ag.lv, rawSx, rawSz);
-      ag.mode = 'toGoal';
-      ag.queue =
-        Math.hypot(curX - safeStretch.x, curZ - safeStretch.z) > 0.25
-          ? leaveWithDock(safeStretch.x, safeStretch.z)
-          : [];
-      ag.targetPose = Math.random() < 0.5 ? 'hold' : 'stand';
-      ag.targetFace = (Math.random() - 0.5) * 1.4;
-      if (ag.queue.length === 0) {
-        ag.mode = 'atGoal';
-        actor.tyaw = ag.targetFace;
-        setPose(actor, ag.targetPose, this.P_LIB);
-      } else {
-        setPose(actor, 'stand', this.P_LIB);
+        this.setSafePose(actor, actor.modes ? pickMode(actor.modes) : ag.homePose);
       }
       return;
     }
@@ -1684,72 +2012,95 @@ export class AtriumSimulation {
           Math.hypot(other.g.position.x - curX, other.g.position.z - curZ) > 0.8
       );
       if (peers.length > 0) {
-        const peer = peers[Math.floor(Math.random() * peers.length)];
-        const px = peer.g.position.x;
-        const pz = peer.g.position.z;
-        const peerDock = getChairDockPoint(ag.lv, px, pz);
-        const candidates = peerDock
-          ? [peerDock]
-          : [
-              { x: px + 0.85, z: pz },
-              { x: px - 0.85, z: pz },
-              { x: px, z: pz + 0.85 },
-              { x: px, z: pz - 0.85 },
-            ];
-        let pickedStand: { x: number; z: number } | null = null;
-        for (const c of candidates) {
-          const check = resolveObstaclePosition(ag.lv, c.x, c.z);
-          if (!check.blocked && Math.hypot(check.x - px, check.z - pz) >= 0.65) {
-            pickedStand = { x: check.x, z: check.z };
-            break;
+        const shuffled = peers.slice().sort(() => Math.random() - 0.5).slice(0, 4);
+        for (const peer of shuffled) {
+          const px = peer.g.position.x;
+          const pz = peer.g.position.z;
+          const peerAg = this.freeAgents.get(peer);
+          const peerDock = getChairDockPoint(ag.lv, px, pz);
+          const candidates = peerDock
+            ? [peerDock]
+            : [
+                { x: px + 0.85, z: pz },
+                { x: px - 0.85, z: pz },
+                { x: px, z: pz + 0.85 },
+                { x: px, z: pz - 0.85 },
+              ];
+          let pickedStand: { x: number; z: number } | null = null;
+          for (const c of candidates) {
+            const check = resolveObstaclePosition(ag.lv, c.x, c.z, { pedestrianOnly: true });
+            if (
+              !check.blocked &&
+              Math.hypot(check.x - px, check.z - pz) >= 0.55 &&
+              hasLineOfSight(ag.lv, check.x, check.z, px, pz, {
+                pedestrianOnly: true,
+                ignoreChair: peerAg?.chairCollider,
+                radius: 0.12,
+              })
+            ) {
+              pickedStand = { x: check.x, z: check.z };
+              break;
+            }
           }
-        }
-        if (pickedStand) {
-          brain.goal = 'socialize';
-          const faceToPeer = Math.atan2(px - pickedStand.x, pz - pickedStand.z);
-          const thoughtPack = pickThoughtForGoal(brain, 'socialize', peer.brain!.identity.name);
-          setBrainThought(brain, thoughtPack.mood, thoughtPack.actionLabel, thoughtPack.thought);
-          brain.nextDecisionIn = 10 + Math.random() * 9;
-          ag.mode = 'toGoal';
-          ag.queue = leaveWithDock(pickedStand.x, pickedStand.z);
-          ag.targetPose = Math.random() < 0.55 ? 'talk' : 'collaborate';
-          ag.targetFace = faceToPeer;
-          setPose(actor, 'stand', this.P_LIB);
-          return;
+          if (pickedStand) {
+            brain.goal = 'socialize';
+            const faceToPeer = Math.atan2(px - pickedStand.x, pz - pickedStand.z);
+            const thoughtPack = pickThoughtForGoal(brain, 'socialize', peer.brain!.identity.name);
+            setBrainThought(brain, thoughtPack.mood, thoughtPack.actionLabel, thoughtPack.thought);
+            brain.nextDecisionIn = 10 + Math.random() * 9;
+            ag.mode = 'toGoal';
+            ag.queue = leaveWithDock(pickedStand.x, pickedStand.z);
+            ag.targetPose = Math.random() < 0.55 ? 'talk' : 'collaborate';
+            ag.targetFace = faceToPeer;
+            this.setSafePose(actor, 'stand');
+            return;
+          }
         }
       }
       goal = ag.lv < 0 ? 'inspect' : 'balcony';
     }
 
-    if (goal === 'balcony' || goal === 'coffeeBreak') {
+    if (goal === 'stretch' || goal === 'balcony' || goal === 'coffeeBreak') {
       brain.goal = goal;
       const thoughtPack = pickThoughtForGoal(brain, goal);
       setBrainThought(brain, thoughtPack.mood, thoughtPack.actionLabel, thoughtPack.thought);
-      brain.nextDecisionIn = 10 + Math.random() * 10;
-      let gx = Math.max(-15.5, Math.min(15.5, ag.homeX + (Math.random() - 0.5) * 14));
-      let gz = ag.lv === 0 ? 9.55 + Math.random() * 0.75 : 9.85;
-      let gFace = Math.random() < 0.7 ? 0 : (Math.random() - 0.5) * 0.8;
-      if (goal === 'coffeeBreak') {
-        if (ag.lv === 4) {
-          gx = -16.8 + Math.random() * 1.4;
-          gz = 3.1 + Math.random() * 0.4;
-          gFace = Math.PI;
-        } else if (ag.lv === 0) {
-          gx = (Math.random() < 0.5 ? -1 : 1) * (4.8 + Math.random() * 2.4);
-          gz = 9.4 + Math.random() * 0.9;
-          gFace = 0;
-        } else {
-          gx = (ag.homeX < 0 ? -1 : 1) * (13.2 + Math.random() * 1.6);
-          gz = 9.75;
-          gFace = 0;
+      brain.nextDecisionIn = goal === 'stretch' ? 8 + Math.random() * 8 : 10 + Math.random() * 10;
+
+      const spots = this.getDesignatedSpotsForActor(ag.lv, ag.homeX, ag.homeZ, goal);
+      // Shuffle and prefer spots nearest to same wing/half when possible
+      const validSpots: Array<{ x: number; z: number; face: number }> = [];
+      for (const sp of spots) {
+        const check = resolveObstaclePosition(ag.lv, sp.x, sp.z, { pedestrianOnly: true });
+        if (!check.blocked) {
+          validSpots.push({ x: check.x, z: check.z, face: sp.face });
         }
       }
-      const safeGoal = resolveObstaclePosition(ag.lv, gx, gz);
+      const chosen =
+        validSpots.length > 0
+          ? validSpots[Math.floor(Math.random() * validSpots.length)]
+          : homeDock
+            ? { x: homeDock.x, z: homeDock.z, face: 0 }
+            : { x: curX, z: curZ, face: 0 };
+
       ag.mode = 'toGoal';
-      ag.queue = leaveWithDock(safeGoal.x, safeGoal.z);
-      ag.targetPose = goal === 'coffeeBreak' || Math.random() < 0.35 ? 'coffee' : 'stand';
-      ag.targetFace = gFace;
-      setPose(actor, 'stand', this.P_LIB);
+      ag.queue =
+        Math.hypot(curX - chosen.x, curZ - chosen.z) > 0.25 ? leaveWithDock(chosen.x, chosen.z) : [];
+      ag.targetPose =
+        goal === 'stretch'
+          ? Math.random() < 0.5
+            ? 'hold'
+            : 'stand'
+          : goal === 'coffeeBreak' || Math.random() < 0.35
+            ? 'coffee'
+            : 'stand';
+      ag.targetFace = chosen.face;
+      if (ag.queue.length === 0) {
+        ag.mode = 'atGoal';
+        actor.tyaw = ag.targetFace;
+        this.setSafePose(actor, ag.targetPose);
+      } else {
+        this.setSafePose(actor, 'stand');
+      }
       return;
     }
 
@@ -1802,7 +2153,7 @@ export class AtriumSimulation {
     ag.queue = leaveWithDock(pick.x, pick.z);
     ag.targetPose = pick.pose;
     ag.targetFace = pick.face;
-    setPose(actor, ag.targetPose === 'carry' ? 'carry' : 'stand', this.P_LIB);
+    this.setSafePose(actor, ag.targetPose === 'carry' ? 'carry' : 'stand');
   }
 
   private stepFreeAgent(actor: PersonActor, dt: number) {
@@ -1815,13 +2166,16 @@ export class AtriumSimulation {
       const dock = getChairDockPoint(ag.lv, ag.homeX, ag.homeZ);
       const distHome = Math.hypot(actor.g.position.x - ag.homeX, actor.g.position.z - ag.homeZ);
       const nearDockTarget = Math.hypot(next.x - ag.homeX, next.z - ag.homeZ) < 0.25;
-      const ignoreCircle =
-        dock && (distHome < 0.85 || nearDockTarget) ? { x: ag.homeX, z: ag.homeZ, r: 0.45 } : undefined;
+      const nearSeat = Boolean(dock && (distHome < 0.85 || nearDockTarget));
+      const ignoreChair = nearSeat ? ag.chairCollider : undefined;
+      const behindCounter = ag.lv === 4 && ag.homeX < -14.8 && ag.homeZ < 0.72;
+      const radius = ignoreChair ? 0.11 : nearSeat && behindCounter ? 0.14 : undefined;
+
       const prevSpd = actor.speed;
       actor.speed = ag.walkSpeed;
       const reached = this.walkPt(actor, next.x, next.z, dt, {
-        ignoreCircle,
-        radius: ignoreCircle ? 0.14 : undefined,
+        ignoreChair,
+        radius,
       });
       actor.speed = prevSpd;
 
@@ -1834,12 +2188,9 @@ export class AtriumSimulation {
         ag.stuckTime = 0;
       }
 
-      if (reached || ag.stuckTime > 1.25) {
+      if (reached) {
         ag.stuckTime = 0;
-        if (!reached && ag.queue.length === 1) {
-          this.decideFreeWill(actor, false);
-          return;
-        }
+        ag.replanCount = 0;
         ag.queue.shift();
         if (ag.queue.length === 0) {
           if (ag.mode === 'toHome') {
@@ -1847,8 +2198,33 @@ export class AtriumSimulation {
             actor.g.position.z = ag.homeZ;
           }
           actor.tyaw = ag.targetFace;
-          setPose(actor, ag.targetPose, this.P_LIB);
+          this.setSafePose(actor, ag.targetPose);
           ag.mode = ag.mode === 'toHome' ? 'home' : 'atGoal';
+        }
+      } else if (ag.stuckTime > 0.9) {
+        ag.stuckTime = 0;
+        ag.replanCount++;
+        const finalDest = ag.queue[ag.queue.length - 1];
+        if (ag.replanCount <= 2 && finalDest) {
+          if (ag.mode === 'toHome' && dock) {
+            ag.queue = [
+              ...buildObstacleAwarePath(ag.lv, actor.g.position.x, actor.g.position.z, dock.x, dock.z, {
+                ignoreChair: ag.chairCollider,
+              }),
+              { x: ag.homeX, z: ag.homeZ },
+            ];
+          } else {
+            ag.queue = buildObstacleAwarePath(ag.lv, actor.g.position.x, actor.g.position.z, finalDest.x, finalDest.z, {
+              ignoreChair: ag.chairCollider,
+            });
+          }
+        } else {
+          ag.replanCount = 0;
+          if (ag.mode === 'toHome' && distHome < 0.72) {
+            ag.queue = [{ x: ag.homeX, z: ag.homeZ }];
+          } else {
+            this.decideFreeWill(actor, false);
+          }
         }
       }
       return;
@@ -1862,13 +2238,16 @@ export class AtriumSimulation {
 
   public nudgeCharacterFreeWill(actor: PersonActor) {
     const ag = this.freeAgents.get(actor);
-    if (!ag || !actor.brain) return;
+    if (!ag || !actor.brain) {
+      this.districtSim.nudgeCharacter(actor);
+      return;
+    }
     if (actor === this.guideActor && this.tourOn) return;
     this.decideFreeWill(actor, true);
   }
 
   public getAllActors(): PersonActor[] {
-    return [...this.STAFF, this.guideActor];
+    return [...this.STAFF, ...this.districtSim.ACTORS, this.guideActor];
   }
 
   public isStaffVisible(): boolean {
@@ -1888,6 +2267,7 @@ export class AtriumSimulation {
         p.g.position.set(sx, this.groundElevationAt(0, sx, sz), sz);
         p.navQueue = undefined;
         p.navKey = undefined;
+        this.setSafePose(p, 'stand');
         p.state = 'toLift';
         if (p.brain) {
           setBrainThought(
@@ -1902,6 +2282,7 @@ export class AtriumSimulation {
     }
 
     if (p.state === 'out') {
+      if (SEATED_POSES.has(p.pose)) this.setSafePose(p, 'stand');
       const tx = p.sd * 2.2;
       const tz = w === 'lunch' ? 12.5 : 17.5;
       if (this.followNavPath(p, 0, `w-out-${w}-${p.sd}`, tx, tz, dt)) {
@@ -1938,6 +2319,7 @@ export class AtriumSimulation {
         }
         p.navQueue = undefined;
         p.navKey = undefined;
+        this.setSafePose(p, 'stand');
         p.state = 'toLift';
       } else {
         this.stepFreeAgent(p, dt);
@@ -1946,11 +2328,14 @@ export class AtriumSimulation {
     }
 
     if (p.state === 'toLift') {
-      if (p.pose !== 'stand') setPose(p, 'stand', this.P_LIB);
+      if (p.pose !== 'stand') this.setSafePose(p, 'stand');
       const liftLv = w === 'desk' ? 0 : p.d.lv;
       if (
         this.followNavPath(p, liftLv, `w-lift-${liftLv}-${p.sd}`, gx, LANE, dt, {
-          useHomeDock: w === 'desk' ? undefined : { homeX: p.seat.x, homeZ: p.seat.z },
+          useHomeDock:
+            w === 'desk'
+              ? undefined
+              : { homeX: p.seat.x, homeZ: p.seat.z, chairCollider: p.chairCollider },
         })
       ) {
         p.state = 'wait';
@@ -1962,10 +2347,10 @@ export class AtriumSimulation {
     }
 
     if (p.state === 'toDesk') {
-      if (p.pose !== 'stand') setPose(p, 'stand', this.P_LIB);
+      if (p.pose !== 'stand') this.setSafePose(p, 'stand');
       if (
         this.followNavPath(p, p.d.lv, `w-desk-${p.d.lv}`, p.seat.x, p.seat.z, dt, {
-          useHomeDock: { homeX: p.seat.x, homeZ: p.seat.z },
+          useHomeDock: { homeX: p.seat.x, homeZ: p.seat.z, chairCollider: p.chairCollider },
           endBeforeDock: true,
         })
       ) {
@@ -1975,7 +2360,7 @@ export class AtriumSimulation {
         p.tyaw = Math.PI;
         p.navQueue = undefined;
         p.navKey = undefined;
-        setPose(p, p.modes ? pickMode(p.modes) : 'type', this.P_LIB);
+        this.setSafePose(p, p.modes ? pickMode(p.modes) : 'type');
         if (p.brain) {
           const tp = pickThoughtForGoal(p.brain, 'work');
           setBrainThought(p.brain, tp.mood, tp.actionLabel, tp.thought);
@@ -1987,6 +2372,7 @@ export class AtriumSimulation {
   private dThink(p: DayVisitorActor, dt: number) {
     const on = this.simMin >= 480 && this.simMin < 1050;
     const gx = p.sd * GATE_STOP;
+    const behindCounter = p.lv === 4 && p.dx < -14.8 && p.dz < 0.72;
 
     if (p.state === 'away') {
       if (on) {
@@ -1995,15 +2381,17 @@ export class AtriumSimulation {
         p.g.position.set(sx, this.groundElevationAt(0, sx, 15.2), 15.2);
         p.navQueue = undefined;
         p.navKey = undefined;
+        this.setSafePose(p, 'stand');
         p.state = 'in';
       }
       return;
     }
     if (p.state === 'in') {
+      if (p.pose !== 'stand') this.setSafePose(p, 'stand');
       if (p.lv === 0) {
         if (
           this.followNavPath(p, 0, `d-in0-${p.dx}-${p.dz}`, p.dx, p.dz, dt, {
-            useHomeDock: { homeX: p.dx, homeZ: p.dz },
+            useHomeDock: { homeX: p.dx, homeZ: p.dz, chairCollider: p.chairCollider },
             endBeforeDock: true,
           })
         ) {
@@ -2013,7 +2401,7 @@ export class AtriumSimulation {
           p.tyaw = p.df;
           p.navQueue = undefined;
           p.navKey = undefined;
-          setPose(p, p.dpose, this.P_LIB);
+          this.setSafePose(p, p.dpose);
         }
       } else if (this.followNavPath(p, 0, `d-inlift-${p.sd}`, gx, LANE, dt)) {
         p.state = 'wait';
@@ -2032,6 +2420,7 @@ export class AtriumSimulation {
         }
         p.navQueue = undefined;
         p.navKey = undefined;
+        this.setSafePose(p, 'stand');
         p.state = p.lv === 0 ? 'out' : 'toLift';
       } else {
         this.stepFreeAgent(p, dt);
@@ -2039,10 +2428,15 @@ export class AtriumSimulation {
       return;
     }
     if (p.state === 'toLift') {
-      if (p.pose !== 'stand') setPose(p, 'stand', this.P_LIB);
+      if (p.pose !== 'stand') this.setSafePose(p, 'stand');
       if (
         this.followNavPath(p, p.lv, `d-lift-${p.lv}-${p.sd}`, gx, LANE, dt, {
-          useHomeDock: { homeX: p.dx, homeZ: p.dz },
+          useHomeDock: {
+            homeX: p.dx,
+            homeZ: p.dz,
+            chairCollider: p.chairCollider,
+            behindCounter,
+          },
         })
       ) {
         p.state = 'wait';
@@ -2053,10 +2447,15 @@ export class AtriumSimulation {
       return;
     }
     if (p.state === 'toDesk') {
-      if (p.pose !== 'stand') setPose(p, 'stand', this.P_LIB);
+      if (p.pose !== 'stand') this.setSafePose(p, 'stand');
       if (
         this.followNavPath(p, p.lv, `d-desk-${p.lv}`, p.dx, p.dz, dt, {
-          useHomeDock: { homeX: p.dx, homeZ: p.dz },
+          useHomeDock: {
+            homeX: p.dx,
+            homeZ: p.dz,
+            chairCollider: p.chairCollider,
+            behindCounter,
+          },
           endBeforeDock: true,
         })
       ) {
@@ -2066,14 +2465,15 @@ export class AtriumSimulation {
         p.tyaw = p.df;
         p.navQueue = undefined;
         p.navKey = undefined;
-        setPose(p, p.dpose, this.P_LIB);
+        this.setSafePose(p, p.dpose);
       }
       return;
     }
     if (p.state === 'out') {
+      if (p.pose !== 'stand') this.setSafePose(p, 'stand');
       if (
         this.followNavPath(p, 0, `d-out-${p.sd}`, p.sd * 2.2, 17, dt, {
-          useHomeDock: { homeX: p.dx, homeZ: p.dz },
+          useHomeDock: { homeX: p.dx, homeZ: p.dz, chairCollider: p.chairCollider },
         })
       ) {
         p.state = 'away';
@@ -2158,6 +2558,19 @@ export class AtriumSimulation {
     const m = this.simMin;
     this.guideNavQueue = [];
     this.guideNavKey = '';
+
+    for (let i = 0; i < this.chairPairs.length; i++) {
+      const { handle: ch, collider: col } = this.chairPairs[i];
+      ch.curX = ch.restX;
+      ch.curZ = ch.restZ;
+      ch.curRot = ch.restRot;
+      ch.group.position.x = ch.restX;
+      ch.group.position.z = ch.restZ;
+      ch.group.rotation.y = ch.restRot;
+      col.curX = ch.restX;
+      col.curZ = ch.restZ;
+    }
+
     for (const p of this.WORKERS) {
       const w = this.wantOf(p, m);
       p.want = w;
@@ -2167,6 +2580,8 @@ export class AtriumSimulation {
       if (ag) {
         ag.mode = 'home';
         ag.queue = [];
+        ag.stuckTime = 0;
+        ag.replanCount = 0;
       }
       if (w === 'desk') {
         p.state = 'atDesk';
@@ -2174,10 +2589,11 @@ export class AtriumSimulation {
         p.g.position.set(p.seat.x, LV[p.d.lv], p.seat.z);
         p.yaw = p.tyaw = Math.PI;
         p.g.rotation.y = Math.PI;
-        setPose(p, p.modes ? pickMode(p.modes) : 'type', this.P_LIB);
+        this.setSafePose(p, p.modes ? pickMode(p.modes) : 'type');
       } else {
         p.state = 'away';
         p.g.visible = false;
+        this.setSafePose(p, 'stand');
       }
     }
     const dayOn = m >= 480 && m < 1050;
@@ -2188,6 +2604,8 @@ export class AtriumSimulation {
       if (ag) {
         ag.mode = 'home';
         ag.queue = [];
+        ag.stuckTime = 0;
+        ag.replanCount = 0;
       }
       if (dayOn) {
         p.state = 'atDesk';
@@ -2195,10 +2613,11 @@ export class AtriumSimulation {
         p.g.position.set(p.dx, liftY(p.lv), p.dz);
         p.yaw = p.tyaw = p.df;
         p.g.rotation.y = p.df;
-        setPose(p, p.dpose, this.P_LIB);
+        this.setSafePose(p, p.dpose);
       } else {
         p.state = 'away';
         p.g.visible = false;
+        this.setSafePose(p, 'stand');
       }
     }
     if (this.secOffActor) {
@@ -2206,10 +2625,12 @@ export class AtriumSimulation {
       if (ag) {
         ag.mode = 'home';
         ag.queue = [];
+        ag.stuckTime = 0;
+        ag.replanCount = 0;
         this.secOffActor.g.position.set(ag.homeX, liftY(ag.lv), ag.homeZ);
         this.secOffActor.yaw = this.secOffActor.tyaw = ag.homeFace;
         this.secOffActor.g.rotation.y = ag.homeFace;
-        setPose(this.secOffActor, ag.homePose, this.P_LIB);
+        this.setSafePose(this.secOffActor, ag.homePose);
       }
     }
     for (const b of this.BASEMENT_STAFF) {
@@ -2217,10 +2638,12 @@ export class AtriumSimulation {
       if (ag) {
         ag.mode = 'home';
         ag.queue = [];
+        ag.stuckTime = 0;
+        ag.replanCount = 0;
         b.g.position.set(ag.homeX, liftY(ag.lv), ag.homeZ);
         b.yaw = b.tyaw = ag.homeFace;
         b.g.rotation.y = ag.homeFace;
-        setPose(b, ag.homePose, this.P_LIB);
+        this.setSafePose(b, ag.homePose);
       }
     }
     for (const v of this.TRAF) {
@@ -2235,6 +2658,7 @@ export class AtriumSimulation {
         v.g.position.set(v.x, -0.62, v.lane);
       }
     }
+    this.districtSim.snapAll(m);
   }
 
   /* =========================================================
@@ -2293,7 +2717,7 @@ export class AtriumSimulation {
     this.cabs[-1].gw = false;
     this.cabs[1].gw = false;
     this.tourLv = 0;
-    this.guideActor.g.position.set(14.5, 0, LANE);
+    this.guideActor.g.position.set(14.5, 0, 9.65);
     this.guideActor.yaw = this.guideActor.tyaw = -0.3;
     setPose(this.guideActor, 'stand', this.P_LIB);
     const gag = this.freeAgents.get(this.guideActor);
@@ -2639,15 +3063,23 @@ export class AtriumSimulation {
     this.onFootstep?.();
   }
 
-  public enterWalk(camera: THREE.Camera, controls: OrbitControls) {
+  public enterWalk(camera: THREE.Camera, controls: OrbitControls, buildingId: BuildingId = 'hub') {
     if (this.tourOn) this.endTour();
     this.savedCamPos.copy(camera.position);
     this.savedCamTgt.copy(controls.target);
     controls.enabled = false;
     this.walkOn = true;
+    this.walkBuildingId = buildingId;
     this.walkFloor = 0;
-    this.walkPos.set(0, LV[0] + 1.65, 22);
-    this.walkYaw = 0;
+    if (buildingId === 'hub') {
+      this.walkPos.set(0, LV[0] + 1.65, 22);
+      this.walkYaw = 0;
+    } else {
+      const spec = DISTRICT_BUILDING_MAP[buildingId];
+      const signZ = spec.doorSide === 'north' ? -1 : 1;
+      this.walkPos.set(spec.doorX, -0.608 + 1.65, spec.doorZ + signZ * 3.8);
+      this.walkYaw = spec.doorSide === 'north' ? Math.PI : 0;
+    }
     this.walkPitch = 0;
     this.walkStep = 0;
   }
@@ -2669,8 +3101,20 @@ export class AtriumSimulation {
 
   public setWalkFloor(lv: number) {
     if (!this.walkOn) return;
-    this.walkFloor = Math.max(0, Math.min(FLOORS - 1, lv));
-    this.walkPos.y = LV[this.walkFloor] + 1.65;
+    const spec = DISTRICT_BUILDING_MAP[this.walkBuildingId];
+    const maxLv = spec.floors - 1;
+    this.walkFloor = Math.max(0, Math.min(maxLv, lv));
+    if (this.walkFloor === 0) {
+      this.walkPos.y = this.groundElevationAt(0, this.walkPos.x, this.walkPos.z, this.walkBuildingId) + 1.65;
+    } else if (this.walkBuildingId === 'hub') {
+      this.walkPos.x = Math.max(-19.0, Math.min(19.0, this.walkPos.x));
+      this.walkPos.z = Math.max(0.85, Math.min(DEPTH - 0.65, this.walkPos.z));
+      this.walkPos.y = LV[this.walkFloor] + 1.65;
+    } else {
+      this.walkPos.x = spec.cx;
+      this.walkPos.z = spec.cz + spec.d * 0.25;
+      this.walkPos.y = spec.groundY + this.walkFloor * spec.floorH + 0.12 + 1.65;
+    }
   }
 
   public setTouchJoystick(nx: number, ny: number) {
@@ -2682,12 +3126,13 @@ export class AtriumSimulation {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!this.walkOn) return;
       this.walkKeys[e.code] = true;
+      const maxLv = DISTRICT_BUILDING_MAP[this.walkBuildingId].floors - 1;
       if (e.code === 'Escape') this.exitWalk(camera, controls);
       if (e.code.startsWith('Digit')) {
         const d = parseInt(e.code.slice(5), 10);
-        if (d >= 0 && d < FLOORS) this.setWalkFloor(d);
+        if (d >= 0 && d <= maxLv) this.setWalkFloor(d);
       }
-      if (e.code === 'KeyR' && this.walkFloor < FLOORS - 1) this.setWalkFloor(this.walkFloor + 1);
+      if (e.code === 'KeyR' && this.walkFloor < maxLv) this.setWalkFloor(this.walkFloor + 1);
       if (e.code === 'KeyF' && this.walkFloor > 0) this.setWalkFloor(this.walkFloor - 1);
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -2756,6 +3201,8 @@ export class AtriumSimulation {
     fwd -= this.walkJoy.y;
     strafe += this.walkJoy.x;
 
+    const prevWalkX = this.walkPos.x;
+    const prevWalkZ = this.walkPos.z;
     const mag = Math.hypot(fwd, strafe);
     if (mag > 0.01) {
       const spd = (this.walkKeys.ShiftLeft || this.walkKeys.ShiftRight ? 7.2 : 3.9) * Math.min(1, mag);
@@ -2772,27 +3219,74 @@ export class AtriumSimulation {
       }
     }
 
-    // Gentle boundaries inside building + plaza
-    this.walkPos.x = Math.max(-19.2, Math.min(19.2, this.walkPos.x));
-    if (this.walkFloor > 0) {
-      this.walkPos.z = Math.max(0.85, Math.min(DEPTH - 0.65, this.walkPos.z));
+    // Clamp & collide against active building or full district ground plaza/streets
+    if (this.walkFloor === 0) {
+      this.walkPos.x = Math.max(-76.5, Math.min(76.5, this.walkPos.x));
+      this.walkPos.z = Math.max(-34.0, Math.min(102.0, this.walkPos.z));
+
+      let extraVehicles: VehicleObb[] | undefined;
+      if (this.walkPos.z > 14.0 && this.walkPos.z < 76.0) {
+        let count = 0;
+        for (let i = 0; i < this.TRAF.length; i++) {
+          const v = this.TRAF[i];
+          if (!v.g.visible) continue;
+          const ry = v.g.rotation.y;
+          let slot = this._walkVehicles[count];
+          if (!slot) {
+            slot = { cx: 0, cz: 0, hx: 0.98, hz: 2.25, cos: 1, sin: 0 };
+            this._walkVehicles.push(slot);
+          }
+          slot.cx = v.g.position.x;
+          slot.cz = v.g.position.z;
+          slot.cos = Math.cos(ry);
+          slot.sin = Math.sin(ry);
+          count++;
+        }
+        this._walkVehicles.length = count;
+        extraVehicles = this._walkVehicles;
+      }
+
+      const stepDist = Math.hypot(this.walkPos.x - prevWalkX, this.walkPos.z - prevWalkZ);
+      const substeps = Math.max(1, Math.min(8, Math.ceil(stepDist / 0.12)));
+      let cx = prevWalkX;
+      let cz = prevWalkZ;
+      const dxSub = (this.walkPos.x - prevWalkX) / substeps;
+      const dzSub = (this.walkPos.z - prevWalkZ) / substeps;
+      for (let s = 0; s < substeps; s++) {
+        const res = resolveObstaclePosition(0, cx + dxSub, cz + dzSub, {
+          radius: 0.38,
+          districtWalk: true,
+          extraVehicles,
+        });
+        cx = res.x;
+        cz = res.z;
+      }
+      this.walkPos.x = cx;
+      this.walkPos.z = cz;
     } else {
-      this.walkPos.z = Math.max(0.85, Math.min(54, this.walkPos.z));
+      const stepDist = Math.hypot(this.walkPos.x - prevWalkX, this.walkPos.z - prevWalkZ);
+      const substeps = Math.max(1, Math.min(8, Math.ceil(stepDist / 0.12)));
+      let cx = prevWalkX;
+      let cz = prevWalkZ;
+      const dxSub = (this.walkPos.x - prevWalkX) / substeps;
+      const dzSub = (this.walkPos.z - prevWalkZ) / substeps;
+      for (let s = 0; s < substeps; s++) {
+        const res = resolveDistrictObstacle(this.walkBuildingId, this.walkFloor, cx + dxSub, cz + dzSub, {
+          radius: 0.38,
+        });
+        cx = res.x;
+        cz = res.z;
+      }
+      this.walkPos.x = cx;
+      this.walkPos.z = cz;
     }
 
-    // Solid collision against architectural walls, partitions, desks, counters, planters & props on active floor
-    if (this.walkFloor > 0 || this.walkPos.z <= 54.0) {
-      const safeWalk = resolveObstaclePosition(this.walkFloor, this.walkPos.x, this.walkPos.z, { radius: 0.38 });
-      this.walkPos.x = safeWalk.x;
-      this.walkPos.z = safeWalk.z;
-    }
-
-    // Collide against active standing/walking staff & guide on the current floor
+    // Collide against active standing/walking staff, district NPCs & guide on current floor
     if (this.peopleGroup.visible) {
-      const floorY = LV[this.walkFloor];
+      const floorY = this.groundElevationAt(this.walkFloor, this.walkPos.x, this.walkPos.z, this.walkBuildingId);
       const charMinR = 0.62;
-      for (const P of this.STAFF) {
-        if (!P.g.visible || Math.abs(P.g.position.y - floorY) > 1.1) continue;
+      const pushOutFromActor = (P: PersonActor) => {
+        if (!P.g.visible || Math.abs(P.g.position.y - floorY) > 1.1) return;
         const dx = this.walkPos.x - P.g.position.x;
         const dz = this.walkPos.z - P.g.position.z;
         const d = Math.hypot(dx, dz);
@@ -2804,23 +3298,13 @@ export class AtriumSimulation {
             this.walkPos.z = P.g.position.z + charMinR;
           }
         }
-      }
-      if (this.guideActor.g.visible && Math.abs(this.guideActor.g.position.y - floorY) <= 1.1) {
-        const dx = this.walkPos.x - this.guideActor.g.position.x;
-        const dz = this.walkPos.z - this.guideActor.g.position.z;
-        const d = Math.hypot(dx, dz);
-        if (d < charMinR) {
-          if (d > 0.001) {
-            this.walkPos.x = this.guideActor.g.position.x + (dx / d) * charMinR;
-            this.walkPos.z = this.guideActor.g.position.z + (dz / d) * charMinR;
-          } else {
-            this.walkPos.z = this.guideActor.g.position.z + charMinR;
-          }
-        }
-      }
+      };
+      for (const P of this.STAFF) pushOutFromActor(P);
+      for (const P of this.districtSim.ACTORS) pushOutFromActor(P);
+      pushOutFromActor(this.guideActor);
     }
 
-    const baseY = this.groundElevationAt(this.walkFloor, this.walkPos.x, this.walkPos.z) + 1.65;
+    const baseY = this.groundElevationAt(this.walkFloor, this.walkPos.x, this.walkPos.z, this.walkBuildingId) + 1.65;
     const bob = mag > 0.05 ? Math.sin(this.walkStep) * 0.042 : 0;
     camera.position.set(this.walkPos.x, baseY + bob, this.walkPos.z);
     camera.rotation.order = 'YXZ';
@@ -2863,9 +3347,16 @@ export class AtriumSimulation {
     return this.cameraFlight.active;
   }
 
-  public setCutawayRange(minY: number | null, maxY: number | null) {
-    this.cutawayMinY = minY;
-    this.cutawayMaxY = maxY;
+  public setCutawayRange(minY: number | null, maxY: number | null, buildingId: BuildingId = 'hub') {
+    if (buildingId === 'hub') {
+      this.cutawayMinY = minY;
+      this.cutawayMaxY = maxY;
+      this.districtSim.setCutaway('hub', null, null);
+    } else {
+      this.cutawayMinY = -0.5;
+      this.cutawayMaxY = null;
+      this.districtSim.setCutaway(buildingId, minY, maxY);
+    }
   }
 
   private applyActorCutaway(P: PersonActor): boolean {
@@ -2896,9 +3387,10 @@ export class AtriumSimulation {
       }
       this.peopleGroup.visible = this.staffFade > 0.03;
       this.peopleGroup.scale.setScalar(0.85 + 0.15 * this.staffFade);
+      this.districtSim.setStaffVisible(this.peopleGroup.visible);
     }
 
-    // Lift controllers & office staff simulation
+    // Lift controllers, office staff simulation & smooth non-throwing chair kinematics
     this.cabCtl(-1, dt);
     this.cabCtl(1, dt);
     for (const w of this.WORKERS) this.wThink(w, dt);
@@ -2909,6 +3401,8 @@ export class AtriumSimulation {
     for (const b of this.BASEMENT_STAFF) {
       if (b.g.visible) this.stepFreeAgent(b, dt);
     }
+    this.updateChairs(dt);
+    this.districtSim.update(dt, t, this.simMin, camera);
 
     // Update all animated staff kinematics
     for (const P of this.STAFF) {
@@ -3003,6 +3497,7 @@ export class AtriumSimulation {
       }
     };
     for (const P of this.STAFF) checkActor(P);
+    for (const P of this.districtSim.ACTORS) checkActor(P);
     checkActor(this.guideActor);
   }
 
@@ -3049,7 +3544,10 @@ export class AtriumSimulation {
     return parts.join(' · ') || `${actors.length} active`;
   }
 
-  public getFloorActivity(activeLevel: string): FloorActivitySummary | null {
+  public getFloorActivity(activeLevel: string, activeBuilding: BuildingId = 'hub'): FloorActivitySummary | null {
+    if (activeBuilding !== 'hub') {
+      return this.districtSim.getFloorActivity(activeBuilding, activeLevel);
+    }
     if (activeLevel === 'overview' || activeLevel === 'tour' || activeLevel === 'walk') {
       return null;
     }
@@ -3289,8 +3787,12 @@ export class AtriumSimulation {
   public getMonitorWorkerStatus(
     lv: number,
     seatX: number,
-    seatZ: number
+    seatZ: number,
+    buildingId: BuildingId = 'hub'
   ): { workerActivity: string; isOccupied: boolean } {
+    if (buildingId !== 'hub') {
+      return this.districtSim.getMonitorWorkerStatus(buildingId, lv, seatX, seatZ);
+    }
     const describePose = (pose: string, state: string): string => {
       if (state !== 'atDesk') {
         if (state === 'toLunch' || state === 'lunch' || state === 'fromLunch') {
@@ -3363,7 +3865,8 @@ export class AtriumSimulation {
     hoveredRoom: { title: string; sub: string; color: string; hint?: string } | null,
     audioEnabled: boolean,
     inspectedMonitor: InspectedMonitor | null,
-    selectedCharacter: SelectedCharacterSnapshot | null
+    selectedCharacter: SelectedCharacterSnapshot | null,
+    activeBuilding: BuildingId = 'hub'
   ): HudSnapshot {
     const m = Math.floor(this.simMin) % 1440;
     const hh = String(Math.floor(m / 60)).padStart(2, '0');
@@ -3379,16 +3882,23 @@ export class AtriumSimulation {
       this.WORKERS.filter((w) => w.g.visible).length +
       this.DAYONLY.filter((d) => d.g.visible).length +
       this.BASEMENT_STAFF.filter((b) => b.g.visible).length +
-      (this.secOffActor?.g.visible ? 1 : 0);
+      (this.secOffActor?.g.visible ? 1 : 0) +
+      this.districtSim.getActiveCount();
     const activeCars = this.TRAF.filter((v) => v.state === 'street').length;
 
+    const bSpec = DISTRICT_BUILDING_MAP[activeBuilding];
     const stop = this.STOPS[this.tourI] || this.STOPS[0];
     return {
       simMinutes: this.simMin,
       simRate: this.simRate,
       timeText: `${hh}:${mm}`,
       shiftLabel,
-      statsLabel: `${activeStaff} staff on site · ${activeCars} street vehicles`,
+      statsLabel: `${activeStaff} people in district · ${activeCars} street vehicles`,
+      activeBuilding,
+      activeBuildingName: bSpec.name,
+      activeBuildingNiche: bSpec.niche,
+      activeBuildingAccent: bSpec.accent,
+      buildingFloors: bSpec.floors,
       activeLevel,
       staffVisible: this.staffVisible,
       walking: this.walkOn,
@@ -3405,7 +3915,7 @@ export class AtriumSimulation {
       tourColor: stop.col,
       tourProgress: (this.tourI + 1) / this.STOPS.length,
       hoveredRoom,
-      floorActivity: this.getFloorActivity(activeLevel),
+      floorActivity: this.getFloorActivity(activeLevel, activeBuilding),
       inspectedMonitor,
       selectedCharacter,
       audioEnabled,
@@ -3413,6 +3923,6 @@ export class AtriumSimulation {
   }
 
   public dispose() {
-    // Cleanup handled by AtriumEngine
+    clearTrackedChairs();
   }
 }

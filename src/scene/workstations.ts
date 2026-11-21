@@ -1,3 +1,5 @@
+import { DISTRICT_WORKSTATIONS } from './districtData';
+
 export type WorkstationMode = 'browser' | 'dataEntry' | 'project';
 export type JobAppType = 'ide' | 'design' | 'marketing' | 'social' | 'security' | 'executive';
 
@@ -1929,10 +1931,11 @@ const PROFILES: Record<string, WorkstationProfile> = {
 };
 
 export function getWorkstationProfile(stationKey: string): WorkstationProfile {
-  return PROFILES[stationKey] || PROFILES.web;
+  return PROFILES[stationKey] || DISTRICT_WORKSTATIONS[stationKey] || PROFILES.web;
 }
 
 export function getModeForDesk(stationKey: string, seatIndex: number): WorkstationMode {
+  if (DISTRICT_WORKSTATIONS[stationKey]) return DISTRICT_WORKSTATIONS[stationKey].primaryMode;
   if (stationKey === 'reception-0') return 'dataEntry';
   if (stationKey === 'reception-1') return 'project';
   if (stationKey === 'ceo-0') return 'project';
