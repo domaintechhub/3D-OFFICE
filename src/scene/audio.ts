@@ -25,6 +25,11 @@ export class AmbientAudioManager {
   private chatterGain: GainNode | null = null;
   private chatterPanner: StereoPannerNode | null = null;
 
+  // Street vehicle pass-by / tire hum bus
+  private trafficGain: GainNode | null = null;
+  private trafficFilter: BiquadFilterNode | null = null;
+  private trafficPanner: StereoPannerNode | null = null;
+
   private enabled = true;
   private unlocked = false;
   private disposed = false;
@@ -95,6 +100,7 @@ export class AmbientAudioManager {
 
       this.buildHvacLayer(ctx, master);
       this.buildChatterLayer(ctx, master);
+      this.buildTrafficLayer(ctx, master);
 
       this.unlocked = ctx.state === 'running';
     } catch {
@@ -278,6 +284,36 @@ export class AmbientAudioManager {
     }
   }
 
+  private buildTrafficLayer(ctx: AudioContext, dest: AudioNode) {
+    const trafficGain = ctx.createGain();
+    trafficGain.gain.value = 0;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 280;
+    filter.Q.value = 0.85;
+
+    const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    filter.connect(trafficGain);
+    if (panner) {
+      trafficGain.connect(panner);
+      panner.connect(dest);
+      this.trafficPanner = panner;
+    } else {
+      trafficGain.connect(dest);
+    }
+
+    const roadNoise = this.createLoopingBrownNoise(ctx, 3.5, 0.045);
+    const src = ctx.createBufferSource();
+    src.buffer = roadNoise;
+    src.loop = true;
+    src.connect(filter);
+    src.start();
+
+    this.trafficGain = trafficGain;
+    this.trafficFilter = filter;
+  }
+
   /**
    * Synthesize a soft footstep sound for first-person walkthrough mode.
    */
@@ -314,6 +350,7 @@ export class AmbientAudioManager {
       walkOn: boolean;
       activeLevel: string;
       simRate: number;
+      trafficHint?: { level: number; pan: number; speedNorm: number };
     }
   ) {
     if (!this.ctx || this.disposed) return;
@@ -397,6 +434,18 @@ export class AmbientAudioManager {
       const p = Math.max(-0.65, Math.min(0.65, chatterPanNum / chatterPanDen));
       this.chatterPanner.pan.setTargetAtTime(p, now, 0.15);
     }
+
+    if (this.trafficGain && this.trafficFilter) {
+      const th = options.trafficHint;
+      const tLevel = th ? Math.min(1, th.level) : 0;
+      const targetTraffic = tLevel > 0.01 ? 0.045 * tLevel : 0;
+      this.trafficGain.gain.setTargetAtTime(targetTraffic, now, 0.12);
+      const targetFreq = 190 + (th ? th.speedNorm * 260 : 0);
+      this.trafficFilter.frequency.setTargetAtTime(targetFreq, now, 0.12);
+      if (this.trafficPanner && th) {
+        this.trafficPanner.pan.setTargetAtTime(Math.max(-0.85, Math.min(0.85, th.pan)), now, 0.1);
+      }
+    }
   }
 
   public dispose() {
@@ -412,5 +461,8 @@ export class AmbientAudioManager {
     this.hvacGain = null;
     this.chatterGain = null;
     this.chatterPanner = null;
+    this.trafficGain = null;
+    this.trafficFilter = null;
+    this.trafficPanner = null;
   }
 }

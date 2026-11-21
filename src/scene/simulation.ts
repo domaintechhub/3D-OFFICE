@@ -54,7 +54,7 @@ import {
   type FreeGoal,
 } from './characterMind';
 import type { MaterialLibrary } from './materials';
-import { getRoundedBox, makeCar } from './props';
+import { getRoundedBox, makeCar, updateCarVisualState, type CarRig } from './props';
 import {
   buildObstacleAwarePath,
   clearTrackedChairs,
@@ -148,18 +148,41 @@ const DEPT_ROLE: Record<string, string> = {
 
 type TrafficVehicle = {
   g: THREE.Group;
+  rig: CarRig;
   bm: THREE.MeshPhysicalMaterial;
   spd: number;
+  cruiseSpd: number;
+  vel: number;
   lane: number;
   x: number;
   dir: number;
   state: 'street' | 'toBay' | 'parked' | 'toGate' | 'toStreet';
-  bay: { sd: number; x: number; z: number; face: number } | null;
+  bay: CompanyBay | null;
   phase: number;
+  steer: number;
+  pitch: number;
+  roll: number;
+  brakeGlow: number;
+  signalDir: -1 | 0 | 1;
+  pauseTimer: number;
   in_t?: number;
   out_t?: number;
+  errand?: { cycleMin: number; parkMin: number; offset: number };
   _arr?: number;
 };
+
+interface CompanyBay {
+  company: BuildingId;
+  sd: number;
+  x: number;
+  z: number;
+  face: number;
+  gateX: number;
+  gateLane: number;
+  exitLane: number;
+  entryPts: Array<[number, number]>;
+  exitPts: Array<[number, number]>;
+}
 
 export interface GuideTourStep {
   stop: TourStop;
@@ -173,15 +196,15 @@ export interface GuideTourStep {
 
 const standX = (cx: number) => (cx < 0 ? -1 : 1) * Math.min(Math.abs(cx) + 3.2, GATE_STOP);
 
-const DRV_X = 30;
+const DRV_X = 26.5;
 const AISLE_Z = 29.75;
-const LANE_E = 64;
-const LANE_W = 68;
+const LANE_WEST = ROAD_Z - 3.2;
+const LANE_EAST = ROAD_Z + 3.2;
 const STREET_END = 112;
-const BAY_XS = [9, 12.5, 16, 19.5, 23];
+const BAY_XS = [8.2, 11.7, 15.2, 18.7, 22.0];
 const BAY_ROWS = [25, 34.5];
 const CAR_COLS = [0x1c2432, 0x7b2329, 0x3b4854, 0xcfd3d6, 0x2c4237, 0x16171a, 0x7a6a58, 0x2e4a76];
-const CAR_STYLES: Array<'sedan' | 'suv' | 'hatch'> = ['sedan', 'suv', 'hatch'];
+const CAR_STYLES: Array<'sedan' | 'suv' | 'hatch' | 'van'> = ['sedan', 'suv', 'hatch', 'van'];
 
 export class AtriumSimulation {
   private readonly scene: THREE.Scene;
@@ -203,7 +226,7 @@ export class AtriumSimulation {
   }> = [];
   private readonly _walkVehicles: VehicleObb[] = [];
   private readonly TRAF: TrafficVehicle[] = [];
-  private readonly LOT: Array<{ sd: number; x: number; z: number; face: number }> = [];
+  private readonly LOT: CompanyBay[] = [];
   private readonly PLOCK: Array<{ x: number; z: number; r: number }> = [];
 
   public readonly guideActor: PersonActor;
@@ -1145,17 +1168,266 @@ export class AtriumSimulation {
   }
 
   private populateTrafficAndParking() {
+    const pushBay = (bay: CompanyBay) => this.LOT.push(bay);
+
+    // 1. DomainTechHub Lot (20 bays via x = ±26.5 inner drives)
     [-1, 1].forEach((sd) =>
       BAY_ROWS.forEach((bz) =>
-        BAY_XS.forEach((bx) =>
-          this.LOT.push({
+        BAY_XS.forEach((bx) => {
+          const x = sd * bx;
+          const xg = sd * DRV_X;
+          pushBay({
+            company: 'hub',
             sd,
-            x: sd * bx,
+            x,
             z: bz,
             face: bz < AISLE_Z ? Math.PI : 0,
-          })
-        )
+            gateX: xg,
+            gateLane: LANE_WEST,
+            exitLane: LANE_EAST,
+            entryPts: [
+              [xg, LANE_WEST],
+              [xg, AISLE_Z],
+              [x, AISLE_Z],
+              [x, bz],
+            ],
+            exitPts: [
+              [x, AISLE_Z],
+              [xg, AISLE_Z],
+              [xg, LANE_WEST],
+              [xg, LANE_EAST],
+            ],
+          });
+        })
       )
+    );
+
+    // 2. VitalCare Medical Clinic (4 bays along z = -15.0 ring road)
+    [-16.0, -11.0, 11.0, 16.0].forEach((bx) =>
+      pushBay({
+        company: 'medical',
+        sd: bx < 0 ? -1 : 1,
+        x: bx,
+        z: -10.5,
+        face: 0,
+        gateX: -26.5,
+        gateLane: LANE_WEST,
+        exitLane: LANE_EAST,
+        entryPts: [
+          [-26.5, LANE_WEST],
+          [-26.5, -15.0],
+          [bx, -15.0],
+          [bx, -10.5],
+        ],
+        exitPts: [
+          [bx, -15.0],
+          [26.5, -15.0],
+          [26.5, LANE_WEST],
+          [26.5, LANE_EAST],
+        ],
+      })
+    );
+
+    // 3. Meridian Reserve Bank (4 bays via West Commercial Ave x = -59 & NW Forecourt z = 18)
+    [-82, -78, -74, -70].forEach((bx) =>
+      pushBay({
+        company: 'bank',
+        sd: -1,
+        x: bx,
+        z: 13.8,
+        face: Math.PI,
+        gateX: -59.0,
+        gateLane: LANE_WEST,
+        exitLane: LANE_EAST,
+        entryPts: [
+          [-59.0, LANE_WEST],
+          [-59.0, 18.0],
+          [bx, 18.0],
+          [bx, 13.8],
+        ],
+        exitPts: [
+          [bx, 18.0],
+          [-59.0, 18.0],
+          [-59.0, LANE_WEST],
+          [-59.0, LANE_EAST],
+        ],
+      })
+    );
+
+    // 4. Saffron & Ember Kitchen (4 bays via West Commercial Ave x = -59 -> exit via x = -26.5)
+    [-49, -45, -41, -37].forEach((bx) =>
+      pushBay({
+        company: 'restaurant',
+        sd: -1,
+        x: bx,
+        z: 13.8,
+        face: Math.PI,
+        gateX: -59.0,
+        gateLane: LANE_WEST,
+        exitLane: LANE_EAST,
+        entryPts: [
+          [-59.0, LANE_WEST],
+          [-59.0, 18.0],
+          [bx, 18.0],
+          [bx, 13.8],
+        ],
+        exitPts: [
+          [bx, 18.0],
+          [-26.5, 18.0],
+          [-26.5, LANE_WEST],
+          [-26.5, LANE_EAST],
+        ],
+      })
+    );
+
+    // 5. Apex Motors Dealership (4 bays via East Commercial Ave x = +59 -> exit via x = +26.5)
+    [37, 41, 45, 49].forEach((bx) =>
+      pushBay({
+        company: 'dealership',
+        sd: 1,
+        x: bx,
+        z: 13.8,
+        face: Math.PI,
+        gateX: 59.0,
+        gateLane: LANE_WEST,
+        exitLane: LANE_EAST,
+        entryPts: [
+          [59.0, LANE_WEST],
+          [59.0, 18.0],
+          [bx, 18.0],
+          [bx, 13.8],
+        ],
+        exitPts: [
+          [bx, 18.0],
+          [26.5, 18.0],
+          [26.5, LANE_WEST],
+          [26.5, LANE_EAST],
+        ],
+      })
+    );
+
+    // 6. KryptoNexus Exchange (4 bays via East Commercial Ave x = +59 & NE Forecourt z = 18)
+    [68, 72, 76, 80].forEach((bx) =>
+      pushBay({
+        company: 'crypto',
+        sd: 1,
+        x: bx,
+        z: 13.8,
+        face: Math.PI,
+        gateX: 59.0,
+        gateLane: LANE_WEST,
+        exitLane: LANE_EAST,
+        entryPts: [
+          [59.0, LANE_WEST],
+          [59.0, 18.0],
+          [bx, 18.0],
+          [bx, 13.8],
+        ],
+        exitPts: [
+          [bx, 18.0],
+          [59.0, 18.0],
+          [59.0, LANE_WEST],
+          [59.0, LANE_EAST],
+        ],
+      })
+    );
+
+    // 7. Horizon Travel Hub (3 south bays via entry x = -60, lane z = 77.2, exit x = -36)
+    [-54, -48, -42].forEach((bx) =>
+      pushBay({
+        company: 'travel',
+        sd: -1,
+        x: bx,
+        z: 79.2,
+        face: 0,
+        gateX: -60.0,
+        gateLane: LANE_EAST,
+        exitLane: LANE_EAST,
+        entryPts: [
+          [-60.0, LANE_EAST],
+          [-60.0, 77.2],
+          [bx, 77.2],
+          [bx, 79.2],
+        ],
+        exitPts: [
+          [bx, 77.2],
+          [-36.0, 77.2],
+          [-36.0, LANE_EAST],
+        ],
+      })
+    );
+
+    // 8. Savannah Peaks Tourism (3 south bays via entry x = -14, lane z = 77.2, exit x = +14)
+    [-8, 0, 8].forEach((bx) =>
+      pushBay({
+        company: 'tourism',
+        sd: 1,
+        x: bx,
+        z: 79.2,
+        face: 0,
+        gateX: -14.0,
+        gateLane: LANE_EAST,
+        exitLane: LANE_EAST,
+        entryPts: [
+          [-14.0, LANE_EAST],
+          [-14.0, 77.2],
+          [bx, 77.2],
+          [bx, 79.2],
+        ],
+        exitPts: [
+          [bx, 77.2],
+          [14.0, 77.2],
+          [14.0, LANE_EAST],
+        ],
+      })
+    );
+
+    // 9. SwiftPort Cargo & Logistics (3 front bays z = 79.2 + 2 East Loading Dock bays x = 73.1)
+    [44, 52, 60].forEach((bx) =>
+      pushBay({
+        company: 'logistics',
+        sd: 1,
+        x: bx,
+        z: 79.2,
+        face: 0,
+        gateX: 38.0,
+        gateLane: LANE_EAST,
+        exitLane: LANE_EAST,
+        entryPts: [
+          [38.0, LANE_EAST],
+          [38.0, 77.2],
+          [bx, 77.2],
+          [bx, 79.2],
+        ],
+        exitPts: [
+          [bx, 77.2],
+          [77.0, 77.2],
+          [77.0, LANE_EAST],
+        ],
+      })
+    );
+    [90.5, 97.5].forEach((bz) =>
+      pushBay({
+        company: 'logistics',
+        sd: 1,
+        x: 73.1,
+        z: bz,
+        face: -Math.PI / 2,
+        gateX: 38.0,
+        gateLane: LANE_EAST,
+        exitLane: LANE_EAST,
+        entryPts: [
+          [38.0, LANE_EAST],
+          [38.0, 77.2],
+          [77.0, 77.2],
+          [77.0, bz],
+          [73.1, bz],
+        ],
+        exitPts: [
+          [77.0, bz],
+          [77.0, LANE_EAST],
+        ],
+      })
     );
 
     const addLock = (x: number, z: number, r: number) => {
@@ -1176,51 +1448,134 @@ export class AtriumSimulation {
       addLock(s * 16.5, 13.4, 2.0);
     });
 
-    // Through-street traffic (using sedan, suv & hatchback profiles)
+    // Through-boulevard traffic (sedans, SUVs, hatchbacks + SwiftPort cargo transit van)
     for (let i = 0; i < 6; i++) {
       const dir = i % 2 ? 1 : -1;
-      const lane = ROAD_Z + (dir > 0 ? 3.2 : -3.2);
-      const x = -96 + i * 34 + Math.random() * 14;
-      const style = CAR_STYLES[i % CAR_STYLES.length];
-      const car = makeCar(CAR_COLS[i % CAR_COLS.length], style);
+      const lane = dir > 0 ? LANE_EAST : LANE_WEST;
+      const laneIdx = Math.floor(i / 2);
+      const x = -80 + laneIdx * 64 + (dir > 0 ? 12 : -8);
+      const style = i === 4 ? 'van' : CAR_STYLES[i % 3];
+      const car = makeCar(style === 'van' ? 0xf8fafc : CAR_COLS[i % CAR_COLS.length], style, {
+        logistics: style === 'van',
+      });
+      const rig = car.userData.carRig as CarRig;
+      const cruiseSpd = style === 'van' ? 7.8 : 8.4 + (i % 3) * 1.2;
       car.position.set(x, -0.62, lane);
       car.rotation.y = dir > 0 ? Math.PI / 2 : -Math.PI / 2;
       this.trafficGroup.add(car);
       this.TRAF.push({
         g: car,
+        rig,
         bm: car.userData.body as THREE.MeshPhysicalMaterial,
-        spd: 7 + Math.random() * 4,
+        spd: cruiseSpd,
+        cruiseSpd,
+        vel: cruiseSpd,
         lane,
         x,
         dir,
         state: 'street',
         bay: null,
         phase: Math.random() * 6,
+        steer: 0,
+        pitch: 0,
+        roll: 0,
+        brakeGlow: 0,
+        signalDir: 0,
+        pauseTimer: 0,
       });
     }
 
-    // Commuting staff vehicles mapped to parking bays
-    for (let i = 0; i < 12; i++) {
-      const bay = this.LOT[i];
-      const style = CAR_STYLES[(i + 1) % CAR_STYLES.length];
-      const car = makeCar(CAR_COLS[(i + 3) % CAR_COLS.length], style);
-      car.position.set(bay.x, -0.62, bay.z);
+    const pickBay = (company: BuildingId, occurrence = 0): CompanyBay => {
+      const matches = this.LOT.filter((b) => b.company === company);
+      return matches[occurrence % matches.length];
+    };
+
+    const spawnAssignedVehicle = (
+      bay: CompanyBay,
+      style: 'sedan' | 'suv' | 'hatch' | 'van',
+      color: number,
+      idx: number,
+      opts?: { in_t?: number; out_t?: number; errand?: { cycleMin: number; parkMin: number; offset: number }; logistics?: boolean }
+    ) => {
+      const car = makeCar(color, style, { logistics: opts?.logistics });
+      const rig = car.userData.carRig as CarRig;
+      car.position.set(bay.x, -0.604, bay.z);
       car.rotation.y = bay.face;
       this.trafficGroup.add(car);
       this.TRAF.push({
         g: car,
+        rig,
         bm: car.userData.body as THREE.MeshPhysicalMaterial,
-        spd: 5.5,
-        lane: ROAD_Z + 3.2,
+        spd: style === 'van' ? 4.4 : 4.8,
+        cruiseSpd: style === 'van' ? 8.2 : 9.0 + (idx % 3) * 0.9,
+        vel: 0,
+        lane: bay.gateLane,
         x: bay.x,
-        dir: 1,
+        dir: bay.gateLane === LANE_EAST ? 1 : -1,
         state: 'parked',
         bay,
-        phase: 0,
-        in_t: 440 + (i % 6) * 14,
-        out_t: 1030 + (i % 6) * 20,
+        phase: idx * 0.7,
+        steer: 0,
+        pitch: 0,
+        roll: 0,
+        brakeGlow: 0,
+        signalDir: 0,
+        pauseTimer: 0,
+        in_t: opts?.in_t,
+        out_t: opts?.out_t,
+        errand: opts?.errand,
       });
-    }
+    };
+
+    // 10 Commuter / Tenant parked vehicles across all 9 companies
+    const commuters: Array<{ company: BuildingId; occ: number; style: 'sedan' | 'suv' | 'hatch' | 'van'; color: number; logistics?: boolean }> = [
+      { company: 'hub', occ: 1, style: 'sedan', color: 0x1c2432 },
+      { company: 'hub', occ: 11, style: 'suv', color: 0x3b4854 },
+      { company: 'medical', occ: 1, style: 'suv', color: 0xcfd3d6 },
+      { company: 'bank', occ: 1, style: 'sedan', color: 0x16171a },
+      { company: 'restaurant', occ: 1, style: 'hatch', color: 0x7b2329 },
+      { company: 'dealership', occ: 1, style: 'suv', color: 0x2e4a76 },
+      { company: 'crypto', occ: 1, style: 'sedan', color: 0x2c4237 },
+      { company: 'travel', occ: 1, style: 'suv', color: 0x7a6a58 },
+      { company: 'tourism', occ: 1, style: 'suv', color: 0x4b5c34 },
+      { company: 'logistics', occ: 3, style: 'van', color: 0xf8fafc, logistics: true },
+    ];
+    commuters.forEach((cfg, idx) => {
+      spawnAssignedVehicle(pickBay(cfg.company, cfg.occ), cfg.style, cfg.color, idx, {
+        in_t: 440 + (idx % 6) * 12,
+        out_t: 1030 + (idx % 6) * 18,
+        logistics: cfg.logistics,
+      });
+    });
+
+    // 9 Active errand / fleet vehicles entering & exiting every company road continuously during business hours
+    const fleetErrands: Array<{
+      company: BuildingId;
+      occ: number;
+      style: 'sedan' | 'suv' | 'hatch' | 'van';
+      color: number;
+      cycleMin: number;
+      parkMin: number;
+      offset: number;
+      logistics?: boolean;
+    }> = [
+      { company: 'logistics', occ: 4, style: 'van', color: 0xf8fafc, cycleMin: 16, parkMin: 6, offset: 5, logistics: true },
+      { company: 'logistics', occ: 0, style: 'van', color: 0xea580c, cycleMin: 18, parkMin: 6, offset: 12, logistics: true },
+      { company: 'hub', occ: 6, style: 'van', color: 0xf8fafc, cycleMin: 20, parkMin: 6, offset: 8, logistics: true },
+      { company: 'medical', occ: 2, style: 'suv', color: 0xeef2f6, cycleMin: 18, parkMin: 6, offset: 3 },
+      { company: 'bank', occ: 2, style: 'sedan', color: 0x1e293b, cycleMin: 22, parkMin: 7, offset: 9 },
+      { company: 'restaurant', occ: 2, style: 'hatch', color: 0x991b1b, cycleMin: 20, parkMin: 6, offset: 14 },
+      { company: 'dealership', occ: 2, style: 'sedan', color: 0x1d4ed8, cycleMin: 20, parkMin: 6, offset: 4 },
+      { company: 'crypto', occ: 2, style: 'hatch', color: 0x0f766e, cycleMin: 22, parkMin: 7, offset: 16 },
+      { company: 'travel', occ: 0, style: 'suv', color: 0x7c2d12, cycleMin: 22, parkMin: 7, offset: 10 },
+      { company: 'tourism', occ: 2, style: 'suv', color: 0x3f6212, cycleMin: 24, parkMin: 7, offset: 1 },
+    ];
+    fleetErrands.forEach((cfg, idx) => {
+      spawnAssignedVehicle(pickBay(cfg.company, cfg.occ), cfg.style, cfg.color, idx + 20, {
+        errand: { cycleMin: cfg.cycleMin, parkMin: cfg.parkMin, offset: cfg.offset },
+        logistics: cfg.logistics,
+      });
+    });
   }
 
   private buildTourStops(): TourStop[] {
@@ -2484,73 +2839,272 @@ export class AtriumSimulation {
     }
   }
 
-  private stepVeh(v: TrafficVehicle, pts: Array<[number, number]>, nxt: TrafficVehicle['state'], dt: number) {
+  private getTrafficNightFactor(m: number): number {
+    const hr = m / 60;
+    const dayPhase = Math.max(0, Math.min(1, (hr - 6.2) / 12.6));
+    const sunElev = Math.sin(dayPhase * Math.PI);
+    const isDay = hr >= 6.0 && hr <= 18.8;
+    if (!isDay) return 1.0;
+    if (sunElev < 0.28) return 1.0 - sunElev / 0.28;
+    return 0.0;
+  }
+
+  private getStreetStopTarget(v: TrafficVehicle): number {
+    let desiredSpd = v.cruiseSpd;
+
+    // 1. Car-following distance keeping along the same street lane
+    for (let j = 0; j < this.TRAF.length; j++) {
+      const other = this.TRAF[j];
+      if (other === v) continue;
+      if (other.state !== 'street' && other.state !== 'toGate') continue;
+      if (Math.abs(other.g.position.z - v.lane) > 2.3) continue;
+
+      const ox = other.state === 'street' ? other.x : other.g.position.x;
+      let fwdDist = (ox - v.x) * v.dir;
+      if (fwdDist < -STREET_END) fwdDist += STREET_END * 2;
+      if (fwdDist < 0 && other.state === 'street') fwdDist += STREET_END * 2;
+      if (fwdDist <= 0.1 || fwdDist > 20) continue;
+
+      const bumperGap = fwdDist - 4.9;
+      if (bumperGap < 3.0) {
+        desiredSpd = 0;
+      } else if (bumperGap < 15.0) {
+        const ratio = (bumperGap - 3.0) / 12.0;
+        const followSpd = other.vel + (v.cruiseSpd - other.vel) * ratio;
+        desiredSpd = Math.min(desiredSpd, Math.max(0, followSpd));
+      }
+    }
+
+    // 2. Yield to player in Walk Mode or pedestrians crossing the street
+    if (this.walkOn && Math.abs(this.walkPos.z - v.lane) < 2.6) {
+      const pedAhead = (this.walkPos.x - v.x) * v.dir;
+      if (pedAhead > 1.5 && pedAhead < 14.0) {
+        desiredSpd = Math.min(desiredSpd, pedAhead < 5.5 ? 0 : v.cruiseSpd * ((pedAhead - 5.5) / 8.5));
+      }
+    }
+    const npcActors = this.districtSim.ACTORS;
+    for (let k = 0; k < npcActors.length; k++) {
+      const npc = npcActors[k];
+      if (!npc.g.visible) continue;
+      if (Math.abs(npc.g.position.z - v.lane) > 2.1) continue;
+      const pedAhead = (npc.g.position.x - v.x) * v.dir;
+      if (pedAhead > 1.5 && pedAhead < 12.5) {
+        desiredSpd = Math.min(desiredSpd, pedAhead < 5.0 ? 0 : v.cruiseSpd * ((pedAhead - 5.0) / 7.5));
+      }
+    }
+
+    return desiredSpd;
+  }
+
+  private stepVeh(
+    v: TrafficVehicle,
+    pts: Array<[number, number]>,
+    nxt: TrafficVehicle['state'],
+    dt: number,
+    onArrive?: () => void
+  ): { yawRate: number; targetBrake: number; signalDir: -1 | 0 | 1 } {
     v._arr = v._arr || 0;
     const p = pts[v._arr];
     const dx = p[0] - v.g.position.x;
     const dz = p[1] - v.g.position.z;
     const dist = Math.hypot(dx, dz);
-    if (dist < 0.2) {
+
+    // Yield briefly at driveway mouth before merging onto street
+    if (v.pauseTimer > 0) {
+      v.pauseTimer = Math.max(0, v.pauseTimer - dt);
+      v.vel = Math.max(0, v.vel - 8.5 * dt);
+      return { yawRate: 0, targetBrake: 0.9, signalDir: 1 };
+    }
+
+    if (dist < 0.28) {
       v.g.position.x = p[0];
       v.g.position.z = p[1];
       v._arr++;
       if (v._arr >= pts.length) {
         v._arr = 0;
         v.state = nxt;
-        if (nxt === 'parked' && v.bay) v.g.rotation.y = v.bay.face;
+        if (nxt === 'parked' && v.bay) {
+          v.g.rotation.y = v.bay.face;
+          v.vel = 0;
+        }
+        onArrive?.();
+        return { yawRate: 0, targetBrake: 0.5, signalDir: 0 };
       }
-      return;
+      // Brief pause at street exit threshold (penultimate point before merging onto lane)
+      if (nxt === 'street' && v._arr === pts.length - 1) {
+        v.pauseTimer = 0.65;
+      }
+      return { yawRate: 0, targetBrake: 0.25, signalDir: 0 };
     }
-    const step = Math.min(dist, v.spd * dt);
-    v.g.position.x += (dx / dist) * step;
-    v.g.position.z += (dz / dist) * step;
+
     const ty = Math.atan2(dx, dz);
     const dy = Math.atan2(Math.sin(ty - v.g.rotation.y), Math.cos(ty - v.g.rotation.y));
-    v.g.rotation.y += dy * Math.min(1, dt * 8);
+    // Slow down smoothly for tight turns & final parking bay entry
+    const isFinalBay = nxt === 'parked' && v._arr === pts.length - 1;
+    const cornerFactor = Math.max(0.38, 1 - Math.abs(dy) * 0.55);
+    let desiredSpd = v.spd * cornerFactor;
+    if (isFinalBay && dist < 3.2) {
+      desiredSpd = Math.max(1.2, (dist / 3.2) * v.spd * 0.75);
+    }
+
+    const prevVel = v.vel;
+    if (v.vel < desiredSpd) {
+      v.vel = Math.min(desiredSpd, v.vel + 3.4 * dt);
+    } else {
+      v.vel = Math.max(desiredSpd, v.vel - 6.2 * dt);
+    }
+    const accel = (v.vel - prevVel) / Math.max(0.001, dt);
+
+    const step = Math.min(dist, v.vel * dt);
+    v.g.position.x += (dx / dist) * step;
+    v.g.position.z += (dz / dist) * step;
+
+    const rotDelta = dy * Math.min(1, dt * (3.2 + v.vel * 0.65));
+    v.g.rotation.y += rotDelta;
+    const yawRate = rotDelta / Math.max(0.001, dt);
+
+    const signalDir: -1 | 0 | 1 = dy > 0.16 ? -1 : dy < -0.16 ? 1 : 0;
+    const targetBrake = accel < -0.5 || (isFinalBay && dist < 2.2) ? Math.min(1, Math.max(0.35, -accel / 4.5)) : 0;
+    return { yawRate, targetBrake, signalDir };
   }
 
-  private updateTraffic(dt: number, m: number) {
+  private wantsVehicleParked(v: TrafficVehicle, m: number): boolean {
+    if (!v.bay) return false;
+    if (v.errand) {
+      if (m < 420 || m >= 1140) return false;
+      return ((m + v.errand.offset) % v.errand.cycleMin) < v.errand.parkMin;
+    }
+    return m >= (v.in_t || 0) && m < (v.out_t || 9999);
+  }
+
+  private updateTraffic(dt: number, m: number, elapsed: number) {
+    const nightFactor = this.getTrafficNightFactor(m);
+
     for (const v of this.TRAF) {
+      let yawRate = 0;
+      let accel = 0;
+      let targetBrake = 0;
+      let targetSteer = 0;
+      let signalDir: -1 | 0 | 1 = 0;
+      let engineOn = true;
+
+      const wantsPark = this.wantsVehicleParked(v, m);
+
       if (v.state === 'street') {
-        v.x += v.dir * v.spd * dt;
-        if (v.x > STREET_END) v.x = -STREET_END;
-        if (v.x < -STREET_END) v.x = STREET_END;
-        v.g.position.set(v.x, -0.62, v.lane);
-        v.g.rotation.y = v.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+        if (
+          v.bay &&
+          wantsPark &&
+          v.lane === v.bay.gateLane &&
+          Math.abs(v.x - v.bay.gateX) < 3.4
+        ) {
+          v.state = 'toBay';
+          v._arr = 0;
+        } else {
+          const desiredSpd = this.getStreetStopTarget(v);
+          const prevVel = v.vel;
+          if (v.vel < desiredSpd) {
+            v.vel = Math.min(desiredSpd, v.vel + 3.8 * dt);
+          } else {
+            v.vel = Math.max(desiredSpd, v.vel - 7.8 * dt);
+          }
+          accel = (v.vel - prevVel) / Math.max(0.001, dt);
+          v.x += v.dir * v.vel * dt;
+          let wrapped = false;
+          if (v.x > STREET_END) {
+            v.x = -STREET_END;
+            wrapped = true;
+          } else if (v.x < -STREET_END) {
+            v.x = STREET_END;
+            wrapped = true;
+          }
+          if (wrapped && v.bay && v.lane !== v.bay.gateLane) {
+            v.lane = v.bay.gateLane;
+            v.dir = v.lane === LANE_EAST ? 1 : -1;
+            v.x = v.dir > 0 ? -STREET_END : STREET_END;
+          }
+          v.g.position.x = v.x;
+          v.g.position.z = v.lane;
+          v.g.rotation.y = v.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+
+          // Signal slightly before turning into company entrance if bay is approaching
+          if (v.bay && wantsPark && v.lane === v.bay.gateLane) {
+            const dGate = (v.bay.gateX - v.x) * v.dir;
+            if (dGate > 0 && dGate < 16) {
+              signalDir = v.dir > 0 ? 1 : -1;
+            }
+          }
+
+          targetBrake = accel < -0.45 || (v.vel < 0.8 && desiredSpd < 0.5) ? Math.min(1, Math.max(0.45, -accel / 4.5)) : 0;
+        }
       } else if (v.state === 'parked' && v.bay) {
-        if (m >= (v.out_t || 9999) || m < (v.in_t || 0)) {
+        v.vel = 0;
+        engineOn = false;
+        if (!wantsPark) {
           v.state = 'toGate';
           v._arr = 0;
+          v.pauseTimer = 0.4;
         }
       } else if (v.state === 'toBay' && v.bay) {
         const b = v.bay;
-        const xg = b.sd * DRV_X;
-        this.stepVeh(
-          v,
-          [
-            [xg, LANE_E],
-            [xg, AISLE_Z],
-            [b.x, AISLE_Z],
-            [b.x, b.z],
-          ],
-          'parked',
-          dt
-        );
+        const prevVel = v.vel;
+        const res = this.stepVeh(v, b.entryPts, 'parked', dt);
+        accel = (v.vel - prevVel) / Math.max(0.001, dt);
+        yawRate = res.yawRate;
+        targetBrake = res.targetBrake;
+        signalDir = res.signalDir;
       } else if (v.state === 'toGate' && v.bay) {
         const b = v.bay;
-        const xg = b.sd * DRV_X;
-        this.stepVeh(
-          v,
-          [
-            [b.x, AISLE_Z],
-            [xg, AISLE_Z],
-            [xg, LANE_E],
-            [xg, LANE_W],
-          ],
-          'street',
-          dt
-        );
+        const prevVel = v.vel;
+        const res = this.stepVeh(v, b.exitPts, 'street', dt, () => {
+          v.x = v.g.position.x;
+          v.lane = b.exitLane;
+          v.dir = b.exitLane === LANE_EAST ? 1 : -1;
+          v.g.position.z = b.exitLane;
+        });
+        accel = (v.vel - prevVel) / Math.max(0.001, dt);
+        yawRate = res.yawRate;
+        targetBrake = res.targetBrake;
+        signalDir = res.signalDir;
       }
+
+      // Smooth ground surface height transition (-0.62 boulevard vs -0.604 company roads & lots)
+      const onBoulevard = v.g.position.z >= 59.5 && v.g.position.z <= 73.5;
+      const targetGroundY = onBoulevard ? -0.62 : -0.604;
+      v.g.position.y += (targetGroundY - v.g.position.y) * Math.min(1, dt * 12);
+
+      // Suspension kinematics (pitch on accel/brake, body roll in corners, subtle road ripple heave)
+      const targetPitch =
+        accel < -0.3
+          ? Math.min(0.032, -accel * 0.0052)
+          : accel > 0.3
+            ? -Math.min(0.022, accel * 0.004)
+            : 0;
+      const targetRoll = Math.max(-0.045, Math.min(0.045, yawRate * v.vel * 0.0038));
+      targetSteer = Math.max(-0.52, Math.min(0.52, yawRate * 0.16));
+
+      const kSpr = Math.min(1, dt * 9);
+      v.pitch += (targetPitch - v.pitch) * kSpr;
+      v.roll += (targetRoll - v.roll) * kSpr;
+      v.steer += (targetSteer - v.steer) * Math.min(1, dt * 11);
+      v.brakeGlow += (targetBrake - v.brakeGlow) * Math.min(1, dt * 14);
+      v.signalDir = signalDir;
+
+      const roadHeave =
+        v.vel > 0.5 ? Math.sin(elapsed * (5.0 + v.vel * 0.55) + v.phase) * 0.0035 * Math.min(1, v.vel / 4) : 0;
+
+      updateCarVisualState(v.rig, {
+        speed: v.vel,
+        dt,
+        elapsed,
+        steerAngle: v.steer,
+        pitch: v.pitch,
+        roll: v.roll,
+        heave: roadHeave,
+        brakeIntensity: v.brakeGlow,
+        nightFactor,
+        engineOn,
+        signalDir: v.signalDir,
+      });
     }
   }
 
@@ -2646,16 +3200,72 @@ export class AtriumSimulation {
         this.setSafePose(b, ag.homePose);
       }
     }
+    const nightFactor = this.getTrafficNightFactor(m);
     for (const v of this.TRAF) {
-      if (!v.bay) continue;
-      if (m >= (v.in_t || 0) && m < (v.out_t || 9999)) {
+      v.steer = 0;
+      v.pitch = 0;
+      v.roll = 0;
+      v.brakeGlow = 0;
+      v.signalDir = 0;
+      v.pauseTimer = 0;
+      v._arr = 0;
+      if (!v.bay) {
+        v.vel = v.cruiseSpd;
+        updateCarVisualState(v.rig, {
+          speed: 0,
+          dt: 0,
+          elapsed: 0,
+          steerAngle: 0,
+          pitch: 0,
+          roll: 0,
+          heave: 0,
+          brakeIntensity: 0,
+          nightFactor,
+          engineOn: true,
+          signalDir: 0,
+        });
+        continue;
+      }
+      if (this.wantsVehicleParked(v, m)) {
         v.state = 'parked';
-        v.g.position.set(v.bay.x, -0.62, v.bay.z);
+        v.vel = 0;
+        v.g.position.set(v.bay.x, -0.604, v.bay.z);
         v.g.rotation.y = v.bay.face;
+        updateCarVisualState(v.rig, {
+          speed: 0,
+          dt: 0,
+          elapsed: 0,
+          steerAngle: 0,
+          pitch: 0,
+          roll: 0,
+          heave: 0,
+          brakeIntensity: 0,
+          nightFactor,
+          engineOn: false,
+          signalDir: 0,
+        });
       } else {
         v.state = 'street';
-        v.x = (Math.random() - 0.5) * 180;
+        v.vel = v.cruiseSpd;
+        v.lane = v.bay.gateLane;
+        v.dir = v.bay.gateLane === LANE_EAST ? 1 : -1;
+        // Start errand fleet cars close to their company road gate so entries happen promptly
+        v.x = v.errand ? v.bay.gateX - v.dir * (10 + (v.bay.gateX & 7)) : (Math.random() - 0.5) * 180;
         v.g.position.set(v.x, -0.62, v.lane);
+        v.g.rotation.y = v.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+        updateCarVisualState(v.rig, {
+          speed: 0,
+          dt: 0,
+          elapsed: 0,
+          steerAngle: 0,
+          pitch: 0,
+          roll: 0,
+          heave: 0,
+          brakeIntensity: 0,
+          nightFactor,
+          engineOn: true,
+          signalDir: 0,
+        });
       }
     }
     this.districtSim.snapAll(m);
@@ -3059,6 +3669,38 @@ export class AtriumSimulation {
     return this.ambientSources;
   }
 
+  private readonly _trafficHint = { level: 0, pan: 0, speedNorm: 0 };
+
+  public getTrafficAudioHint(listenerPos: THREE.Vector3, listenerRight: THREE.Vector3) {
+    let bestProx = 0;
+    let panSum = 0;
+    let spdSum = 0;
+    let wSum = 0;
+
+    for (let i = 0; i < this.TRAF.length; i++) {
+      const v = this.TRAF[i];
+      if (v.vel < 0.4) continue;
+      const dx = v.g.position.x - listenerPos.x;
+      const dy = v.g.position.y - listenerPos.y;
+      const dz = v.g.position.z - listenerPos.z;
+      const d = Math.hypot(dx, dy * 1.4, dz);
+      const spdNorm = Math.min(1, v.vel / 12);
+      const prox = (1 / (1 + Math.pow(d / 13.5, 2.1))) * (0.35 + 0.65 * spdNorm);
+      if (prox < 0.01) continue;
+      if (prox > bestProx) bestProx = prox;
+      const invD = d > 0.001 ? 1 / d : 0;
+      const pan = (dx * listenerRight.x + dy * listenerRight.y + dz * listenerRight.z) * invD;
+      panSum += pan * prox;
+      spdSum += spdNorm * prox;
+      wSum += prox;
+    }
+
+    this._trafficHint.level = Math.min(1, bestProx * 1.15);
+    this._trafficHint.pan = wSum > 0.001 ? panSum / wSum : 0;
+    this._trafficHint.speedNorm = wSum > 0.001 ? spdSum / wSum : 0;
+    return this._trafficHint;
+  }
+
   private playFootstep() {
     this.onFootstep?.();
   }
@@ -3221,11 +3863,11 @@ export class AtriumSimulation {
 
     // Clamp & collide against active building or full district ground plaza/streets
     if (this.walkFloor === 0) {
-      this.walkPos.x = Math.max(-76.5, Math.min(76.5, this.walkPos.x));
-      this.walkPos.z = Math.max(-34.0, Math.min(102.0, this.walkPos.z));
+      this.walkPos.x = Math.max(-90.0, Math.min(90.0, this.walkPos.x));
+      this.walkPos.z = Math.max(-37.0, Math.min(105.0, this.walkPos.z));
 
       let extraVehicles: VehicleObb[] | undefined;
-      if (this.walkPos.z > 14.0 && this.walkPos.z < 76.0) {
+      if (this.walkPos.z >= -17.0 && this.walkPos.z <= 101.0) {
         let count = 0;
         for (let i = 0; i < this.TRAF.length; i++) {
           const v = this.TRAF[i];
@@ -3440,7 +4082,7 @@ export class AtriumSimulation {
     }
 
     // Vehicle traffic
-    this.updateTraffic(dt, this.simMin);
+    this.updateTraffic(dt, this.simMin, t);
 
     // Zuri Guided Tour
     this.guideStep(dt, t, camera, controls);

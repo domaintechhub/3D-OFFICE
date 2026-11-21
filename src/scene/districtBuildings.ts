@@ -303,6 +303,7 @@ export function buildDistrictBuildings(
   const bankStoneMat = std({ color: 0xc9c3b8, roughness: 0.84 });
   const cryptoWallMat = std({ color: 0x1b232e, roughness: 0.52, metalness: 0.32 });
   const medicalWallMat = std({ color: 0xe2ece9, roughness: 0.62 });
+  const logisticsWallMat = std({ color: 0x2d3744, roughness: 0.58, metalness: 0.28 });
   const woodCedarMat = std({ color: 0x8b5836, roughness: 0.76 });
   const terracottaMat = std({ color: 0x9b4d38, roughness: 0.78 });
   const frameDarkMat = std({ color: 0x2a333e, roughness: 0.44, metalness: 0.48 });
@@ -351,12 +352,14 @@ export function buildDistrictBuildings(
                 ? floorTerrazzo
                 : spec.id === 'tourism'
                   ? woodCedarMat
-                  : medicalWallMat;
+                  : spec.id === 'logistics'
+                    ? logisticsWallMat
+                    : medicalWallMat;
 
     const slabFloorMat =
       spec.id === 'restaurant' || spec.id === 'tourism'
         ? floorWarmOak
-        : spec.id === 'crypto'
+        : spec.id === 'crypto' || spec.id === 'logistics'
           ? floorSlate
           : floorTerrazzo;
 
@@ -613,17 +616,17 @@ export function buildDistrictBuildings(
       g0.add(turnGrp);
       cylAt(turnGrp, 3.15, 3.25, 0.16, 0, 0.08, 0, M.dark, true, true, 32);
       cylAt(turnGrp, 3.2, 3.2, 0.03, 0, 0.165, 0, accentMat, false, false, 32);
-      const heroCar = makeCar(0x9e1b24, 'suv');
+      const heroCar = makeCar(0x9e1b24, 'suv', { showroom: true, plateText: 'APEX GT' });
       heroCar.position.set(0, 0.17, 0);
       turnGrp.add(heroCar);
       rotatingProps.push({ obj: turnGrp, speed: 0.28, axis: 'y' });
 
-      const carLeft = makeCar(0x1f3d6e, 'sedan');
+      const carLeft = makeCar(0x1f3d6e, 'sedan', { showroom: true, plateText: 'APEX EV' });
       carLeft.position.set(spec.cx - 6.0, fy, spec.cz + 2.0);
       carLeft.rotation.y = 0.42;
       g0.add(carLeft);
 
-      const carRight = makeCar(0xcfd6de, 'hatch');
+      const carRight = makeCar(0xcfd6de, 'hatch', { showroom: true, plateText: 'APEX E4' });
       carRight.position.set(spec.cx + 6.0, fy, spec.cz + 2.0);
       carRight.rotation.y = -0.42;
       g0.add(carRight);
@@ -950,11 +953,10 @@ export function buildDistrictBuildings(
       cylAt(g0, 0.12, 0.65, 0.42, mapX + 0.4, fy + 1.01, mapZ + 0.15, std({ color: 0x736857, roughness: 0.9 }), true, false, 7);
       cylAt(g0, 0.01, 0.22, 0.16, mapX + 0.4, fy + 1.24, mapZ + 0.15, M.white, false, false, 7);
 
-      // Indoor Expedition 4x4 Safari SUV with roof rack
-      const jeep = makeCar(0x4b5c34, 'suv');
+      // Indoor Expedition 4x4 Safari SUV with full expedition rack, bullbar, snorkel & spare wheel
+      const jeep = makeCar(0x4b5c34, 'suv', { safari: true, plateText: 'SAFARI 4X4' });
       jeep.position.set(spec.cx + 7.2, fy + 0.1, spec.cz - 1.0);
       jeep.rotation.y = -0.55;
-      boxAt(jeep, 1.22, 0.08, 1.85, 0, 1.54, -0.35, M.dark, false, false, 0.02);
       g0.add(jeep);
       cylAt(g0, 2.8, 2.9, 0.1, spec.cx + 7.2, fy + 0.05, spec.cz - 1.0, bankStoneMat, false, true, 24);
 
@@ -1120,6 +1122,147 @@ export function buildDistrictBuildings(
       medMesh.position.set(spec.cx + 1.5, fy + 2.35, spec.cz - 7.31);
       g0.add(medMesh);
       medBoard.setMesh(medMesh);
+    } else if (spec.id === 'logistics') {
+      // SwiftPort Cargo & Logistics: Rooftop comms radar, east loading dock bay doors, automated parcel sorting conveyor, pallet racks & fleet dispatch desks
+      const radarMast = new THREE.Group();
+      radarMast.position.set(spec.cx + 8.5, spec.groundY + spec.h + 0.4, spec.cz);
+      cylAt(radarMast, 0.14, 0.22, 1.5, 0, 0.75, 0, frameDarkMat, true, false, 12);
+      const radarSweep = new THREE.Group();
+      radarSweep.position.set(0, 1.65, 0);
+      boxAt(radarSweep, 1.85, 0.26, 0.24, 0, 0, 0, accentMat, true, false, 0.04);
+      radarMast.add(radarSweep);
+      roofShellGroup.add(radarMast);
+      rotatingProps.push({ obj: radarSweep, speed: 1.4, axis: 'y' });
+
+      // North entrance dispatch canopy
+      boxAt(g0, 12.5, 0.22, 3.2, spec.doorX, spec.groundY + spec.floorH + 0.25, spec.doorZ - 1.3, frameDarkMat, true, false, 0.05);
+      boxAt(g0, 12.5, 0.08, 0.22, spec.doorX, spec.groundY + spec.floorH + 0.25, spec.doorZ - 2.9, accentMat, false, false);
+
+      // Exterior East Loading Dock Roll-Up Bays (facing Freight Yard at x = 70..77)
+      const dockX = spec.cx + spec.w * 0.5 + 0.06;
+      const cartonMat = std({ color: 0xb9854c, roughness: 0.85 });
+      const palletMat = std({ color: 0x7c5530, roughness: 0.88 });
+      const steelShutterMat = std({ color: 0x64748b, roughness: 0.48, metalness: 0.42 });
+      [-3.5, 3.5].forEach((dz) => {
+        const bayZ = spec.cz + dz;
+        // Overhang awning above loading dock bay
+        boxAt(g0, 2.0, 0.18, 4.4, dockX + 0.9, fy + 3.45, bayZ, frameDarkMat, true, false, 0.04);
+        boxAt(g0, 0.14, 0.12, 4.4, dockX + 1.9, fy + 3.45, bayZ, accentMat, false, false);
+        // Roll-up steel shutter door
+        boxAt(g0, 0.18, 2.9, 3.6, dockX, fy + 1.45, bayZ, steelShutterMat, true, true, 0.02);
+        for (let rib = 0; rib < 6; rib++) {
+          boxAt(g0, 0.22, 0.05, 3.45, dockX + 0.02, fy + 0.35 + rib * 0.46, bayZ, frameDarkMat, false, false);
+        }
+        // Yellow/orange dock safety bollards flanking each bay
+        [-2.05, 2.05].forEach((bz) => {
+          cylAt(g0, 0.11, 0.12, 0.95, dockX + 0.42, spec.groundY + 0.475, bayZ + bz, accentMat, true, true, 10);
+        });
+        // Interior staging pallets beside east loading bays
+        boxAt(g0, 1.5, 0.14, 1.6, spec.cx + 12.6, fy + 0.07, bayZ, palletMat, true, true, 0.01);
+        boxAt(g0, 1.1, 0.72, 1.2, spec.cx + 12.6, fy + 0.5, bayZ, cartonMat, true, true, 0.02);
+      });
+
+      // Automated Parcel Sorting Conveyor Belt (running N-S at cx - 4.2)
+      const convX = spec.cx - 4.2;
+      const convZ = spec.cz + 1.2;
+      boxAt(g0, 1.45, 0.14, 9.6, convX, fy + 0.78, convZ, frameDarkMat, true, true, 0.02);
+      boxAt(g0, 1.18, 0.05, 9.45, convX, fy + 0.87, convZ, M.dark, false, false);
+      for (let zOff = -4.2; zOff <= 4.2; zOff += 2.1) {
+        boxAt(g0, 1.24, 0.72, 0.1, convX, fy + 0.36, convZ + zOff, M.metal, true, false);
+      }
+      // Laser barcode scanner gate arch over conveyor
+      boxAt(g0, 1.65, 0.95, 0.45, convX, fy + 1.32, convZ - 0.6, frameDarkMat, true, false, 0.02);
+      boxAt(g0, 1.35, 0.08, 0.12, convX, fy + 1.55, convZ - 0.6, accentMat, false, false);
+      // Parcels along belt
+      [-3.4, -1.7, 0.6, 2.4, 3.8].forEach((pz, pi) => {
+        const bw = 0.52 + (pi % 2) * 0.14;
+        const bh = 0.34 + (pi % 3) * 0.08;
+        boxAt(g0, bw, bh, 0.54, convX + ((pi % 2) - 0.5) * 0.18, fy + 0.9 + bh * 0.5, convZ + pz, pi === 2 ? accentMat : cartonMat, true, true, 0.015);
+      });
+
+      // Heavy Pallet Storage Racks along West Warehouse Wing
+      [-3.0, 3.2].forEach((rz) => {
+        const rx = spec.cx - 12.2;
+        const rCz = spec.cz + rz;
+        // 4 upright steel posts
+        [-1.3, 1.3].forEach((ox) => {
+          [-1.8, 1.8].forEach((oz) => {
+            boxAt(g0, 0.1, 2.8, 0.1, rx + ox, fy + 1.4, rCz + oz, accentMat, true, false);
+          });
+        });
+        [0.45, 1.55, 2.65].forEach((ry, li) => {
+          boxAt(g0, 2.7, 0.08, 3.7, rx, fy + ry, rCz, frameDarkMat, true, true);
+          if (li < 2) {
+            boxAt(g0, 1.9, 0.65, 1.2, rx, fy + ry + 0.36, rCz - 0.85, cartonMat, true, true, 0.02);
+            boxAt(g0, 1.9, 0.65, 1.2, rx, fy + ry + 0.36, rCz + 0.85, palletMat, true, true, 0.02);
+          }
+        });
+      });
+
+      // Waybill Dispatch & Customs Control Desk on East-Center Hall
+      const deskZ = spec.cz + 2.5;
+      boxAt(g0, 6.4, 1.04, 1.18, spec.cx + 5.8, fy + 0.52, deskZ, frameDarkMat, true, true, 0.03);
+      boxAt(g0, 6.6, 0.08, 1.3, spec.cx + 5.8, fy + 1.06, deskZ, accentMat, false, false);
+      [3.8, 7.8].forEach((ox, i) => {
+        const sx = spec.cx + ox;
+        const sz = deskZ + 1.15;
+        registerChair(0, sx, fy, sz, Math.PI, i === 0 ? 1 : -1);
+        registerMonitor(
+          0,
+          i,
+          [sx, fy + 1.1, deskZ - 0.1],
+          Math.PI,
+          sx,
+          sz,
+          i === 0 ? 'Freight Dispatch Manager' : 'Customs & Waybill Officer',
+          'Dispatch & Waybill Control'
+        );
+      });
+
+      // Live SwiftPort GPS Fleet & Freight Telemetry Board (facing north door -Z)
+      const logBoard = createCustomBoardScreen(screenReg, 720, 230, (g, w, h, t) => {
+        g.fillStyle = '#0d1117';
+        g.fillRect(0, 0, w, h);
+        g.fillStyle = '#f97316';
+        g.fillRect(0, 0, w, 34);
+        g.fillStyle = '#0d1117';
+        g.font = '800 18px "Plus Jakarta Sans", sans-serif';
+        g.textAlign = 'left';
+        g.textBaseline = 'middle';
+        g.fillText('SWIFTPORT CARGO & LOGISTICS · FLEET CORRIDOR & DOCK TELEMETRY', 16, 17);
+        const loads = [
+          ['SWP-9041', 'JKIA → Westlands', 'Dock A · Van 04', 'LOADING'],
+          ['SWP-9042', 'Mombasa → Nairobi', 'Dock B · Van 02', 'CLEARED'],
+          ['SWP-9043', 'Kigali Airfreight', 'Express Bay 03', 'EN ROUTE'],
+          ['BELT-01', 'Automated Sortation', '420 parcels/hr', 'NOMINAL'],
+        ];
+        loads.forEach((l, i) => {
+          const y = 52 + i * 42;
+          g.fillStyle = i === Math.floor(t / 2.6) % 4 ? 'rgba(249,115,22,0.22)' : 'rgba(255,255,255,0.06)';
+          rr(g, 14, y, w - 28, 36, 5);
+          g.fill();
+          g.fillStyle = '#fdba74';
+          g.font = '700 15px monospace';
+          g.fillText(l[0], 26, y + 18);
+          g.fillStyle = '#f8fafc';
+          g.font = '700 15px sans-serif';
+          g.fillText(l[1], 145, y + 18);
+          g.fillStyle = '#94a3b8';
+          g.font = '600 14px sans-serif';
+          g.fillText(l[2], 365, y + 18);
+          g.fillStyle = i === 0 ? '#facc15' : '#4ade80';
+          g.textAlign = 'right';
+          g.font = '700 15px monospace';
+          g.fillText(l[3], w - 26, y + 18);
+          g.textAlign = 'left';
+        });
+      });
+      boxAt(g0, 7.8, 2.35, 0.14, spec.cx + 1.5, fy + 2.35, spec.cz + 9.2, frameDarkMat, false, false);
+      const logMesh = new THREE.Mesh(new THREE.PlaneGeometry(7.5, 2.1), logBoard.mat);
+      logMesh.position.set(spec.cx + 1.5, fy + 2.35, spec.cz + 9.11);
+      logMesh.rotation.y = Math.PI;
+      g0.add(logMesh);
+      logBoard.setMesh(logMesh);
     }
 
     // Roof shell + parapet + HVAC machinery + skylight frame

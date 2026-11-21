@@ -208,8 +208,6 @@ function buildCollidersForLevel(lv: number): FloorColliderSet {
     [
       [-13, 20],
       [13, 20],
-      [-13, 30],
-      [13, 30],
       [-13, 40],
       [13, 40],
     ].forEach(([bx, bz]) => addBox(boxes, bx, bz, 4.28, 4.28));
@@ -1018,6 +1016,17 @@ function populateDistrictBuildingGeometry(
       // 2 waiting armchairs
       addBox(boxes, spec.cx - 6.5, spec.cz + 3.2, 1.18, 1.18);
       addBox(boxes, spec.cx + 6.5, spec.cz + 3.2, 1.18, 1.18);
+    } else if (spec.id === 'logistics') {
+      // Parcel sorting conveyor belt
+      addBox(boxes, spec.cx - 4.2, spec.cz + 1.2, 1.65, 9.8);
+      // West pallet storage racks
+      addBox(boxes, spec.cx - 12.2, spec.cz - 3.0, 2.8, 3.8);
+      addBox(boxes, spec.cx - 12.2, spec.cz + 3.2, 2.8, 3.8);
+      // Dispatch & Customs counter
+      addBox(boxes, spec.cx + 5.8, spec.cz + 2.5, 6.6, 1.32);
+      // East loading bay interior staging pallets
+      addBox(boxes, spec.cx + 12.6, spec.cz - 3.5, 1.6, 1.7);
+      addBox(boxes, spec.cx + 12.6, spec.cz + 3.5, 1.6, 1.7);
     }
   } else {
     // Upper floors: desks, shelf unit & 2 corner plants
@@ -1098,7 +1107,7 @@ function getDistrictWalkColliders(): FloorColliderSet {
     circles.push({ x, z: 55.5, r: 0.16 });
   }
 
-  // Merge all 7 district niche buildings' ground walls & interiors
+  // Merge all 8 district niche buildings' ground walls & interiors
   for (const spec of DISTRICT_BUILDINGS) {
     if (spec.id === 'hub') continue;
     populateDistrictBuildingGeometry(spec, 0, boxes, obbs, circles);
@@ -1108,10 +1117,10 @@ function getDistrictWalkColliders(): FloorColliderSet {
     boxes,
     obbs,
     circles,
-    minX: -76.5,
-    maxX: 76.5,
-    minZ: -34.0,
-    maxZ: 102.0,
+    minX: -92.0,
+    maxX: 92.0,
+    minZ: -38.0,
+    maxZ: 106.0,
     curvedCounter: hubCol.curvedCounter,
   };
   return DISTRICT_WALK_CACHE;

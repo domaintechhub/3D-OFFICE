@@ -658,7 +658,71 @@ export class DistrictSim {
       '24h Pharmacy & Patient Intake', M, 0.94
     );
 
-    // Upper floor office staff across all 7 buildings (2 per floor seated at registered chairs)
+    // 8. SwiftPort Cargo & Logistics
+    const log = DISTRICT_BUILDING_MAP.logistics;
+    [3.8, 7.8].forEach((ox, i) => {
+      const fem = i === 1;
+      this.spawnActor(
+        'logistics', 0, log.cx + ox, log.cz + 3.65, Math.PI, i === 0 ? 'type' : 'sitReadDoc',
+        nextPersonOpts(fem, 0x1f2937, { outfit: 'shirtTrousers', lanyard: true }),
+        {
+          id: `logistics-dispatch-${i}`,
+          name: generateCharacterName(fem, 121 + i),
+          role: i === 0 ? 'Freight Dispatch Manager' : 'Customs & Waybill Officer',
+          department: `${log.name} · Dispatch Control`,
+          seniority: i === 0 ? 'Lead' : 'Senior',
+          accentColor: log.accent,
+          personality: pickPersonality(121 + i),
+          topicKey: 'logistics',
+        },
+        'Dispatch & Waybill Control', M
+      );
+    });
+    this.spawnActor(
+      'logistics', 0, log.cx - 2.3, log.cz + 1.2, -Math.PI / 2, 'inspectPanel',
+      nextPersonOpts(false, 0x9a3412, { outfit: 'smartCasual', sleeve: 'rolled' }),
+      {
+        id: 'logistics-belt-sup',
+        name: generateCharacterName(false, 124),
+        role: 'Sortation Belt Supervisor',
+        department: `${log.name} · Parcel Conveyor`,
+        seniority: 'Senior',
+        accentColor: log.accent,
+        personality: pickPersonality(124),
+        topicKey: 'logistics',
+      },
+      'Parcel Sortation Hall', M
+    );
+    this.spawnActor(
+      'logistics', 0, log.cx + 10.6, log.cz - 2.6, Math.PI / 2, 'hold',
+      nextPersonOpts(false, 0xc2410c, { outfit: 'shirtTrousers', sleeve: 'short', sneakers: true }),
+      {
+        id: 'logistics-courier',
+        name: generateCharacterName(false, 125),
+        role: 'Express Fleet Driver',
+        department: `${log.name} · East Loading Docks`,
+        accentColor: log.accent,
+        personality: pickPersonality(125),
+        topicKey: 'logistics',
+      },
+      'East Freight Loading Yard', M
+    );
+    this.spawnActor(
+      'logistics', 0, log.cx + 4.4, log.cz + 0.4, 0, 'stand',
+      nextPersonOpts(true),
+      {
+        id: 'logistics-client',
+        name: generateCharacterName(true, 126),
+        role: 'Parcel Drop-Off Client',
+        department: `${log.name} · Dispatch Counter`,
+        accentColor: log.accent,
+        personality: pickPersonality(126),
+        topicKey: 'client',
+      },
+      'Dispatch & Waybill Control', M, 0.95
+    );
+
+    // Upper floor office staff across all 8 district buildings (2 per floor seated at registered chairs)
     for (const [bId, handle] of this.buildings) {
       const spec = handle.spec;
       for (let lv = 1; lv < spec.floors; lv++) {
@@ -702,26 +766,26 @@ export class DistrictSim {
         role: 'District Visitor',
         accent: '#f59e0b',
         pts: [
-          { x: -34, z: 14.5, wait: 2 },
-          { x: -16, z: 15.2, wait: 1 },
-          { x: 18, z: 15.2, wait: 1 },
-          { x: 35, z: 14.5, wait: 2.5 },
-          { x: 0, z: 15.4, wait: 1.5 },
+          { x: -16, z: 14.5, wait: 1.5 },
+          { x: 0, z: 15.2, wait: 2 },
+          { x: 16, z: 14.5, wait: 1.5 },
+          { x: 0, z: 15.2, wait: 1.5 },
         ],
       },
       {
         name: generateCharacterName(false, 302),
         fem: false,
-        role: 'Tech District Pedestrian',
+        role: 'Banking & Bistro Pedestrian',
         accent: '#3b82f6',
         pts: [
-          { x: -60, z: 14.4, wait: 2 },
-          { x: -46, z: 14.8, wait: 1 },
-          { x: -46, z: 54.0, wait: 1 },
-          { x: -46, z: 77.6, wait: 2 },
-          { x: -30, z: 77.2, wait: 2.5 },
-          { x: -46, z: 77.6, wait: 1 },
-          { x: -46, z: 14.8, wait: 1 },
+          { x: -78, z: 9.6, wait: 2 },
+          { x: -43, z: 9.8, wait: 1.5 },
+          { x: -32, z: 9.8, wait: 1 },
+          { x: -32, z: 54.5, wait: 1 },
+          { x: -32, z: 83.0, wait: 2 },
+          { x: -48, z: 83.0, wait: 2.5 },
+          { x: -32, z: 83.0, wait: 1 },
+          { x: -32, z: 9.8, wait: 1 },
         ],
       },
       {
@@ -730,10 +794,10 @@ export class DistrictSim {
         role: 'Travel & Safari Guest',
         accent: '#84cc16',
         pts: [
-          { x: -26, z: 77.5, wait: 2 },
-          { x: 0, z: 77.5, wait: 1.5 },
-          { x: 28, z: 77.5, wait: 2.5 },
-          { x: 0, z: 77.5, wait: 1 },
+          { x: -48, z: 83.0, wait: 2 },
+          { x: 0, z: 83.0, wait: 2.5 },
+          { x: 30, z: 83.0, wait: 1.5 },
+          { x: 0, z: 83.0, wait: 1.5 },
         ],
       },
       {
@@ -742,12 +806,14 @@ export class DistrictSim {
         role: 'Crosswalk Commuter',
         accent: '#10b981',
         pts: [
-          { x: 46, z: 15.0, wait: 1.5 },
-          { x: 58, z: 14.6, wait: 2 },
-          { x: 46, z: 15.0, wait: 1 },
-          { x: 46, z: 77.6, wait: 2 },
-          { x: 30, z: 77.6, wait: 2 },
-          { x: 46, z: 77.6, wait: 1 },
+          { x: 76, z: 9.6, wait: 2 },
+          { x: 43, z: 9.8, wait: 1.5 },
+          { x: 32, z: 9.8, wait: 1 },
+          { x: 32, z: 54.5, wait: 1 },
+          { x: 32, z: 83.0, wait: 2 },
+          { x: 54, z: 83.0, wait: 2.5 },
+          { x: 32, z: 83.0, wait: 1 },
+          { x: 32, z: 9.8, wait: 1 },
         ],
       },
       {
@@ -756,12 +822,24 @@ export class DistrictSim {
         role: 'Healthcare Visitor',
         accent: '#2dd4bf',
         pts: [
-          { x: -23, z: 13.5, wait: 1 },
-          { x: -23, z: -13.5, wait: 1 },
-          { x: 0, z: -13.5, wait: 2.5 },
-          { x: 23, z: -13.5, wait: 1 },
-          { x: 23, z: 13.5, wait: 1.5 },
-          { x: -23, z: 13.5, wait: 1 },
+          { x: -22.2, z: 13.5, wait: 1 },
+          { x: -22.2, z: -18.5, wait: 1 },
+          { x: 0, z: -18.5, wait: 2.5 },
+          { x: 22.2, z: -18.5, wait: 1 },
+          { x: 22.2, z: 13.5, wait: 1.5 },
+          { x: -22.2, z: 13.5, wait: 1 },
+        ],
+      },
+      {
+        name: generateCharacterName(false, 306),
+        fem: false,
+        role: 'Courier & Dispatch Coordinator',
+        accent: '#f97316',
+        pts: [
+          { x: 42, z: 83.0, wait: 2 },
+          { x: 54, z: 83.0, wait: 2.5 },
+          { x: 68, z: 83.0, wait: 2 },
+          { x: 54, z: 83.0, wait: 1.5 },
         ],
       },
     ];
@@ -964,6 +1042,13 @@ export class DistrictSim {
         { x: spec.cx - 2.6, z: spec.cz - 0.8, face: -Math.PI / 2, pose: 'talk' },
         { x: spec.cx + 2.2, z: spec.cz - 1.0, face: Math.PI / 2, pose: 'hold' },
         { x: spec.cx, z: spec.cz + 4.5, face: 0, pose: 'readDoc' },
+      ];
+    }
+    if (bId === 'logistics') {
+      return [
+        { x: spec.cx - 1.5, z: spec.cz - 3.5, face: -Math.PI / 2, pose: 'inspectPanel' },
+        { x: spec.cx + 1.0, z: spec.cz + 1.5, face: 0, pose: 'hold' },
+        { x: spec.cx + 9.2, z: spec.cz - 2.0, face: Math.PI / 2, pose: 'readDoc' },
       ];
     }
     // medical

@@ -2130,8 +2130,8 @@ export function buildSceneArchitecture(
   pave(44, 10, 0, 16.2, 3);
   pave(8, 34, 0, 38, 2);
   pave(44, 5, 0, -3.2, 1);
-  pave(22, 16.5, -16.2, 29, 2);
-  pave(22, 16.5, 16.2, 29, 2);
+  pave(18.8, 16.5, -14.6, 29, 2);
+  pave(18.8, 16.5, 14.6, 29, 2);
 
   for (let k = 0; k < 3; k++) {
     boxAt(plazaGroup, 30, 0.2, 1.05, 0, -0.1 - k * 0.2, 11.55 + k * 0.95, M.white, false, true, 0.03);
@@ -2170,22 +2170,21 @@ export function buildSceneArchitecture(
   const std = (o: THREE.MeshStandardMaterialParameters) =>
     new THREE.MeshStandardMaterial({ roughness: 0.72, metalness: 0.05, envMapIntensity: 0.48, ...o });
 
-  // 7 realistic enterable niche district buildings (Restaurant, Car Dealership, Bank, Crypto, Travel, Tourism, Medical)
+  // 8 realistic enterable niche district buildings (Restaurant, Dealership, Bank, Crypto, Travel, Tourism, Medical, Logistics)
   const districtBuildings = buildDistrictBuildings(cityGroup, M, screenReg);
   for (const [, db] of districtBuildings) {
     monitorPicks.push(...db.monitors);
     interiorWarmLights.push(...db.warmLights);
   }
 
-  // Main street, sidewalks connecting all 8 buildings, crosswalks, kerbs, gooseneck lamps, bollards, sculpted street trees
+  // Main street, sidewalks connecting all 9 buildings, crosswalks, segmented kerbs, gooseneck lamps, bollards, street trees
   const ySt = -0.62;
-  const road = new THREE.Mesh(new THREE.PlaneGeometry(260, 15), M.asphalt);
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(280, 15), M.asphalt);
   road.rotation.x = -Math.PI / 2;
   road.position.set(0, ySt, ROAD_Z);
   road.receiveShadow = true;
   cityGroup.add(road);
 
-  // Connecting district sidewalks & paved corridors between DomainTechHub and all 7 niche buildings
   const districtWalkMat = std({
     map: repTex(paveTex, 10, 2),
     normalMap: repTex(M.textures.paveNormal, 10, 2),
@@ -2201,35 +2200,64 @@ export function buildSceneArchitecture(
     m.receiveShadow = true;
     cityGroup.add(m);
   };
-  // Continuous north promenade connecting Bank (-62), Restaurant (-36), DomainTechHub (0), Dealership (35), Crypto (60)
-  addWalkStrip(152, 7.2, 0, 14.6);
-  // South street promenade connecting Travel (-30) & Tourism (28)
-  addWalkStrip(104, 8.2, 0, 77.8);
-  // West & East breezeway paths leading back to Medical (-24)
-  addWalkStrip(5.6, 31, -23.0, -0.5);
-  addWalkStrip(5.6, 31, 23.0, -0.5);
-  addWalkStrip(56, 5.5, 0, -13.5);
-  // Diagonal/orthogonal footwalks from north promenade down to street crosswalks
-  addWalkStrip(5.2, 42, -46, 36.5);
-  addWalkStrip(5.2, 42, 46, 36.5);
+  // North commercial promenades directly in front of Bank/Restaurant & Dealership/Crypto
+  addWalkStrip(58, 5.0, -59, 9.5);
+  addWalkStrip(58, 5.0, 59, 9.5);
+  // West & East breezeway paths leading back to Medical (-20) + Medical front sidewalk
+  addWalkStrip(4.0, 32, -22.2, -2.0);
+  addWalkStrip(4.0, 32, 22.2, -2.0);
+  addWalkStrip(52, 3.0, 0, -18.5);
+  // North-South pedestrian footwalks aligned with x = ±32 crosswalks (clear of ±26.5 driveways)
+  addWalkStrip(3.2, 50, -32.0, 33.0);
+  addWalkStrip(3.2, 50, 32.0, 33.0);
+  // South entrance sidewalks for Travel (-48), Tourism (0), and Logistics (54)
+  addWalkStrip(32, 2.0, -48, 83.0);
+  addWalkStrip(34, 2.0, 0, 83.0);
+  addWalkStrip(34, 2.0, 54, 83.0);
+  // South pedestrian connectors from crosswalks (x = ±32) to south entrances (clear of forecourts)
+  addWalkStrip(3.2, 9.8, -32.0, 79.1);
+  addWalkStrip(3.2, 9.8, 32.0, 79.1);
 
-  [-1, 1].forEach((s) => {
-    const k = new THREE.Mesh(
-      new THREE.PlaneGeometry(260, 1.2),
-      std({
-        normalMap: M.textures.concreteNormal,
-        normalScale: new THREE.Vector2(0.45, 0.45),
-        roughnessMap: M.textures.roughTex,
-        color: 0xa9abae,
-        roughness: 0.82,
-      })
-    );
-    k.rotation.x = -Math.PI / 2;
-    k.position.set(0, ySt + 0.005, ROAD_Z + s * 8.1);
-    cityGroup.add(k);
-    boxAt(cityGroup, 240, 0.18, 0.34, 0, ySt + 0.09, ROAD_Z + s * 8.32, M.concrete, true, true, 0.04);
+  // Concrete kerb apron + segmented raised kerbs with clean driveway curb cuts
+  const kerbPlaneMat = std({
+    normalMap: M.textures.concreteNormal,
+    normalScale: new THREE.Vector2(0.45, 0.45),
+    roughnessMap: M.textures.roughTex,
+    color: 0xa9abae,
+    roughness: 0.82,
   });
-  for (let x = -120; x <= 120; x += 8) {
+  const northSegments: Array<[number, number]> = [
+    [-120, -62.4],
+    [-55.6, -29.6],
+    [-23.4, 23.4],
+    [29.6, 55.6],
+    [62.4, 120],
+  ];
+  const southSegments: Array<[number, number]> = [
+    [-120, -62.8],
+    [-57.2, -38.8],
+    [-33.2, -16.8],
+    [-11.2, 11.2],
+    [16.8, 35.2],
+    [40.8, 73.8],
+    [80.2, 120],
+  ];
+  [
+    { s: -1, segs: northSegments },
+    { s: 1, segs: southSegments },
+  ].forEach(({ s, segs }) => {
+    segs.forEach(([x0, x1]) => {
+      const len = x1 - x0;
+      const cx = (x0 + x1) * 0.5;
+      const k = new THREE.Mesh(new THREE.PlaneGeometry(len, 1.2), kerbPlaneMat);
+      k.rotation.x = -Math.PI / 2;
+      k.position.set(cx, ySt + 0.005, ROAD_Z + s * 8.1);
+      cityGroup.add(k);
+      boxAt(cityGroup, len, 0.18, 0.34, cx, ySt + 0.09, ROAD_Z + s * 8.32, M.concrete, true, true, 0.04);
+    });
+  });
+
+  for (let x = -128; x <= 128; x += 8) {
     const d = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 0.25), new THREE.MeshBasicMaterial({ color: 0xe6e1c8 }));
     d.rotation.x = -Math.PI / 2;
     d.position.set(x, ySt + 0.01, ROAD_Z);
@@ -2251,7 +2279,7 @@ export function buildSceneArchitecture(
   cityGroup.add(link);
 
   const stripeMat = new THREE.MeshBasicMaterial({ color: 0xf0ede0 });
-  [-46, 0, 46].forEach((cx) => {
+  [-32, 0, 32].forEach((cx) => {
     for (let k = 0; k < 8; k++) {
       const s = new THREE.Mesh(new THREE.PlaneGeometry(1.05, 13), stripeMat);
       s.rotation.x = -Math.PI / 2;
@@ -2283,18 +2311,25 @@ export function buildSceneArchitecture(
     roughness: 0.96,
     envMapIntensity: 0.12,
   });
-  [-1, 1].forEach((s) => {
-    const verge = new THREE.Mesh(new THREE.PlaneGeometry(240, 4.2), grassMat);
-    verge.rotation.x = -Math.PI / 2;
-    verge.position.set(0, ySt + 0.004, ROAD_Z + s * 10.3);
-    verge.receiveShadow = true;
-    cityGroup.add(verge);
+  [
+    { s: -1, segs: northSegments },
+    { s: 1, segs: southSegments },
+  ].forEach(({ s, segs }) => {
+    segs.forEach(([x0, x1]) => {
+      const len = x1 - x0;
+      const cx = (x0 + x1) * 0.5;
+      const verge = new THREE.Mesh(new THREE.PlaneGeometry(len, 4.2), grassMat);
+      verge.rotation.x = -Math.PI / 2;
+      verge.position.set(cx, ySt + 0.004, ROAD_Z + s * 10.3);
+      verge.receiveShadow = true;
+      cityGroup.add(verge);
+    });
   });
   [
-    [-86, 28],
-    [86, 28],
-    [-88, -20],
-    [88, -20],
+    [-88, 38],
+    [88, 38],
+    [-88, -24],
+    [88, -24],
   ].forEach((p) => {
     const gp = new THREE.Mesh(new THREE.PlaneGeometry(24, 20), grassMat);
     gp.rotation.x = -Math.PI / 2;
@@ -2303,13 +2338,13 @@ export function buildSceneArchitecture(
     cityGroup.add(gp);
   });
 
-  // Curved gooseneck lamps along street
-  for (let x = -78; x <= 78; x += 26) {
-    if (Math.abs(x) < 7) continue;
-    [-1, 1].forEach((s) => {
-      gooseneckLamp(cityGroup, x, ySt, ROAD_Z + s * 10.9, s, M);
-    });
-  }
+  // Curved gooseneck lamps placed strictly clear of every driveway & forecourt road
+  [-82, -48, -32, 32, 48, 82].forEach((x) => {
+    gooseneckLamp(cityGroup, x, ySt, ROAD_Z - 10.9, -1, M);
+  });
+  [-82, -68, -24, 24, 86].forEach((x) => {
+    gooseneckLamp(cityGroup, x, ySt, ROAD_Z + 10.6, 1, M);
+  });
 
   // Stainless steel bollards with domed caps
   const bolMat = std({ color: 0x4c5259, roughness: 0.5, metalness: 0.45 });
@@ -2329,12 +2364,10 @@ export function buildSceneArchitecture(
     cityGroup.add(j);
   }
 
-  // Approach path planting beds with botanical plants
+  // Approach path planting beds with botanical plants (strictly outside parking aisles)
   [
     [-13, 20],
     [13, 20],
-    [-13, 30],
-    [13, 30],
     [-13, 40],
     [13, 40],
   ].forEach((p, i) => {
@@ -2343,29 +2376,36 @@ export function buildSceneArchitecture(
     plant(cityGroup, p[0] + 0.9, ySt + 0.42, p[1] + 0.6, 0.95, i * 3 + 2, M);
   });
 
-  // Sculpted street trees with curved trunks and 3D canopies
+  // Sculpted street trees with curved trunks and 3D canopies (clear of all roads & driveways)
   const rndT = (n: number) => (((Math.sin(n * 12.9898) * 43758.5453) % 1) + 1) % 1;
   let ti = 0;
   for (let x = -100; x <= 100; x += 13.5) {
-    if (Math.abs(x) < 6 || Math.abs(Math.abs(x) - 30) < 5) continue;
+    if (
+      Math.abs(x) < 7 ||
+      Math.abs(Math.abs(x) - 26.5) < 4.5 ||
+      Math.abs(Math.abs(x) - 32.0) < 3.5 ||
+      Math.abs(Math.abs(x) - 59.0) < 5.0
+    ) {
+      continue;
+    }
     const r = rndT(x * 0.37 + ti * 1.7);
     tree(cityGroup, x, ySt, ROAD_Z - 10 + r * 1.2, 5.4 + r * 2.6, 2.0 + r * 0.9, ti * 7 + 3, M);
     ti++;
   }
-  for (let x = -96; x <= 96; x += 15.5) {
-    if (Math.abs(x) < 14) continue;
+  // South street trees only in open green medians between company forecourts
+  [-92, -76, -26, -21, 21, 26, 88, 102].forEach((x) => {
     const r = rndT(x * 0.71 + ti * 2.3);
-    tree(cityGroup, x, ySt, ROAD_Z + 10.5 + r * 1.4, 6.2 + r * 3.0, 2.3 + r * 1.0, ti * 7 + 91, M);
+    tree(cityGroup, x, ySt, ROAD_Z + 10.6 + r * 1.0, 6.2 + r * 2.8, 2.2 + r * 0.9, ti * 7 + 91, M);
     ti++;
-  }
+  });
   for (let i = 0; i < 9; i++) {
     const x = -34 + i * 8.6 + (rndT(i * 3.1) - 0.5) * 3;
-    if (Math.abs(x) < 7) continue;
+    if (Math.abs(x) < 7 || Math.abs(Math.abs(x) - 26.5) < 4.5 || Math.abs(x) > 20.5) continue;
     const r = rndT(i * 5.7);
     tree(cityGroup, x, ySt, 44 + r * 8, 4.2 + r * 2.4, 1.6 + r * 0.7, i * 11 + 5, M);
   }
 
-  // Asphalt driveways & car-park bay markings
+  // Asphalt driveways, interconnected company avenues & car-park bay markings
   const asphaltMat = M.asphalt.clone();
   asphaltMat.polygonOffset = true;
   asphaltMat.polygonOffsetFactor = -10;
@@ -2388,18 +2428,88 @@ export function buildSceneArchitecture(
     m.receiveShadow = true;
     cityGroup.add(m);
   };
-  const DRV_X = 30;
+
+  // Helper to paint perpendicular parking bay lines
+  const paintRowStalls = (xs: number[], zCenter: number, pitch = 3.5, stallLen = 4.2) => {
+    for (let i = 0; i <= xs.length; i++) {
+      flat(0.1, stallLen, xs[0] - pitch * 0.5 + i * pitch, zCenter, -0.598, linePaintMat);
+    }
+  };
+
+  // 1. DomainTechHub Inner Drives (x = ±26.5, extending to Medical Ring Road z = -15) & Hub Parking Bays
+  const DRV_X = 26.5;
   const AISLE_Z = 29.75;
-  const BAY_XS = [9, 12.5, 16, 19.5, 23];
+  const BAY_XS = [8.2, 11.7, 15.2, 18.7, 22.0];
   const BAY_ROWS = [25, 34.5];
   [-1, 1].forEach((sd) => {
     const xd = sd * DRV_X;
-    flat(5, 60.5 - 27.1, xd, (60.5 + 27.1) / 2, -0.604, asphaltMat);
-    flat(DRV_X + 2.5 - 5.2, 5.3, sd * ((5.2 + DRV_X + 2.5) / 2), AISLE_Z, -0.604, asphaltMat);
-    for (let z = 57; z > 30; z -= 4) flat(0.14, 1.7, xd, z, -0.598, linePaintMat);
+    flat(5.0, 60.5 - -17.5, xd, (60.5 - 17.5) / 2, -0.604, asphaltMat);
+    flat(DRV_X - 5.2, 5.3, sd * ((5.2 + DRV_X) / 2), AISLE_Z, -0.604, asphaltMat);
+    for (let z = 57; z > -13; z -= 4.2) flat(0.14, 1.7, xd, z, -0.598, linePaintMat);
     BAY_ROWS.forEach((bz) => {
-      for (let i = 0; i <= BAY_XS.length; i++) flat(0.1, 4.4, sd * (BAY_XS[0] - 1.75 + i * 3.5), bz, -0.598, linePaintMat);
+      const sorted = sd > 0 ? BAY_XS : BAY_XS.map((b) => -b).reverse();
+      paintRowStalls(sorted, bz, 3.5, 4.4);
     });
+  });
+
+  // 2. VitalCare Medical Ring Road (z = -15.0, x = -29..+29) & Patient Drop-Off Bays
+  flat(58.0, 5.0, 0, -15.0, -0.604, asphaltMat);
+  for (let x = -22; x <= 22; x += 4.4) flat(1.8, 0.14, x, -15.0, -0.598, linePaintMat);
+  flat(12.0, 4.2, -13.5, -10.5, -0.604, asphaltMat);
+  flat(12.0, 4.2, 13.5, -10.5, -0.604, asphaltMat);
+  paintRowStalls([-16.0, -11.0], -10.5, 5.0, 4.0);
+  paintRowStalls([11.0, 16.0], -10.5, 5.0, 4.0);
+
+  // 3. West Commercial Avenue (x = -59) & Bank / Restaurant Forecourt Road (z = 18.0)
+  flat(5.4, 45.0, -59.0, 38.0, -0.604, asphaltMat);
+  for (let z = 57; z > 20; z -= 4.2) flat(0.14, 1.7, -59.0, z, -0.598, linePaintMat);
+  flat(61.0, 5.0, -54.5, 18.0, -0.604, asphaltMat);
+  for (let x = -81; x <= -31; x += 4.5) flat(1.8, 0.14, x, 18.0, -0.598, linePaintMat);
+  // Bank & Restaurant asphalt parking aprons & bays (z = 13.8)
+  flat(16.5, 4.0, -76.0, 13.8, -0.604, asphaltMat);
+  paintRowStalls([-82, -78, -74, -70], 13.8, 4.0, 3.8);
+  flat(16.5, 4.0, -43.0, 13.8, -0.604, asphaltMat);
+  paintRowStalls([-49, -45, -41, -37], 13.8, 4.0, 3.8);
+
+  // 4. East Commercial Avenue (x = +59) & Dealership / Crypto Forecourt Road (z = 18.0)
+  flat(5.4, 45.0, 59.0, 38.0, -0.604, asphaltMat);
+  for (let z = 57; z > 20; z -= 4.2) flat(0.14, 1.7, 59.0, z, -0.598, linePaintMat);
+  flat(61.0, 5.0, 54.5, 18.0, -0.604, asphaltMat);
+  for (let x = 31; x <= 81; x += 4.5) flat(1.8, 0.14, x, 18.0, -0.598, linePaintMat);
+  // Dealership & Crypto asphalt parking aprons & bays (z = 13.8)
+  flat(16.5, 4.0, 43.0, 13.8, -0.604, asphaltMat);
+  paintRowStalls([37, 41, 45, 49], 13.8, 4.0, 3.8);
+  flat(16.5, 4.0, 74.0, 13.8, -0.604, asphaltMat);
+  paintRowStalls([68, 72, 76, 80], 13.8, 4.0, 3.8);
+
+  // 5. South Company Forecourt Roads (Travel, Tourism, Logistics + East Freight Yard)
+  // Travel Drop-off Loop (cx = -48)
+  flat(4.6, 8.0, -60.0, 75.5, -0.604, asphaltMat);
+  flat(4.6, 8.0, -36.0, 75.5, -0.604, asphaltMat);
+  flat(28.6, 4.6, -48.0, 77.2, -0.604, asphaltMat);
+  flat(18.0, 3.2, -48.0, 79.2, -0.604, asphaltMat);
+  paintRowStalls([-54, -48, -42], 79.2, 6.0, 3.2);
+
+  // Tourism Expedition Forecourt Loop (cx = 0)
+  flat(4.6, 8.0, -14.0, 75.5, -0.604, asphaltMat);
+  flat(4.6, 8.0, 14.0, 75.5, -0.604, asphaltMat);
+  flat(32.6, 4.6, 0.0, 77.2, -0.604, asphaltMat);
+  flat(22.0, 3.2, 0.0, 79.2, -0.604, asphaltMat);
+  paintRowStalls([-8, 0, 8], 79.2, 8.0, 3.2);
+
+  // SwiftPort Logistics Forecourt & East Freight Yard Road (cx = 54, East Dock x = 70..79.7)
+  flat(4.8, 8.0, 38.0, 75.5, -0.604, asphaltMat);
+  flat(44.1, 4.8, 57.65, 77.2, -0.604, asphaltMat);
+  flat(22.0, 3.2, 52.0, 79.2, -0.604, asphaltMat);
+  paintRowStalls([44, 52, 60], 79.2, 8.0, 3.2);
+  // East Freight Yard Road running from Main Boulevard (z = 72) down alongside SwiftPort East Docks (z = 103)
+  flat(5.4, 31.0, 77.0, 87.5, -0.604, asphaltMat);
+  for (let z = 79; z <= 101; z += 4.0) flat(0.14, 1.7, 77.0, z, -0.598, linePaintMat);
+  // Loading Dock Concrete/Asphalt Apron & 2 Dock Bays right against SwiftPort East Roll-Up Doors
+  flat(5.4, 13.0, 72.9, 94.0, -0.604, asphaltMat);
+  [90.5, 97.5].forEach((bz) => {
+    flat(4.4, 0.12, 73.1, bz - 1.9, -0.598, linePaintMat);
+    flat(4.4, 0.12, 73.1, bz + 1.9, -0.598, linePaintMat);
   });
 
   return {

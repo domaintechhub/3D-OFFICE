@@ -1120,6 +1120,7 @@ export class AtriumEngine {
       walkOn: this.sim.walkOn,
       activeLevel: this.activeLevel,
       simRate: this.sim.simRate,
+      trafficHint: this.sim.getTrafficAudioHint(this.camera.position, this._camRight),
     });
 
     // Animated office screens & wall TVs (only draws visible screens on active floors)
