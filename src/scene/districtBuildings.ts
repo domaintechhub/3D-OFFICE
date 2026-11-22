@@ -549,9 +549,9 @@ export function buildDistrictBuildings(
       makeDeskAt(g0, spec.cx + 5.2, fy, spec.cz + 6.4, 1.5, 0.85, M);
       registerChair(0, spec.cx + 5.2, fy, spec.cz + 7.25, Math.PI, 1);
       registerMonitor(0, 0, [spec.cx + 5.2, fy + 0.77, spec.cz + 6.25], 0, spec.cx + 5.2, spec.cz + 7.25, 'Maître D’ Host', 'Dining Hall & Reservations');
-      registerMonitor(0, 1, [spec.cx - 0.5, fy + 1.1, spec.cz - 7.0], 0, spec.cx - 0.5, spec.cz - 8.1, 'Head Chef KDS', 'Open Wood-Fired Kitchen');
+      registerMonitor(0, 1, [spec.cx - 0.5, fy + 1.1, spec.cz - 6.85], Math.PI, spec.cx - 0.5, spec.cz - 8.1, 'Head Chef KDS', 'Open Wood-Fired Kitchen');
 
-      // Animated Kitchen Menu / KDS wall board on rear wall
+      // Animated Kitchen Menu / KDS wall board mounted inside on rear wall (clear of exhaust hood)
       const kdsScreen = createCustomBoardScreen(screenReg, 640, 220, (g, w, h, t) => {
         g.fillStyle = '#120d0a';
         g.fillRect(0, 0, w, h);
@@ -585,9 +585,9 @@ export function buildDistrictBuildings(
           g.textAlign = 'left';
         });
       });
-      boxAt(g0, 6.2, 2.25, 0.14, spec.cx + 1.2, fy + 2.3, spec.cz - 9.4, frameDarkMat, false, false);
-      const kdsMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.9, 2.0), kdsScreen.mat);
-      kdsMesh.position.set(spec.cx + 1.2, fy + 2.3, spec.cz - 9.31);
+      boxAt(g0, 5.8, 2.15, 0.14, spec.cx + 5.8, fy + 2.25, spec.cz - 8.7, frameDarkMat, false, false);
+      const kdsMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 1.92), kdsScreen.mat);
+      kdsMesh.position.set(spec.cx + 5.8, fy + 2.25, spec.cz - 8.62);
       g0.add(kdsMesh);
       kdsScreen.setMesh(kdsMesh);
 
@@ -682,9 +682,9 @@ export function buildDistrictBuildings(
           g.textAlign = 'left';
         });
       });
-      boxAt(g0, 5.8, 2.2, 0.14, spec.cx, fy + 2.3, spec.cz - 8.4, frameDarkMat, false, false);
+      boxAt(g0, 5.8, 2.2, 0.14, spec.cx, fy + 2.3, spec.cz - 8.7, frameDarkMat, false, false);
       const cbMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 1.95), carBoard.mat);
-      cbMesh.position.set(spec.cx, fy + 2.3, spec.cz - 8.31);
+      cbMesh.position.set(spec.cx, fy + 2.3, spec.cz - 8.62);
       g0.add(cbMesh);
       carBoard.setMesh(cbMesh);
     } else if (spec.id === 'bank') {
@@ -699,17 +699,21 @@ export function buildDistrictBuildings(
         makeAtmKiosk(g0, spec.cx + ox, fy, spec.cz + 6.2, Math.PI, M);
       });
 
-      // Teller hall counter + glass divider screens
-      boxAt(g0, 9.2, 1.12, 1.15, spec.cx - 2.4, fy + 0.56, spec.cz - 3.6, bankStoneMat, true, true, 0.03);
-      boxAt(g0, 9.4, 0.08, 1.32, spec.cx - 2.4, fy + 1.14, spec.cz - 3.6, M.walnut, false, true, 0.02);
-      boxAt(g0, 8.8, 0.72, 0.05, spec.cx - 2.4, fy + 1.54, spec.cz - 3.1, glassMat, false, false);
+      // Bi-level Teller Hall Counter: customer transaction ledge (1.14m) + rear staff work desk (0.78m)
+      boxAt(g0, 9.2, 1.1, 0.54, spec.cx - 2.4, fy + 0.55, spec.cz - 3.24, bankStoneMat, true, true, 0.03);
+      boxAt(g0, 9.4, 0.08, 0.64, spec.cx - 2.4, fy + 1.14, spec.cz - 3.24, M.walnut, false, true, 0.02);
+      boxAt(g0, 8.8, 0.72, 0.05, spec.cx - 2.4, fy + 1.54, spec.cz - 2.98, glassMat, false, false);
+      boxAt(g0, 9.2, 0.06, 0.94, spec.cx - 2.4, fy + 0.75, spec.cz - 3.98, M.walnut, true, true, 0.015);
+      [-6.8, -2.4, 2.0].forEach((lx) => {
+        boxAt(g0, 0.14, 0.72, 0.78, spec.cx + lx, fy + 0.36, spec.cz - 3.92, bankStoneMat, true, true, 0.01);
+      });
       [-4.6, -0.2].forEach((ox, i) => {
         registerChair(0, spec.cx + ox, fy, spec.cz - 4.75, 0, i === 0 ? 1 : -1);
         registerMonitor(
           0,
           i,
-          [spec.cx + ox, fy + 1.18, spec.cz - 3.55],
-          0,
+          [spec.cx + ox, fy + 0.78, spec.cz - 4.02],
+          Math.PI,
           spec.cx + ox,
           spec.cz - 4.75,
           `Branch Teller ${i + 1}`,
@@ -717,9 +721,9 @@ export function buildDistrictBuildings(
         );
       });
 
-      // Heavy circular brushed-steel Bank Vault Door mounted on rear wall
+      // Heavy circular brushed-steel Bank Vault Door mounted inside on rear wall
       const vx = spec.cx + 6.2;
-      const vz = spec.cz - 10.35;
+      const vz = spec.cz - 9.5;
       boxAt(g0, 3.6, 3.2, 0.55, vx, fy + 1.6, vz, frameDarkMat, true, true, 0.05);
       const vaultDoor = cylAt(g0, 1.28, 1.28, 0.34, vx, fy + 1.55, vz + 0.32, M.chrome, true, false, 28);
       vaultDoor.rotation.x = Math.PI / 2;
@@ -764,9 +768,9 @@ export function buildDistrictBuildings(
         });
         void t;
       });
-      boxAt(g0, 5.8, 2.2, 0.14, spec.cx - 3.6, fy + 2.35, spec.cz - 10.4, frameDarkMat, false, false);
+      boxAt(g0, 5.8, 2.2, 0.14, spec.cx - 3.6, fy + 2.35, spec.cz - 9.7, frameDarkMat, false, false);
       const fxMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 1.95), fxBoard.mat);
-      fxMesh.position.set(spec.cx - 3.6, fy + 2.35, spec.cz - 10.31);
+      fxMesh.position.set(spec.cx - 3.6, fy + 2.35, spec.cz - 9.62);
       g0.add(fxMesh);
       fxBoard.setMesh(fxMesh);
     } else if (spec.id === 'crypto') {
@@ -851,9 +855,9 @@ export function buildDistrictBuildings(
           g.fillText(`$${(94295 + i * 15).toLocaleString()}`, w - 120, y + 10);
         }
       });
-      boxAt(g0, 6.2, 2.3, 0.14, spec.cx, fy + 2.3, spec.cz - 9.4, frameDarkMat, false, false);
+      boxAt(g0, 6.2, 2.3, 0.14, spec.cx, fy + 2.3, spec.cz - 9.7, frameDarkMat, false, false);
       const obMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.9, 2.05), obBoard.mat);
-      obMesh.position.set(spec.cx, fy + 2.3, spec.cz - 9.31);
+      obMesh.position.set(spec.cx, fy + 2.3, spec.cz - 9.62);
       g0.add(obMesh);
       obBoard.setMesh(obMesh);
     } else if (spec.id === 'travel') {
@@ -875,16 +879,20 @@ export function buildDistrictBuildings(
       cylAt(g0, 0.9, 1.05, 0.18, spec.cx, fy + 0.09, spec.cz - 2.0, M.dark, false, true, 24);
       rotatingProps.push({ obj: globe, speed: 0.38, axis: 'y' });
 
-      // Check-in counter & travel agent desks (remember north entrance = doorSide:'north')
-      boxAt(g0, 8.6, 1.04, 1.15, spec.cx - 6.8, fy + 0.52, spec.cz + 3.2, M.white, true, true, 0.04);
-      boxAt(g0, 8.8, 0.07, 1.28, spec.cx - 6.8, fy + 1.06, spec.cz + 3.2, accentMat, false, false);
+      // Bi-level Check-In Counter: customer luggage ledge (1.06m) + rear agent desk (0.78m)
+      boxAt(g0, 8.6, 1.04, 0.52, spec.cx - 6.8, fy + 0.52, spec.cz + 2.86, M.white, true, true, 0.04);
+      boxAt(g0, 8.8, 0.07, 0.6, spec.cx - 6.8, fy + 1.06, spec.cz + 2.86, accentMat, false, false);
+      boxAt(g0, 8.6, 0.06, 0.94, spec.cx - 6.8, fy + 0.75, spec.cz + 3.59, M.walnut, true, true, 0.02);
+      [-10.9, -6.8, -2.7].forEach((lx) => {
+        boxAt(g0, 0.14, 0.72, 0.78, spec.cx + lx, fy + 0.36, spec.cz + 3.54, M.white, true, true, 0.01);
+      });
       [-9.0, -4.6].forEach((ox, i) => {
         registerChair(0, spec.cx + ox, fy, spec.cz + 4.35, Math.PI, i === 0 ? 1 : -1);
         registerMonitor(
           0,
           i,
-          [spec.cx + ox, fy + 1.1, spec.cz + 3.15],
-          Math.PI,
+          [spec.cx + ox, fy + 0.78, spec.cz + 3.63],
+          0,
           spec.cx + ox,
           spec.cz + 4.35,
           `Flight & Visa Agent ${i + 1}`,
@@ -931,9 +939,9 @@ export function buildDistrictBuildings(
           g.fillText(f[3], 520, y + 18);
         });
       });
-      boxAt(g0, 7.6, 2.4, 0.14, spec.cx, fy + 2.35, spec.cz + 8.4, frameDarkMat, false, false);
+      boxAt(g0, 7.6, 2.4, 0.14, spec.cx, fy + 2.35, spec.cz + 8.7, frameDarkMat, false, false);
       const flMesh = new THREE.Mesh(new THREE.PlaneGeometry(7.3, 2.15), flBoard.mat);
-      flMesh.position.set(spec.cx, fy + 2.35, spec.cz + 8.31);
+      flMesh.position.set(spec.cx, fy + 2.35, spec.cz + 8.62);
       flMesh.rotation.y = Math.PI;
       g0.add(flMesh);
       flBoard.setMesh(flMesh);
@@ -969,7 +977,7 @@ export function buildDistrictBuildings(
           0,
           i,
           [spec.cx + ox, fy + 0.77, dz - 0.15],
-          Math.PI,
+          0,
           spec.cx + ox,
           dz + 0.88,
           i === 0 ? 'Safari Expedition Planner' : 'Eco-Lodge Concierge',
@@ -1010,9 +1018,9 @@ export function buildDistrictBuildings(
           g.textAlign = 'left';
         });
       });
-      boxAt(g0, 7.2, 2.3, 0.14, spec.cx, fy + 2.35, spec.cz + 8.4, frameDarkMat, false, false);
+      boxAt(g0, 7.2, 2.3, 0.14, spec.cx, fy + 2.35, spec.cz + 8.7, frameDarkMat, false, false);
       const sfMesh = new THREE.Mesh(new THREE.PlaneGeometry(6.9, 2.05), sfBoard.mat);
-      sfMesh.position.set(spec.cx, fy + 2.35, spec.cz + 8.31);
+      sfMesh.position.set(spec.cx, fy + 2.35, spec.cz + 8.62);
       sfMesh.rotation.y = Math.PI;
       g0.add(sfMesh);
       sfBoard.setMesh(sfMesh);
@@ -1048,10 +1056,15 @@ export function buildDistrictBuildings(
         }
       }
 
-      // Central Patient Triage Desk + Waiting Armchairs
-      boxAt(g0, 4.6, 1.04, 1.1, spec.cx, fy + 0.52, spec.cz - 1.2, M.white, true, true, 0.03);
+      // Central Bi-level Patient Triage Counter: patient ledge (1.06m) + rear staff desk (0.78m)
+      boxAt(g0, 4.6, 1.04, 0.5, spec.cx, fy + 0.52, spec.cz - 0.9, M.white, true, true, 0.03);
+      boxAt(g0, 4.72, 0.06, 0.58, spec.cx, fy + 1.06, spec.cz - 0.9, accentMat, false, false, 0.02);
+      boxAt(g0, 4.6, 0.06, 0.88, spec.cx, fy + 0.75, spec.cz - 1.59, M.walnut, true, true, 0.02);
+      [-2.15, 2.15].forEach((lx) => {
+        boxAt(g0, 0.14, 0.72, 0.76, spec.cx + lx, fy + 0.36, spec.cz - 1.54, M.white, true, true, 0.01);
+      });
       registerChair(0, spec.cx, fy, spec.cz - 2.3, 0, 1);
-      registerMonitor(0, 0, [spec.cx, fy + 1.08, spec.cz - 1.1], 0, spec.cx, spec.cz - 2.3, 'Lead Pharmacist & Triage', '24h Pharmacy & Patient Intake');
+      registerMonitor(0, 0, [spec.cx, fy + 0.78, spec.cz - 1.58], Math.PI, spec.cx, spec.cz - 2.3, 'Lead Pharmacist & Triage', '24h Pharmacy & Patient Intake');
 
       // Diagnostic Consult Desks on east wing
       [spec.cx + 10.5, spec.cx + 17.5].forEach((dx, i) => {
@@ -1117,9 +1130,9 @@ export function buildDistrictBuildings(
           g.textAlign = 'left';
         });
       });
-      boxAt(g0, 7.6, 2.3, 0.14, spec.cx + 1.5, fy + 2.35, spec.cz - 7.4, frameDarkMat, false, false);
+      boxAt(g0, 7.6, 2.3, 0.14, spec.cx + 1.5, fy + 2.35, spec.cz - 7.7, frameDarkMat, false, false);
       const medMesh = new THREE.Mesh(new THREE.PlaneGeometry(7.3, 2.05), medBoard.mat);
-      medMesh.position.set(spec.cx + 1.5, fy + 2.35, spec.cz - 7.31);
+      medMesh.position.set(spec.cx + 1.5, fy + 2.35, spec.cz - 7.62);
       g0.add(medMesh);
       medBoard.setMesh(medMesh);
     } else if (spec.id === 'logistics') {
@@ -1199,10 +1212,14 @@ export function buildDistrictBuildings(
         });
       });
 
-      // Waybill Dispatch & Customs Control Desk on East-Center Hall
+      // Bi-level Waybill Dispatch & Customs Counter: customer ledge (1.06m) + rear dispatch desk (0.78m)
       const deskZ = spec.cz + 2.5;
-      boxAt(g0, 6.4, 1.04, 1.18, spec.cx + 5.8, fy + 0.52, deskZ, frameDarkMat, true, true, 0.03);
-      boxAt(g0, 6.6, 0.08, 1.3, spec.cx + 5.8, fy + 1.06, deskZ, accentMat, false, false);
+      boxAt(g0, 6.4, 1.04, 0.52, spec.cx + 5.8, fy + 0.52, deskZ - 0.34, frameDarkMat, true, true, 0.03);
+      boxAt(g0, 6.6, 0.08, 0.6, spec.cx + 5.8, fy + 1.06, deskZ - 0.34, accentMat, false, false);
+      boxAt(g0, 6.4, 0.06, 0.94, spec.cx + 5.8, fy + 0.75, deskZ + 0.39, M.walnut, true, true, 0.015);
+      [2.7, 5.8, 8.9].forEach((lx) => {
+        boxAt(g0, 0.14, 0.72, 0.78, spec.cx + lx, fy + 0.36, deskZ + 0.34, frameDarkMat, true, true, 0.01);
+      });
       [3.8, 7.8].forEach((ox, i) => {
         const sx = spec.cx + ox;
         const sz = deskZ + 1.15;
@@ -1210,8 +1227,8 @@ export function buildDistrictBuildings(
         registerMonitor(
           0,
           i,
-          [sx, fy + 1.1, deskZ - 0.1],
-          Math.PI,
+          [sx, fy + 0.78, deskZ + 0.43],
+          0,
           sx,
           sz,
           i === 0 ? 'Freight Dispatch Manager' : 'Customs & Waybill Officer',
@@ -1257,9 +1274,9 @@ export function buildDistrictBuildings(
           g.textAlign = 'left';
         });
       });
-      boxAt(g0, 7.8, 2.35, 0.14, spec.cx + 1.5, fy + 2.35, spec.cz + 9.2, frameDarkMat, false, false);
+      boxAt(g0, 7.8, 2.35, 0.14, spec.cx + 1.5, fy + 2.35, spec.cz + 9.7, frameDarkMat, false, false);
       const logMesh = new THREE.Mesh(new THREE.PlaneGeometry(7.5, 2.1), logBoard.mat);
-      logMesh.position.set(spec.cx + 1.5, fy + 2.35, spec.cz + 9.11);
+      logMesh.position.set(spec.cx + 1.5, fy + 2.35, spec.cz + 9.62);
       logMesh.rotation.y = Math.PI;
       g0.add(logMesh);
       logBoard.setMesh(logMesh);

@@ -139,7 +139,7 @@ export class DistrictSim {
     return best;
   }
 
-  private setSafePose(P: DistrictActor, requestedPose: string) {
+  private setSafePose(P: DistrictActor, requestedPose: string, snap = false) {
     let pose = requestedPose;
     if (SEATED_POSES.has(pose)) {
       const chair = P.chair;
@@ -158,7 +158,7 @@ export class DistrictSim {
         else pose = 'stand';
       }
     }
-    setPose(P, pose, this.P_LIB);
+    setPose(P, pose, this.P_LIB, snap);
   }
 
   private spawnActor(
@@ -218,7 +218,7 @@ export class DistrictSim {
       homePose: pose,
     });
 
-    this.setSafePose(p, pose);
+    this.setSafePose(p, pose, true);
     this.peopleGroup.add(p.g);
     this.ACTORS.push(p);
     return p;

@@ -129,10 +129,12 @@ export const JK = [
   'sLz',
   'eL',
   'fLy',
+  'hLz',
   'sRx',
   'sRz',
   'eR',
   'fRy',
+  'hRz',
 ] as const;
 
 export const SEATED_POSES: ReadonlySet<string> = new Set([
@@ -163,112 +165,125 @@ export const POSES: Record<string, Record<string, number>> = {
     sLz: 0.055,
     eL: -0.22,
     fLy: 0,
+    hLz: 0,
     sRx: 0.04,
     sRz: -0.055,
     eR: -0.22,
     fRy: 0,
+    hRz: 0,
   },
 };
 
 const PZ = (o: Record<string, number>): Record<string, number> => ({ ...POSES.stand, ...o });
 
-// Seated kinematics calibrated so soles rest flush at y=0.000, thighs sit squarely on cushions (~0.52m), knees clear under desks, and fingertips touch physical keyboards/blotters
+// Seated kinematics calibrated so soles rest flush at y=0.000, thighs sit squarely on cushions (~0.52m), knees clear under desks, and pronated hands/fingertips rest cleanly on top of keyboards/desktops
 POSES.type = PZ({
   hipY: 0.562,
-  hipZ: -0.03,
+  hipZ: 0,
   thigh: -1.48,
   knee: 1.48,
-  lean: 0.06,
+  lean: 0.08,
   hx: 0.06,
-  sLx: -0.68,
+  sLx: -0.61,
   sLz: -0.05,
-  eL: -0.66,
-  fLy: -0.95,
-  sRx: -0.68,
+  eL: -0.99,
+  fLy: -1.36,
+  hLz: 0.05,
+  sRx: -0.61,
   sRz: 0.05,
-  eR: -0.66,
-  fRy: 0.95,
+  eR: -0.99,
+  fRy: 1.36,
+  hRz: -0.05,
 });
 POSES.sit = PZ({
   hipY: 0.562,
-  hipZ: -0.03,
+  hipZ: 0,
   thigh: -1.48,
   knee: 1.48,
-  lean: 0.06,
+  lean: 0.08,
   hx: 0.14,
-  sLx: -0.68,
+  sLx: -0.61,
   sLz: -0.05,
-  eL: -0.66,
-  fLy: -0.98,
-  sRx: -0.68,
+  eL: -0.99,
+  fLy: -1.36,
+  hLz: 0.05,
+  sRx: -0.61,
   sRz: 0.05,
-  eR: -0.66,
-  fRy: 0.98,
+  eR: -0.99,
+  fRy: 1.36,
+  hRz: -0.05,
 });
 POSES.present = PZ({ sRx: -1.26, sRz: -0.22, eR: -0.28, fRy: 0.55, sLx: -0.42, eL: -0.88, hy: -0.2, spineTwist: -0.1 });
 POSES.talk = PZ({ sRx: -0.68, eR: -1.02, fRy: 0.45, sLx: -0.2, eL: -0.64, hy: 0.16, spineTwist: 0.08 });
 POSES.sitTalk = {
   ...POSES.talk,
   hipY: 0.562,
-  hipZ: -0.03,
+  hipZ: 0,
   thigh: -1.48,
   knee: 1.48,
   lean: 0.04,
-  sLx: -0.74,
-  eL: -0.78,
-  fLy: -0.8,
-  sRx: -0.82,
-  eR: -0.94,
+  sLx: -0.6,
+  sLz: -0.05,
+  eL: -0.98,
+  fLy: -1.34,
+  hLz: 0.04,
+  sRx: -0.78,
+  eR: -0.96,
 };
 POSES.sitCollaborate = PZ({
   hipY: 0.562,
-  hipZ: -0.03,
+  hipZ: 0,
   thigh: -1.48,
   knee: 1.48,
   lean: 0.07,
   spineTwist: -0.16,
   hy: -0.18,
-  sLx: -0.74,
+  sLx: -0.62,
   sLz: -0.04,
-  eL: -0.76,
-  fLy: -0.85,
-  sRx: -0.82,
+  eL: -0.96,
+  fLy: -1.34,
+  hLz: 0.04,
+  sRx: -0.78,
   sRz: 0.08,
-  eR: -0.82,
+  eR: -0.94,
   fRy: 0.62,
 });
 POSES.meeting = PZ({
   hipY: 0.562,
-  hipZ: -0.03,
+  hipZ: 0,
   thigh: -1.48,
   knee: 1.48,
   lean: 0.06,
   hx: 0.06,
   hy: 0.1,
-  sLx: -0.72,
+  sLx: -0.6,
   sLz: -0.06,
-  eL: -0.7,
-  fLy: -0.82,
-  sRx: -0.72,
+  eL: -0.96,
+  fLy: -1.34,
+  hLz: 0.05,
+  sRx: -0.6,
   sRz: 0.06,
-  eR: -0.7,
-  fRy: 0.82,
+  eR: -0.96,
+  fRy: 1.34,
+  hRz: -0.05,
 });
 POSES.monitorLook = PZ({
   hipY: 0.562,
-  hipZ: -0.03,
+  hipZ: 0,
   thigh: -1.48,
   knee: 1.48,
-  lean: 0.04,
+  lean: 0.05,
   hx: -0.04,
-  sLx: -0.72,
+  sLx: -0.6,
   sLz: -0.04,
-  eL: -0.68,
-  fLy: -0.95,
-  sRx: -0.72,
+  eL: -0.96,
+  fLy: -1.36,
+  hLz: 0.04,
+  sRx: -0.6,
   sRz: 0.04,
-  eR: -0.68,
-  fRy: 0.95,
+  eR: -0.96,
+  fRy: 1.36,
+  hRz: -0.04,
 });
 POSES.hold = PZ({
   sLx: -0.34,
@@ -298,45 +313,48 @@ POSES.readDoc = PZ({
 POSES.sitReadDoc = {
   ...POSES.readDoc,
   hipY: 0.562,
-  hipZ: -0.03,
+  hipZ: 0,
   thigh: -1.48,
   knee: 1.48,
 };
 POSES.writeNotes = PZ({
   hipY: 0.562,
-  hipZ: -0.03,
+  hipZ: 0,
   thigh: -1.48,
   knee: 1.48,
   lean: 0.12,
   hx: 0.2,
-  sLx: -0.72,
+  sLx: -0.65,
   sLz: -0.06,
-  eL: -0.66,
-  fLy: -1.04,
-  sRx: -0.78,
+  eL: -0.97,
+  fLy: -1.36,
+  hLz: 0.05,
+  sRx: -0.68,
   sRz: 0.06,
-  eR: -0.6,
-  fRy: 1.02,
+  eR: -0.97,
+  fRy: 1.32,
+  hRz: -0.05,
 });
 POSES.think = PZ({
   hipY: 0.562,
-  hipZ: -0.03,
+  hipZ: 0,
   thigh: -1.48,
   knee: 1.48,
   lean: 0.06,
   hx: 0.08,
   hy: -0.12,
-  sLx: -0.72,
+  sLx: -0.6,
   sLz: -0.04,
-  eL: -0.68,
-  fLy: -0.85,
+  eL: -0.96,
+  fLy: -1.34,
+  hLz: 0.04,
   sRx: -1.32,
   sRz: 0.18,
   eR: -1.94,
   fRy: 0.25,
 });
 // Seated desk phone call
-POSES.phone = { ...POSES.type, sRx: -1.46, sRz: 0.1, eR: -2.14, fRy: 0.15, hx: -0.02, hy: 0.14 };
+POSES.phone = { ...POSES.type, sRx: -1.46, sRz: 0.1, eR: -2.14, fRy: 0.15, hRz: 0, hx: -0.02, hy: 0.14 };
 // Standing mobile phone call (never bends legs into empty air)
 POSES.standPhone = PZ({ sRx: -1.46, sRz: 0.1, eR: -2.14, fRy: 0.15, hx: -0.02, hy: 0.14 });
 POSES.collaborate = PZ({
@@ -352,19 +370,21 @@ POSES.collaborate = PZ({
 });
 POSES.leanScreen = PZ({
   hipY: 0.562,
-  hipZ: -0.03,
+  hipZ: 0,
   thigh: -1.48,
   knee: 1.48,
-  lean: 0.15,
+  lean: 0.14,
   hx: -0.08,
-  sLx: -0.74,
+  sLx: -0.67,
   sLz: -0.05,
-  eL: -0.62,
-  fLy: -1.05,
-  sRx: -0.74,
+  eL: -0.98,
+  fLy: -1.36,
+  hLz: 0.05,
+  sRx: -0.67,
   sRz: 0.05,
-  eR: -0.62,
-  fRy: 1.05,
+  eR: -0.98,
+  fRy: 1.36,
+  hRz: -0.05,
 });
 // Standing equipment/panel pointing (never bends knees into invisible chair)
 POSES.point = PZ({ lean: 0.08, sRx: -1.35, sRz: -0.06, eR: -0.28, fRy: 0.25, hx: -0.04, hy: -0.06 });
@@ -374,25 +394,29 @@ POSES.standType = PZ({
   hx: 0.14,
   sLx: -0.52,
   sLz: -0.04,
-  eL: -0.72,
-  fLy: -1.08,
+  eL: -1.04,
+  fLy: -1.36,
+  hLz: 0.07,
   sRx: -0.52,
   sRz: 0.04,
-  eR: -0.72,
-  fRy: 1.08,
+  eR: -1.04,
+  fRy: 1.36,
+  hRz: -0.07,
 });
-// Standing counter work at ~1.01-1.05m (Espresso bar)
+// Standing counter work at ~1.01-1.08m (Espresso bar, Pharmacy, Kitchen pass)
 POSES.standCounter = PZ({
   lean: 0.06,
   hx: 0.18,
-  sLx: -0.46,
+  sLx: -0.44,
   sLz: -0.04,
-  eL: -0.68,
-  fLy: -1.02,
-  sRx: -0.46,
+  eL: -0.96,
+  fLy: -1.32,
+  hLz: 0.05,
+  sRx: -0.44,
   sRz: 0.04,
-  eR: -0.68,
-  fRy: 1.02,
+  eR: -0.96,
+  fRy: 1.32,
+  hRz: -0.05,
 });
 // Standing low workbench / service trolley (~0.88m)
 POSES.standLowCounter = PZ({
@@ -400,12 +424,14 @@ POSES.standLowCounter = PZ({
   hx: 0.24,
   sLx: -0.46,
   sLz: -0.04,
-  eL: -0.42,
-  fLy: -0.98,
+  eL: -0.62,
+  fLy: -1.28,
+  hLz: 0.04,
   sRx: -0.46,
   sRz: 0.04,
-  eR: -0.42,
-  fRy: 0.98,
+  eR: -0.62,
+  fRy: 1.28,
+  hRz: -0.04,
 });
 // Standing equipment panel inspection with right hand touching rack/cabinet faceplate (~1.32m)
 POSES.inspectPanel = PZ({
@@ -1311,22 +1337,26 @@ function buildStandardClips(hipYStand = 0.9): THREE.AnimationClip[] {
     'SittingWork',
     2.4,
     (k) => {
-      const t = Math.sin(k * Math.PI * 4) * 0.04;
+      const tL = Math.max(0, Math.sin(k * Math.PI * 4)) * 0.032;
+      const tR = Math.max(0, -Math.sin(k * Math.PI * 4)) * 0.032;
       return {
-        Spine: new THREE.Euler(0.02, 0, 0),
-        Spine2: new THREE.Euler(0.02, 0, 0),
-        Head: new THREE.Euler(0.04, Math.sin(k * Math.PI * 2) * 0.04, 0),
+        Spine: new THREE.Euler(0.027, 0, 0),
+        Spine1: new THREE.Euler(0.027, 0, 0),
+        Spine2: new THREE.Euler(0.027, 0, 0),
+        Head: new THREE.Euler(0.06, Math.sin(k * Math.PI * 2) * 0.04, 0),
         LeftUpLeg: new THREE.Euler(-1.48, 0, 0),
         LeftLeg: new THREE.Euler(1.48, 0, 0),
         RightUpLeg: new THREE.Euler(-1.48, 0, 0),
         RightLeg: new THREE.Euler(1.48, 0, 0),
-        LeftArm: new THREE.Euler(-0.68, 0, -0.05),
-        LeftForeArm: new THREE.Euler(-0.66 + t, -0.95, 0),
-        RightArm: new THREE.Euler(-0.68, 0, 0.05),
-        RightForeArm: new THREE.Euler(-0.66 - t, 0.95, 0),
+        LeftArm: new THREE.Euler(-0.61, 0, -0.05),
+        LeftForeArm: new THREE.Euler(-0.99 - tL, -1.36, 0),
+        LeftHand: new THREE.Euler(0, 0, 0.05 + tL * 1.8),
+        RightArm: new THREE.Euler(-0.61, 0, 0.05),
+        RightForeArm: new THREE.Euler(-0.99 - tR, 1.36, 0),
+        RightHand: new THREE.Euler(0, 0, -0.05 - tR * 1.8),
       };
     },
-    () => [0, 0.562, -0.03]
+    () => [0, 0.562, 0]
   );
 
   const talking = makePoseClip('Talking', 2.6, (k) => {
@@ -1964,10 +1994,16 @@ export function makePerson(
   };
 }
 
-export function setPose(P: PersonActor, name: string, P_LIB: HumanPalette) {
+export function setPose(P: PersonActor, name: string, P_LIB: HumanPalette, snap = false) {
   const G = initAnatomyGeos('office');
   P.pose = name;
   P.tgt = POSES[name] || POSES.stand;
+  if (snap) {
+    for (let i = 0; i < JK.length; i++) {
+      const q = JK[i];
+      P.cur[q] = P.tgt[q];
+    }
+  }
   P.typing =
     name === 'type' ||
     name === 'standType' ||
@@ -2035,6 +2071,9 @@ export function setPose(P: PersonActor, name: string, P_LIB: HumanPalette) {
     } else {
       P.pe.visible = false;
     }
+  }
+  if (snap) {
+    updatePersonKinematics(P, 0, 0, 0);
   }
 }
 
@@ -2114,6 +2153,10 @@ export function createGuideActor(
   return { actor, marker, meshes: actor.meshes };
 }
 
+const _fpTorMat = new THREE.Matrix4();
+const _fpInvMat = new THREE.Matrix4();
+const _fpTargetPos = new THREE.Vector3();
+
 /**
  * Updates skeletal humanoid bone transforms per frame from interpolated joint targets + gait/breathing/blinking.
  */
@@ -2163,6 +2206,26 @@ export function updatePersonKinematics(P: PersonActor, dt: number, t: number, gl
   b.Spine2.rotation.set(leanPart, twistTotal * 0.35, -tiltZ * 0.5);
   b.Spine2.scale.y = 1 + Math.sin(t * 1.6 + P.phase) * 0.009;
 
+  // Keep desk-supported sit laptop resting flush on the y=0.80 tabletop regardless of torso lean or actor scale
+  if (P.fp && P.fp.visible && P.pose === 'sit') {
+    const s = P.body.scale.y || 1;
+    b.Hips.updateMatrix();
+    b.Spine.updateMatrix();
+    b.Spine1.updateMatrix();
+    b.Spine2.updateMatrix();
+    P.tor.updateMatrix();
+    _fpTorMat
+      .copy(b.Hips.matrix)
+      .multiply(b.Spine.matrix)
+      .multiply(b.Spine1.matrix)
+      .multiply(b.Spine2.matrix)
+      .multiply(P.tor.matrix);
+    _fpInvMat.copy(_fpTorMat).invert();
+    _fpTargetPos.set(0, 0.808 / s, 0.46 / s).applyMatrix4(_fpInvMat);
+    P.fp.position.copy(_fpTargetPos);
+    P.fp.rotation.set(-leanPart * 3, -twistTotal, 0);
+  }
+
   // Rotational 3D upper eyelid blink over spherical eyeballs
   if (P.eg.length >= 2) {
     const isBlink = ((t * 0.3 + P.phase * 0.37) % 1) < 0.036;
@@ -2173,7 +2236,9 @@ export function updatePersonKinematics(P: PersonActor, dt: number, t: number, gl
 
   let hy = c.hy + P.look * Math.sin(t * 0.45 + P.phase);
   const hx = c.hx;
-  const w = P.typing ? Math.sin(t * 13 + P.phase) * 0.045 : 0;
+  const tapWave = P.typing ? Math.sin(t * 13 + P.phase) : 0;
+  const wTapL = P.typing ? Math.max(0, tapWave) : 0;
+  const wTapR = P.typing ? Math.max(0, -tapWave) : 0;
   let gx = 0;
   let ge = 0;
   if (P.gest && !isWalking) {
@@ -2185,14 +2250,24 @@ export function updatePersonKinematics(P: PersonActor, dt: number, t: number, gl
   b.Neck.rotation.set(hx * 0.35, (hy + glanceYaw) * 0.35, P.asym * 0.02);
   b.Head.rotation.set(hx * 0.65, (hy + glanceYaw) * 0.65, P.asym * 0.045);
 
-  b.LeftArm.rotation.x = c.sLx - sw * 0.46 * P.swing;
+  // Height-scale compensation keeps hands strictly above fixed-height desks/keyboards across scales 0.94..1.10
+  const s = P.body.scale.y || 1;
+  const deltaS = 1 - s;
+  const deskArmL = !isWalking && !P.gest && c.fLy < -1.1 ? 1 : 0;
+  const deskArmR = !isWalking && !P.gest && c.fRy > 1.1 ? 1 : 0;
+  const ds = deltaS * 1.4;
+  const de = deltaS * 0.22;
+
+  b.LeftArm.rotation.x = c.sLx - deskArmL * ds - sw * 0.46 * P.swing;
   b.LeftArm.rotation.z = c.sLz + P.asym * 0.025;
-  b.RightArm.rotation.x = c.sRx + sw * 0.46 * P.swing + gx;
+  b.RightArm.rotation.x = c.sRx - deskArmR * ds + sw * 0.46 * P.swing + gx;
   b.RightArm.rotation.z = c.sRz + P.asym * 0.025;
-  b.LeftForeArm.rotation.x = c.eL + w;
+  b.LeftForeArm.rotation.x = c.eL - deskArmL * de - wTapL * 0.032;
   b.LeftForeArm.rotation.y = isWalking ? 0 : c.fLy || 0;
-  b.RightForeArm.rotation.x = c.eR - w + ge;
+  b.RightForeArm.rotation.x = c.eR - deskArmR * de - wTapR * 0.032 + ge;
   b.RightForeArm.rotation.y = isWalking ? 0 : c.fRy || 0;
+  b.LeftHand.rotation.z = isWalking ? 0 : (c.hLz || 0) + wTapL * 0.06;
+  b.RightHand.rotation.z = isWalking ? 0 : (c.hRz || 0) - wTapR * 0.06;
 
   let dy = P.tyaw - P.yaw;
   dy = Math.atan2(Math.sin(dy), Math.cos(dy));

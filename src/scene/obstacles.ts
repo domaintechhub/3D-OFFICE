@@ -1096,7 +1096,7 @@ function populateDistrictBuildingGeometry(
       // Teller counter
       addBox(boxes, spec.cx - 2.4, spec.cz - 3.6, 9.4, 1.34);
       // Rear vault assembly
-      addBox(boxes, spec.cx + 6.2, spec.cz - 10.1, 3.65, 1.15);
+      addBox(boxes, spec.cx + 6.2, spec.cz - 9.35, 3.65, 0.95);
       // Customer waiting sofa (rotY = -PI/2)
       addBox(boxes, spec.cx + 6.4, spec.cz + 3.2, 1.14, 2.88);
     } else if (spec.id === 'crypto') {

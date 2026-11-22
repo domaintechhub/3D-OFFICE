@@ -529,7 +529,7 @@ export class AtriumSimulation {
       P.speed = opts.speed || 1.15;
       P.walkPose = opts.walkPose || 'stand';
     }
-    setPose(P, pose, this.P_LIB);
+    setPose(P, pose, this.P_LIB, true);
     this.peopleGroup.add(P.g);
     this.STAFF.push(P);
     return P;
@@ -2067,7 +2067,7 @@ export class AtriumSimulation {
     return -0.608;
   }
 
-  private setSafePose(P: PersonActor, requestedPose: string) {
+  private setSafePose(P: PersonActor, requestedPose: string, snap = false) {
     let pose = requestedPose;
     if (SEATED_POSES.has(pose)) {
       const ag = this.freeAgents.get(P);
@@ -2088,7 +2088,7 @@ export class AtriumSimulation {
         else pose = 'stand';
       }
     }
-    setPose(P, pose, this.P_LIB);
+    setPose(P, pose, this.P_LIB, snap);
   }
 
   private updateChairs(dt: number) {
@@ -3836,11 +3836,11 @@ export class AtriumSimulation {
         p.g.position.set(p.seat.x, LV[p.d.lv], p.seat.z);
         p.yaw = p.tyaw = Math.PI;
         p.g.rotation.y = Math.PI;
-        this.setSafePose(p, p.modes ? pickMode(p.modes) : 'type');
+        this.setSafePose(p, p.modes ? pickMode(p.modes) : 'type', true);
       } else {
         p.state = 'away';
         p.g.visible = false;
-        this.setSafePose(p, 'stand');
+        this.setSafePose(p, 'stand', true);
       }
     }
     const dayOn = m >= 480 && m < 1050;
@@ -3864,11 +3864,11 @@ export class AtriumSimulation {
         p.g.position.set(p.dx, liftY(p.lv), p.dz);
         p.yaw = p.tyaw = p.df;
         p.g.rotation.y = p.df;
-        this.setSafePose(p, p.dpose);
+        this.setSafePose(p, p.dpose, true);
       } else {
         p.state = 'away';
         p.g.visible = false;
-        this.setSafePose(p, 'stand');
+        this.setSafePose(p, 'stand', true);
       }
     }
     if (this.secOffActor) {
@@ -3881,7 +3881,7 @@ export class AtriumSimulation {
         this.secOffActor.g.position.set(ag.homeX, liftY(ag.lv), ag.homeZ);
         this.secOffActor.yaw = this.secOffActor.tyaw = ag.homeFace;
         this.secOffActor.g.rotation.y = ag.homeFace;
-        this.setSafePose(this.secOffActor, ag.homePose);
+        this.setSafePose(this.secOffActor, ag.homePose, true);
       }
     }
     for (const b of this.BASEMENT_STAFF) {
@@ -3894,7 +3894,7 @@ export class AtriumSimulation {
         b.g.position.set(ag.homeX, liftY(ag.lv), ag.homeZ);
         b.yaw = b.tyaw = ag.homeFace;
         b.g.rotation.y = ag.homeFace;
-        this.setSafePose(b, ag.homePose);
+        this.setSafePose(b, ag.homePose, true);
       }
     }
     const nightFactor = this.getTrafficNightFactor(m);
