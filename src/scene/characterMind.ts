@@ -356,6 +356,18 @@ const WORK_THOUGHTS: Record<string, string[]> = {
     'Catching up on messages while waiting for our project kickoff meeting.',
     'Grabbing a quick coffee before heading up to Level 4.',
   ],
+  pool_swimmer: [
+    'Nothing clears sprint fatigue like twenty crisp freestyle laps in the heated rooftop pool.',
+    'The morning Nairobi skyline from the West Terrace infinity weir is unbeatable.',
+    'Keeping a steady pace in the lap lane before heading down to my afternoon sync.',
+    'Love that DomainTechHub built a full lap pool right next to the solar deck.',
+  ],
+  pool_lounge: [
+    'Getting some fresh open-air sunshine by the rooftop infinity pool between reviews.',
+    'Watching the lap swimmers while sketching out our next Q3 product sprint.',
+    'Grabbed an iced drink and stepped onto the West Terrace deck to recharge.',
+    'Best spot in the building—cool breeze off the pool and solar panels humming nearby.',
+  ],
 };
 
 const GOAL_THOUGHTS: Record<Exclude<FreeGoal, 'work'>, string[]> = {

@@ -36,6 +36,10 @@ export interface CarRig {
   rightSignalMat: THREE.MeshStandardMaterial;
   /** Ground headlight projection pool mesh (visible at dusk/night) */
   headlightPool: THREE.Mesh;
+  /** Interior RHD driver silhouette (visible while driving/occupied, hidden when parked empty) */
+  driverGroup: THREE.Group;
+  /** Interior RHD steering wheel */
+  steeringWheel: THREE.Mesh;
   /** Current visual state for throttled updates */
   style: CarStyle;
   isSafari: boolean;
@@ -62,6 +66,8 @@ export interface CarVisualState {
   nightFactor: number;
   /** Whether the vehicle engine/ignition is active (driving/idling vs parked off) */
   engineOn: boolean;
+  /** Optional explicit driver occupancy visibility (defaults to engineOn) */
+  showDriver?: boolean;
   /** -1 = left blinker, 0 = off, 1 = right blinker */
   signalDir: -1 | 0 | 1;
 }
@@ -1385,6 +1391,59 @@ export function makeCar(col: number, style: CarStyle = 'sedan', options?: CarBui
     rBack.rotation.x = -0.14;
     interiorGrp.add(rBack);
   });
+
+  // Sculpted RHD driver silhouette seated behind steering wheel (x = +0.32)
+  const driverGroup = new THREE.Group();
+  const drvShirtCols = [0x2a4569, 0x3b4d63, 0x1f3a36, 0x5c2d38, 0x334155, 0x4b5563];
+  const drvSkinCols = [0x6f432b, 0x56321f, 0x875639, 0x462819];
+  const drvClothMat = new THREE.MeshStandardMaterial({
+    color: drvShirtCols[Math.abs(col) % drvShirtCols.length],
+    roughness: 0.78,
+  });
+  const drvSkinMat = new THREE.MeshStandardMaterial({
+    color: drvSkinCols[Math.abs(col + Math.round(spec.beltY * 10)) % drvSkinCols.length],
+    roughness: 0.65,
+  });
+  const drvHairMat = new THREE.MeshStandardMaterial({ color: 0x151312, roughness: 0.85 });
+
+  const drvTorso = new THREE.Mesh(new RoundedBoxGeometry(0.32, 0.38, 0.18, 2, 0.04), drvClothMat);
+  drvTorso.position.set(0.32, spec.beltY - 0.02, 0.02);
+  drvTorso.rotation.x = -0.14;
+  driverGroup.add(drvTorso);
+
+  const drvNeck = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.055, 0.09, 10), drvSkinMat);
+  drvNeck.position.set(0.32, spec.beltY + 0.18, 0.01);
+  driverGroup.add(drvNeck);
+
+  const drvHead = new THREE.Mesh(new THREE.SphereGeometry(0.105, 14, 12), drvSkinMat);
+  drvHead.scale.set(0.92, 1.08, 0.98);
+  drvHead.position.set(0.32, spec.beltY + 0.285, 0.02);
+  driverGroup.add(drvHead);
+
+  const drvHair = new THREE.Mesh(
+    new THREE.SphereGeometry(0.108, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.56),
+    drvHairMat
+  );
+  drvHair.scale.set(0.94, 1.08, 1.0);
+  drvHair.position.set(0.32, spec.beltY + 0.292, 0.015);
+  drvHair.rotation.x = -0.18;
+  driverGroup.add(drvHair);
+
+  const wheelZ = spec.windshieldBotZ - 0.44;
+  const wheelY = spec.beltY + 0.07;
+  const armLen = Math.max(0.24, wheelZ - 0.06);
+  [-0.13, 0.13].forEach((ox) => {
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.032, armLen, 8), drvClothMat);
+    arm.rotation.x = Math.PI / 2 - 0.12;
+    arm.position.set(0.32 + ox, wheelY + 0.01, (wheelZ + 0.04) * 0.5);
+    driverGroup.add(arm);
+
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.034, 8, 8), drvSkinMat);
+    hand.position.set(0.32 + ox, wheelY + 0.02, wheelZ);
+    driverGroup.add(hand);
+  });
+
+  interiorGrp.add(driverGroup);
   bodyPivot.add(interiorGrp);
 
   // 5. Tapered tinted glass cabin + painted roof + panoramic sunroof + A/B/C pillars
@@ -1812,6 +1871,8 @@ export function makeCar(col: number, style: CarStyle = 'sedan', options?: CarBui
     leftSignalMat,
     rightSignalMat,
     headlightPool,
+    driverGroup,
+    steeringWheel: sw,
     style,
     isSafari,
   };
@@ -1823,7 +1884,7 @@ export function makeCar(col: number, style: CarStyle = 'sedan', options?: CarBui
 
 /**
  * Updates wheels rotation, front steering angle, chassis suspension pitch/roll/heave,
- * headlights/DRLs, brake lights, and turn signals without allocating objects.
+ * headlights/DRLs, brake lights, driver visibility, and turn signals without allocating objects.
  */
 export function updateCarVisualState(rig: CarRig, state: CarVisualState) {
   // 1. Wheel spin matching exact ground distance traveled (omega = v / R)
@@ -1836,6 +1897,10 @@ export function updateCarVisualState(rig: CarRig, state: CarVisualState) {
   for (let i = 0; i < rig.frontSteers.length; i++) {
     rig.frontSteers[i].rotation.y = state.steerAngle;
   }
+  rig.steeringWheel.rotation.z = state.steerAngle * 2.1;
+
+  // 2b. Interior driver silhouette visibility
+  rig.driverGroup.visible = state.showDriver ?? state.engineOn;
 
   // 3. Suspension pitch (nose dive on braking / squat on launch), cornering roll, & road heave
   rig.bodyPivot.rotation.x = state.pitch;

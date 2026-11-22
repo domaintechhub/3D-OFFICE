@@ -15,6 +15,7 @@ import {
   liftY,
   LV,
   ROAD_Z,
+  ROOF,
   ROOMS,
   TOUR_TEXT,
   type FloorActivitySummary,
@@ -40,6 +41,7 @@ import {
   refreshPhoneScreenTexture,
   SEATED_POSES,
   setPose,
+  setSwimmerAttire,
   updatePersonKinematics,
   type HumanPalette,
   type MakePersonOptions,
@@ -92,6 +94,7 @@ type WorkerActor = PersonActor & {
   stairQueue?: Array<{ x: number; z: number }>;
   stairJitter?: number;
   laneZ?: number;
+  commuterCar?: TrafficVehicle;
 };
 
 type DayVisitorActor = PersonActor & {
@@ -115,6 +118,7 @@ type DayVisitorActor = PersonActor & {
   stairQueue?: Array<{ x: number; z: number }>;
   stairJitter?: number;
   laneZ?: number;
+  commuterCar?: TrafficVehicle;
 };
 
 type StairTraveller = PersonActor & {
@@ -192,6 +196,7 @@ type TrafficVehicle = {
   out_t?: number;
   errand?: { cycleMin: number; parkMin: number; offset: number };
   _arr?: number;
+  driverWorker?: WorkerActor | DayVisitorActor;
 };
 
 interface CompanyBay {
@@ -248,6 +253,34 @@ export class AtriumSimulation {
     occupants: PersonActor[];
   }> = [];
   private readonly _walkVehicles: VehicleObb[] = [];
+  private readonly WORKER_COMMUTER_CARS: TrafficVehicle[] = [];
+  private hubConsultantCar?: TrafficVehicle;
+  private readonly POOL_SWIMMERS: Array<{
+    actor: PersonActor;
+    ripple: THREE.Mesh;
+    laneZ: number;
+    minX: number;
+    maxX: number;
+    dir: 1 | -1;
+    speed: number;
+    walkSpeed: number;
+    cabanaX: number;
+    cabanaZ: number;
+    cabanaEntryZ: number;
+    stepZ: number;
+    relaxPoint: { x: number; z: number; face: number; pose: string };
+    phase: 'swim' | 'toChangeOut' | 'changingOut' | 'relax' | 'toChangeIn' | 'changingIn' | 'toPool';
+    phaseTimer: number;
+    changedMidway: boolean;
+    wpQueue: Array<{ x: number; y: number; z: number; face?: number; pose?: string }>;
+  }> = [];
+  private readonly ROOF_DECK_STAFF: Array<{
+    actor: PersonActor;
+    waypoints: Array<{ x: number; y: number; z: number; face: number; pose: string; wait: number }>;
+    wpIndex: number;
+    waitTimer: number;
+    speed: number;
+  }> = [];
   private readonly TRAF: TrafficVehicle[] = [];
   private readonly LOT: CompanyBay[] = [];
   private readonly PLOCK: Array<{ x: number; z: number; r: number }> = [];
@@ -453,6 +486,7 @@ export class AtriumSimulation {
     this.bindChairsToStaff();
     this.districtSim = new DistrictSim(scene, M, this.P_LIB, districtBuildings);
     this.populateTrafficAndParking();
+    this.linkHubCommuters();
     this.initAmbientSources();
     this.snapAll();
   }
@@ -1587,6 +1621,328 @@ export class AtriumSimulation {
       startFace: -Math.PI / 2,
       startPose: 'standLowCounter',
     });
+
+    // Rooftop Infinity Pool Swimmers (Lounge <-> Changing Cabanas <-> Lap Pool) & Open Terrace Relaxers
+    const rippleGeo = new THREE.RingGeometry(0.3, 0.58, 24);
+    rippleGeo.rotateX(-Math.PI / 2);
+    const roofLoungeY = ROOF + 0.055;
+    const copingY = ROOF + 0.46;
+
+    const addPoolSwimmer = (cfg: {
+      id: string;
+      name: string;
+      role: string;
+      laneZ: number;
+      startX: number;
+      startZ: number;
+      startY: number;
+      startPhase: 'swim' | 'relax' | 'toChangeIn';
+      startPose: string;
+      phaseTimer: number;
+      dir: 1 | -1;
+      speed: number;
+      cabanaX: number;
+      cabanaZ: number;
+      stepZ: number;
+      relaxPoint: { x: number; z: number; face: number; pose: string };
+      opts: MakePersonOptions;
+    }) => {
+      const startSwim = cfg.startPhase === 'swim';
+      const actor = makePerson({ ...cfg.opts, withSwimwear: true, startInSwimwear: startSwim }, this.P_LIB, M);
+      actor.g.position.set(cfg.startX, cfg.startY, cfg.startZ);
+      actor.yaw = actor.tyaw = startSwim
+        ? cfg.dir > 0
+          ? Math.PI / 2
+          : -Math.PI / 2
+        : cfg.relaxPoint.face;
+      actor.g.rotation.y = actor.yaw;
+      setPose(actor, cfg.startPose, this.P_LIB, true);
+      this.peopleGroup.add(actor.g);
+      this.STAFF.push(actor);
+      socialNetwork.registerWorker('hub', cfg.name, cfg.role);
+      actor.brain = createCharacterBrain({
+        id: cfg.id,
+        name: cfg.name,
+        role: cfg.role,
+        department: 'Rooftop · Pool & Open Lounge',
+        seniority: 'Senior',
+        accentColor: '#38bdf8',
+        personality: pickPersonality(Math.round(cfg.laneZ * 17)),
+        topicKey: 'pool_swimmer',
+        homeLv: 5,
+        homeX: cfg.startX,
+        homeZ: cfg.startZ,
+        homeFace: actor.yaw,
+        homePose: cfg.startPose,
+      });
+      if (startSwim) {
+        setBrainThought(
+          actor.brain,
+          'Inspired',
+          'Swimming laps in rooftop pool',
+          'Nothing clears sprint fatigue like twenty crisp freestyle laps in the heated rooftop pool.'
+        );
+      } else if (cfg.startPhase === 'toChangeIn') {
+        setBrainThought(
+          actor.brain,
+          'Inspired',
+          'Heading to cabana to change for swim',
+          'Walking over to the teak changing cabana to slip into swimwear before hitting the water.'
+        );
+      } else {
+        setBrainThought(
+          actor.brain,
+          'Relaxed',
+          'Relaxing in poolside lounge area',
+          'Cooling down on the open cedar terrace with an iced drink after morning sprints.'
+        );
+      }
+
+      const rippleMat = new THREE.MeshBasicMaterial({
+        color: 0xdbeafe,
+        transparent: true,
+        opacity: 0.44,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const ripple = new THREE.Mesh(rippleGeo, rippleMat);
+      ripple.position.set(cfg.startX, ROOF + 0.525, cfg.laneZ);
+      ripple.visible = startSwim;
+      this.peopleGroup.add(ripple);
+
+      const initialQueue =
+        cfg.startPhase === 'toChangeIn'
+          ? [
+              { x: -5.4, y: roofLoungeY, z: 3.9 },
+              { x: cfg.cabanaX, y: roofLoungeY, z: 3.38 },
+              { x: cfg.cabanaX, y: roofLoungeY, z: cfg.cabanaZ, face: Math.PI },
+            ]
+          : [];
+
+      this.POOL_SWIMMERS.push({
+        actor,
+        ripple,
+        laneZ: cfg.laneZ,
+        minX: -25.1,
+        maxX: -13.9,
+        dir: cfg.dir,
+        speed: cfg.speed,
+        walkSpeed: 1.12,
+        cabanaX: cfg.cabanaX,
+        cabanaZ: cfg.cabanaZ,
+        cabanaEntryZ: 3.38,
+        stepZ: cfg.stepZ,
+        relaxPoint: cfg.relaxPoint,
+        phase: cfg.startPhase,
+        phaseTimer: cfg.phaseTimer,
+        changedMidway: false,
+        wpQueue: initialQueue,
+      });
+    };
+
+    // Swimmer 1: Starts mid-swim in one-piece teal swimsuit, then exits to Cabana 1 to dress & lounge
+    addPoolSwimmer({
+      id: 'roof-swim-1',
+      name: 'Zainab Omar',
+      role: 'Lead UX Researcher',
+      laneZ: 5.35,
+      startX: -23.5,
+      startZ: 5.35,
+      startY: copingY,
+      startPhase: 'swim',
+      startPose: 'swim',
+      phaseTimer: 14,
+      dir: 1,
+      speed: 1.15,
+      cabanaX: -8.5,
+      cabanaZ: 2.38,
+      stepZ: 4.85,
+      relaxPoint: { x: -4.4, z: 5.65, face: -Math.PI * 0.45, pose: 'coffee' },
+      opts: {
+        name: 'Zainab Omar',
+        skin: P_LIB.skins[0],
+        shirt: sMat(0xf59e0b),
+        hair: P_LIB.hairs[0],
+        trou: sMat(0xf8fafc),
+        fem: true,
+        hairStyle: 'bun',
+        outfit: 'blouseSkirt',
+        skirt: 'short',
+        sleeve: 'sleeveless',
+        shoeStyle: 'flat',
+        swimColor: 0x0ea5e9,
+        warmSmile: true,
+        s: 0.98,
+      },
+    });
+
+    // Swimmer 2: Starts walking from open lounge to Cabana 2 in street clothes to change into swim trunks!
+    addPoolSwimmer({
+      id: 'roof-swim-2',
+      name: 'Brian Mutua',
+      role: 'Cloud Infrastructure Architect',
+      laneZ: 7.95,
+      startX: -4.2,
+      startZ: 5.1,
+      startY: roofLoungeY,
+      startPhase: 'toChangeIn',
+      startPose: 'stand',
+      phaseTimer: 0,
+      dir: -1,
+      speed: 1.02,
+      cabanaX: -6.15,
+      cabanaZ: 2.38,
+      stepZ: 5.55,
+      relaxPoint: { x: -3.2, z: 6.75, face: Math.PI * 0.35, pose: 'hold' },
+      opts: {
+        name: 'Brian Mutua',
+        skin: P_LIB.skins[2],
+        shirt: sMat(0xf8fafc),
+        hair: P_LIB.hairs[1],
+        trou: sMat(0x1e293b),
+        fem: false,
+        hairStyle: 'fade',
+        outfit: 'smartCasual',
+        sleeve: 'short',
+        shoeStyle: 'sneaker',
+        swimColor: 0x14b8a6,
+        s: 1.02,
+      },
+    });
+
+    // Swimmer 3: Starts relaxing in casual wear on the open poolside terrace before changing in Cabana 1 for a swim
+    addPoolSwimmer({
+      id: 'roof-swim-3',
+      name: 'Amara Ochieng',
+      role: 'Mobile Experience Lead',
+      laneZ: 6.65,
+      startX: 1.95,
+      startZ: 5.38,
+      startY: roofLoungeY,
+      startPhase: 'relax',
+      startPose: 'sitTalk',
+      phaseTimer: 16,
+      dir: -1,
+      speed: 1.08,
+      cabanaX: -8.5,
+      cabanaZ: 2.38,
+      stepZ: 5.15,
+      relaxPoint: { x: 1.95, z: 5.38, face: 0, pose: 'sitTalk' },
+      opts: {
+        name: 'Amara Ochieng',
+        skin: P_LIB.skins[4],
+        shirt: sMat(0xf43f5e),
+        hair: P_LIB.hairs[0],
+        trou: sMat(0x334155),
+        fem: true,
+        hairStyle: 'braids',
+        outfit: 'smartCasual',
+        sleeve: 'short',
+        shoeStyle: 'flat',
+        swimColor: 0xf97316,
+        warmSmile: true,
+        s: 0.99,
+      },
+    });
+
+    const addRoofLounger = (
+      id: string,
+      name: string,
+      role: string,
+      opts: MakePersonOptions,
+      waypoints: Array<{ x: number; y: number; z: number; face: number; pose: string; wait: number }>
+    ) => {
+      const wp0 = waypoints[0];
+      const actor = makePerson(opts, this.P_LIB, M);
+      actor.g.position.set(wp0.x, wp0.y, wp0.z);
+      actor.yaw = actor.tyaw = wp0.face;
+      actor.g.rotation.y = wp0.face;
+      setPose(actor, wp0.pose, this.P_LIB, true);
+      this.peopleGroup.add(actor.g);
+      this.STAFF.push(actor);
+      socialNetwork.registerWorker('hub', name, role);
+      actor.brain = createCharacterBrain({
+        id,
+        name,
+        role,
+        department: 'Rooftop · Poolside Open Lounge',
+        seniority: 'Senior',
+        accentColor: '#34d399',
+        personality: pickPersonality(Math.round(Math.abs(wp0.x) * 19)),
+        topicKey: 'pool_lounge',
+        homeLv: 5,
+        homeX: wp0.x,
+        homeZ: wp0.z,
+        homeFace: wp0.face,
+        homePose: wp0.pose,
+      });
+      setBrainThought(
+        actor.brain,
+        'Relaxed',
+        'Relaxing in poolside lounge area',
+        'Enjoying fresh coffee and sunny Nairobi views in the open poolside terrace lounge.'
+      );
+      this.ROOF_DECK_STAFF.push({
+        actor,
+        waypoints,
+        wpIndex: 0,
+        waitTimer: wp0.wait,
+        speed: 1.05,
+      });
+    };
+
+    // Outdoor conversation sofa + open poolside terrace stroller
+    addRoofLounger(
+      'roof-deck-1',
+      'Wambui Kariuki',
+      'Senior Product Designer',
+      {
+        name: 'Wambui Kariuki',
+        skin: P_LIB.skins[1],
+        shirt: sMat(0xf43f5e),
+        hair: P_LIB.hairs[0],
+        trou: sMat(0x1e293b),
+        fem: true,
+        hairStyle: 'puff',
+        outfit: 'smartCasual',
+        sleeve: 'short',
+        sneakers: true,
+        warmSmile: true,
+        s: 0.98,
+      },
+      [
+        { x: 0.65, y: roofLoungeY, z: 5.38, face: 0, pose: 'sitTalk', wait: 11 },
+        { x: 0.65, y: roofLoungeY, z: 5.9, face: -Math.PI * 0.4, pose: 'stand', wait: 1 },
+        { x: -1.8, y: roofLoungeY, z: 2.85, face: Math.PI, pose: 'coffee', wait: 7 },
+        { x: -5.4, y: roofLoungeY, z: 5.2, face: -Math.PI / 2, pose: 'hold', wait: 8 },
+        { x: 0.65, y: roofLoungeY, z: 5.9, face: Math.PI, pose: 'stand', wait: 1 },
+      ]
+    );
+    // Open lounge deck & poolside coping stroller
+    addRoofLounger(
+      'roof-deck-2',
+      'Darius Omondi',
+      'Platform DevOps Engineer',
+      {
+        name: 'Darius Omondi',
+        skin: P_LIB.skins[3],
+        shirt: sMat(0xf8fafc),
+        hair: P_LIB.hairs[1],
+        trou: sMat(0x334155),
+        fem: false,
+        hairStyle: 'twists',
+        outfit: 'smartCasual',
+        sleeve: 'rolled',
+        sneakers: true,
+        s: 1.01,
+      },
+      [
+        { x: -0.72, y: roofLoungeY, z: 7.28, face: Math.PI * 0.78, pose: 'sitPhone', wait: 10 },
+        { x: -2.2, y: roofLoungeY, z: 6.4, face: Math.PI / 2, pose: 'coffee', wait: 7 },
+        { x: -5.9, y: roofLoungeY, z: 5.05, face: -Math.PI / 2, pose: 'stand', wait: 7 },
+        { x: -2.0, y: roofLoungeY, z: 2.85, face: Math.PI, pose: 'coffee', wait: 6 },
+      ]
+    );
   }
 
   private populateTrafficAndParking() {
@@ -1927,13 +2283,13 @@ export class AtriumSimulation {
       color: number,
       idx: number,
       opts?: { in_t?: number; out_t?: number; errand?: { cycleMin: number; parkMin: number; offset: number }; logistics?: boolean }
-    ) => {
+    ): TrafficVehicle => {
       const car = makeCar(color, style, { logistics: opts?.logistics });
       const rig = car.userData.carRig as CarRig;
       car.position.set(bay.x, -0.604, bay.z);
       car.rotation.y = bay.face;
       this.trafficGroup.add(car);
-      this.TRAF.push({
+      const veh: TrafficVehicle = {
         g: car,
         rig,
         bm: car.userData.body as THREE.MeshPhysicalMaterial,
@@ -1955,13 +2311,35 @@ export class AtriumSimulation {
         in_t: opts?.in_t,
         out_t: opts?.out_t,
         errand: opts?.errand,
-      });
+      };
+      this.TRAF.push(veh);
+      return veh;
     };
 
-    // 10 Commuter / Tenant parked vehicles across all 9 companies
+    // Dedicated DomainTechHub Employee Commuters (staggered morning arrivals right around 09:25 + early + afternoon shift)
+    const hubCommuterSpecs: Array<{
+      occ: number;
+      style: 'sedan' | 'suv' | 'hatch' | 'van';
+      color: number;
+      in_t: number;
+      out_t: number;
+    }> = [
+      { occ: 1, style: 'sedan', color: 0x1c2432, in_t: 446, out_t: 1030 },
+      { occ: 11, style: 'suv', color: 0x3b4854, in_t: 565.06, out_t: 1045 },
+      { occ: 2, style: 'hatch', color: 0x2e4a76, in_t: 565.65, out_t: 1060 },
+      { occ: 16, style: 'sedan', color: 0x2c4237, in_t: 566.6, out_t: 1075 },
+      { occ: 12, style: 'suv', color: 0x7b2329, in_t: 870.2, out_t: 1340 },
+    ];
+    hubCommuterSpecs.forEach((cfg, idx) => {
+      const veh = spawnAssignedVehicle(pickBay('hub', cfg.occ), cfg.style, cfg.color, idx, {
+        in_t: cfg.in_t,
+        out_t: cfg.out_t,
+      });
+      this.WORKER_COMMUTER_CARS.push(veh);
+    });
+
+    // Commuter / Tenant parked vehicles across the remaining 8 district companies
     const commuters: Array<{ company: BuildingId; occ: number; style: 'sedan' | 'suv' | 'hatch' | 'van'; color: number; logistics?: boolean }> = [
-      { company: 'hub', occ: 1, style: 'sedan', color: 0x1c2432 },
-      { company: 'hub', occ: 11, style: 'suv', color: 0x3b4854 },
       { company: 'medical', occ: 1, style: 'suv', color: 0xcfd3d6 },
       { company: 'bank', occ: 1, style: 'sedan', color: 0x16171a },
       { company: 'restaurant', occ: 1, style: 'hatch', color: 0x7b2329 },
@@ -1972,14 +2350,19 @@ export class AtriumSimulation {
       { company: 'logistics', occ: 3, style: 'van', color: 0xf8fafc, logistics: true },
     ];
     commuters.forEach((cfg, idx) => {
-      spawnAssignedVehicle(pickBay(cfg.company, cfg.occ), cfg.style, cfg.color, idx, {
+      spawnAssignedVehicle(pickBay(cfg.company, cfg.occ), cfg.style, cfg.color, idx + 8, {
         in_t: 440 + (idx % 6) * 12,
         out_t: 1030 + (idx % 6) * 18,
         logistics: cfg.logistics,
       });
     });
 
-    // 9 Active errand / fleet vehicles entering & exiting every company road continuously during business hours
+    // Hub Visiting Client / Consultant recurring commuter shuttle (drives into Hub bay occ=7, walks inside, drives out)
+    this.hubConsultantCar = spawnAssignedVehicle(pickBay('hub', 7), 'sedan', 0x334155, 19, {
+      errand: { cycleMin: 18, parkMin: 8, offset: 2 },
+    });
+
+    // Active errand / fleet vehicles entering & exiting every company road continuously during business hours
     const fleetErrands: Array<{
       company: BuildingId;
       occ: number;
@@ -2048,6 +2431,32 @@ export class AtriumSimulation {
     this.driveTargetBeacon.position.set(-89, -0.57, 18.0);
     this.driveTargetBeacon.visible = false;
     this.scene.add(this.driveTargetBeacon);
+  }
+
+  private linkHubCommuters() {
+    const morningWorkers = this.WORKERS.filter((w) => w.sh_shift === 0);
+    const afternoonWorkers = this.WORKERS.filter((w) => w.sh_shift === 1);
+    const morningIndices = [0, 8, 16, 26]; // Spread across L3, L2, L1, and Ground
+    for (let i = 0; i < 4; i++) {
+      const car = this.WORKER_COMMUTER_CARS[i];
+      const worker = morningWorkers[morningIndices[i] % Math.max(1, morningWorkers.length)];
+      if (car && worker) {
+        worker.commuterCar = car;
+        car.driverWorker = worker;
+      }
+    }
+    const pmCar = this.WORKER_COMMUTER_CARS[4];
+    const pmWorker = afternoonWorkers[2] || afternoonWorkers[0];
+    if (pmCar && pmWorker) {
+      pmWorker.commuterCar = pmCar;
+      pmCar.driverWorker = pmWorker;
+    }
+    // Link recurring visiting partner (Tariq Abdalla or first Ground lounge visitor) to the Hub client car
+    const groundGuest = this.DAYONLY.find((d) => d.lv === 0 && d.dx > 0);
+    if (this.hubConsultantCar && groundGuest) {
+      groundGuest.commuterCar = this.hubConsultantCar;
+      this.hubConsultantCar.driverWorker = groundGuest;
+    }
   }
 
   private buildTourStops(): TourStop[] {
@@ -3313,10 +3722,21 @@ export class AtriumSimulation {
 
     if (p.state === 'away') {
       if (w === 'desk') {
-        const sx = p.sd * (1.2 + Math.random() * 2.0);
-        const sz = 15.0 + Math.random() * 3.0;
+        if (p.commuterCar && p.commuterCar.state !== 'parked') {
+          return;
+        }
+        let sx = p.sd * (1.2 + Math.random() * 2.0);
+        let sz = 15.0 + Math.random() * 3.0;
+        if (p.commuterCar?.bay) {
+          const bay = p.commuterCar.bay;
+          const sideOff = bay.face === 0 ? 1.25 : -1.25;
+          sx = bay.x + sideOff;
+          sz = bay.z + (bay.z > AISLE_Z ? -1.1 : -0.4);
+        }
         p.g.visible = true;
         p.g.position.set(sx, this.groundElevationAt(0, sx, sz), sz);
+        p.yaw = p.tyaw = Math.PI;
+        p.g.rotation.y = Math.PI;
         p.navQueue = undefined;
         p.navKey = undefined;
         p.stairQueue = undefined;
@@ -3333,10 +3753,12 @@ export class AtriumSimulation {
           setBrainThought(
             p.brain,
             'Focused',
-            'Arriving for shift',
-            useStairs
-              ? `Just arrived at DomainTechHub—taking the East stairs up to ${p.d.n}.`
-              : `Just arrived at DomainTechHub—heading up to ${p.d.n}.`
+            p.commuterCar ? 'Walking in from parked car' : 'Arriving for shift',
+            p.commuterCar
+              ? `Parked in the DomainTechHub lot—walking into the building toward ${p.d.n}.`
+              : useStairs
+                ? `Just arrived at DomainTechHub—taking the East stairs up to ${p.d.n}.`
+                : `Just arrived at DomainTechHub—heading up to ${p.d.n}.`
           );
         }
       }
@@ -3345,9 +3767,17 @@ export class AtriumSimulation {
 
     if (p.state === 'out') {
       if (SEATED_POSES.has(p.pose)) this.setSafePose(p, 'stand');
-      const tx = p.sd * 2.2;
-      const tz = w === 'lunch' ? 12.5 : 17.5;
-      if (this.followNavPath(p, 0, `w-out-${w}-${p.sd}`, tx, tz, dt, { walkSpeed: 2.75 })) {
+      let tx = p.sd * 2.2;
+      let tz = w === 'lunch' ? 12.5 : 17.5;
+      let navKey = `w-out-${w}-${p.sd}`;
+      if (w === 'home' && p.commuterCar?.bay) {
+        const bay = p.commuterCar.bay;
+        const sideOff = bay.face === 0 ? 1.25 : -1.25;
+        tx = bay.x + sideOff;
+        tz = bay.z + (bay.z > AISLE_Z ? -1.1 : -0.4);
+        navKey = `w-out-car-${bay.x}-${bay.z}`;
+      }
+      if (this.followNavPath(p, 0, navKey, tx, tz, dt, { walkSpeed: 2.75 })) {
         if (w === 'home') {
           p.state = 'away';
           p.g.visible = false;
@@ -3491,20 +3921,50 @@ export class AtriumSimulation {
   }
 
   private dThink(p: DayVisitorActor, dt: number) {
-    const on = this.simMin >= 480 && this.simMin < 1050;
+    let on = this.simMin >= 480 && this.simMin < 1050;
+    if (p.commuterCar) {
+      const car = p.commuterCar;
+      if (car.errand) {
+        const cyc = (this.simMin + car.errand.offset) % car.errand.cycleMin;
+        // Step out once parked; start walking back out to car 1.2 min before car departs
+        on = car.state === 'parked' && cyc < Math.max(2, car.errand.parkMin - 1.2);
+      } else {
+        on = on && (car.state === 'parked' || this.wantsVehicleParked(car, this.simMin));
+      }
+    }
     const gx = p.sd * GATE_STOP;
     const behindCounter = p.lv === 4 && p.dx < -14.8 && p.dz < 0.72;
     const useStairs = p.lv > 0 && (p.lv <= 4 || p.dx >= -4);
 
     if (p.state === 'away') {
       if (on) {
-        const sx = p.sd * 2.2;
+        if (p.commuterCar && p.commuterCar.state !== 'parked') {
+          return;
+        }
+        let sx = p.sd * 2.2;
+        let sz = 15.2;
+        if (p.commuterCar?.bay) {
+          const bay = p.commuterCar.bay;
+          const sideOff = bay.face === 0 ? 1.25 : -1.25;
+          sx = bay.x + sideOff;
+          sz = bay.z + (bay.z > AISLE_Z ? -1.1 : -0.4);
+        }
         p.g.visible = true;
-        p.g.position.set(sx, this.groundElevationAt(0, sx, 15.2), 15.2);
+        p.g.position.set(sx, this.groundElevationAt(0, sx, sz), sz);
+        p.yaw = p.tyaw = Math.PI;
+        p.g.rotation.y = Math.PI;
         p.navQueue = undefined;
         p.navKey = undefined;
         p.stairQueue = undefined;
         this.setSafePose(p, 'stand');
+        if (p.brain && p.commuterCar) {
+          setBrainThought(
+            p.brain,
+            'Focused',
+            'Arriving by car at DomainTechHub',
+            'Just parked in the DomainTechHub lot—walking into the Ground Atrium lounge.'
+          );
+        }
         if (useStairs) {
           p.stairDir = 1;
           p.stairLv = 0;
@@ -3660,8 +4120,18 @@ export class AtriumSimulation {
     }
     if (p.state === 'out') {
       if (p.pose !== 'stand') this.setSafePose(p, 'stand');
+      let tx = p.sd * 2.2;
+      let tz = 17;
+      let navKey = `d-out-${p.sd}`;
+      if (p.commuterCar?.bay) {
+        const bay = p.commuterCar.bay;
+        const sideOff = bay.face === 0 ? 1.25 : -1.25;
+        tx = bay.x + sideOff;
+        tz = bay.z + (bay.z > AISLE_Z ? -1.1 : -0.4);
+        navKey = `d-out-car-${bay.x}-${bay.z}`;
+      }
       if (
-        this.followNavPath(p, 0, `d-out-${p.sd}`, p.sd * 2.2, 17, dt, {
+        this.followNavPath(p, 0, navKey, tx, tz, dt, {
           walkSpeed: 2.75,
           useHomeDock: { homeX: p.dx, homeZ: p.dz, chairCollider: p.chairCollider },
         })
@@ -3882,7 +4352,12 @@ export class AtriumSimulation {
       } else if (v.state === 'parked' && v.bay) {
         v.vel = 0;
         engineOn = false;
-        if (!wantsPark) {
+        const waitingForDriver =
+          this.staffVisible &&
+          v.driverWorker &&
+          v.driverWorker.state !== 'away' &&
+          (v.errand || m < (v.out_t ?? 9999) + 5);
+        if (!wantsPark && !waitingForDriver) {
           v.state = 'toGate';
           v._arr = 0;
           v.pauseTimer = 0.4;
@@ -3946,6 +4421,7 @@ export class AtriumSimulation {
         brakeIntensity: v.brakeGlow,
         nightFactor,
         engineOn,
+        showDriver: v.state !== 'parked',
         signalDir: v.signalDir,
       });
     }
@@ -3984,7 +4460,9 @@ export class AtriumSimulation {
         ag.stuckTime = 0;
         ag.replanCount = 0;
       }
-      if (w === 'desk') {
+      const wantsWorkerAtDesk =
+        w === 'desk' && (!p.commuterCar || this.wantsVehicleParked(p.commuterCar, m));
+      if (wantsWorkerAtDesk) {
         p.state = 'atDesk';
         p.g.visible = true;
         p.g.position.set(p.seat.x, LV[p.d.lv], p.seat.z);
@@ -4012,7 +4490,9 @@ export class AtriumSimulation {
         ag.stuckTime = 0;
         ag.replanCount = 0;
       }
-      if (dayOn) {
+      const wantsVisitorAtDesk =
+        dayOn && (!p.commuterCar || this.wantsVehicleParked(p.commuterCar, m));
+      if (wantsVisitorAtDesk) {
         p.state = 'atDesk';
         p.g.visible = true;
         p.g.position.set(p.dx, liftY(p.lv), p.dz);
@@ -4052,7 +4532,8 @@ export class AtriumSimulation {
       }
     }
     const nightFactor = this.getTrafficNightFactor(m);
-    for (const v of this.TRAF) {
+    for (let vIdx = 0; vIdx < this.TRAF.length; vIdx++) {
+      const v = this.TRAF[vIdx];
       v.steer = 0;
       v.pitch = 0;
       v.roll = 0;
@@ -4073,6 +4554,7 @@ export class AtriumSimulation {
           brakeIntensity: 0,
           nightFactor,
           engineOn: true,
+          showDriver: true,
           signalDir: 0,
         });
         continue;
@@ -4093,6 +4575,7 @@ export class AtriumSimulation {
           brakeIntensity: 0,
           nightFactor,
           engineOn: false,
+          showDriver: false,
           signalDir: 0,
         });
       } else {
@@ -4100,8 +4583,12 @@ export class AtriumSimulation {
         v.vel = v.cruiseSpd;
         v.lane = v.bay.gateLane;
         v.dir = v.bay.gateLane === LANE_EAST ? 1 : -1;
-        // Start errand fleet cars close to their company road gate so entries happen promptly
-        v.x = v.errand ? v.bay.gateX - v.dir * (10 + (Math.abs(v.bay.gateX) & 7)) : (Math.random() - 0.5) * 210;
+        const arrivingSoon = v.in_t !== undefined && v.in_t > m && v.in_t - m <= 6;
+        // Start errand fleet & soon-to-arrive commuters upstream of their road gate so entries happen promptly
+        v.x =
+          v.errand || arrivingSoon
+            ? v.bay.gateX - v.dir * (9 + ((vIdx * 7 + Math.abs(Math.round(v.bay.gateX))) % 18))
+            : (Math.random() - 0.5) * 210;
         v.g.position.set(v.x, -0.62, v.lane);
         v.g.rotation.y = v.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
         updateCarVisualState(v.rig, {
@@ -4115,6 +4602,7 @@ export class AtriumSimulation {
           brakeIntensity: 0,
           nightFactor,
           engineOn: true,
+          showDriver: true,
           signalDir: 0,
         });
       }
@@ -5287,6 +5775,276 @@ export class AtriumSimulation {
     this.weatherTimeMultiplier = Math.max(0.25, Math.min(2.0, mult));
   }
 
+  private stepRoofCrew(dt: number, elapsed: number) {
+    const showRoof =
+      this.staffVisible && (this.cutawayMaxY === null || ROOF + 0.04 <= this.cutawayMaxY);
+    const poolOpen = this.simMin >= 360 && this.simMin < 1320;
+    const roofLoungeY = ROOF + 0.055;
+    const copingY = ROOF + 0.46;
+
+    const moveTowardQueue = (
+      sw: (typeof this.POOL_SWIMMERS)[number],
+      dtStep: number
+    ): boolean => {
+      if (sw.wpQueue.length === 0) return true;
+      const wp = sw.wpQueue[0];
+      const dx = wp.x - sw.actor.g.position.x;
+      const dz = wp.z - sw.actor.g.position.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > 0.08) {
+        sw.actor.moving = true;
+        if (sw.actor.pose !== 'stand') setPose(sw.actor, 'stand', this.P_LIB);
+        const step = Math.min(dist, sw.walkSpeed * dtStep);
+        const nextX = sw.actor.g.position.x + (dx / dist) * step;
+        const nextZ = sw.actor.g.position.z + (dz / dist) * step;
+        const tY = THREE.MathUtils.clamp(step / dist, 0, 1);
+        sw.actor.g.position.x = nextX;
+        sw.actor.g.position.z = nextZ;
+        sw.actor.g.position.y = THREE.MathUtils.lerp(sw.actor.g.position.y, wp.y, tY);
+        sw.actor.tyaw = Math.atan2(dx, dz);
+        return false;
+      }
+      sw.actor.g.position.set(wp.x, wp.y, wp.z);
+      if (wp.face != null) sw.actor.tyaw = wp.face;
+      sw.wpQueue.shift();
+      return sw.wpQueue.length === 0;
+    };
+
+    for (let i = 0; i < this.POOL_SWIMMERS.length; i++) {
+      const sw = this.POOL_SWIMMERS[i];
+      const active = poolOpen && this.staffVisible;
+      sw.actor.g.visible = active;
+      if (!active) {
+        sw.ripple.visible = false;
+        continue;
+      }
+
+      if (sw.phase === 'swim') {
+        sw.ripple.visible = showRoof;
+        let nx = sw.actor.g.position.x + sw.dir * sw.speed * dt;
+        if (nx >= sw.maxX) {
+          nx = sw.maxX;
+          sw.dir = -1;
+        } else if (nx <= sw.minX) {
+          nx = sw.minX;
+          sw.dir = 1;
+        }
+        sw.actor.g.position.x = nx;
+        sw.actor.g.position.z = sw.laneZ;
+        sw.actor.g.position.y = copingY;
+        sw.actor.tyaw = sw.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+        sw.actor.moving = false;
+        if (sw.actor.pose !== 'swim') {
+          setPose(sw.actor, 'swim', this.P_LIB);
+        }
+
+        const wakeX = nx + sw.dir * 0.25;
+        sw.ripple.position.set(wakeX, ROOF + 0.525, sw.laneZ);
+        const pulse = 0.85 + 0.28 * (0.5 + 0.5 * Math.sin(elapsed * 3.8 + i * 1.9));
+        sw.ripple.scale.set(pulse, 1, pulse * 0.82);
+        const rMat = sw.ripple.material as THREE.MeshBasicMaterial;
+        rMat.opacity = 0.52 - 0.22 * ((pulse - 0.85) / 0.28);
+
+        sw.phaseTimer -= dt;
+        if (sw.phaseTimer <= 0) {
+          sw.phase = 'toChangeOut';
+          sw.ripple.visible = false;
+          sw.wpQueue = [
+            { x: -12.35, y: copingY, z: sw.laneZ },
+            { x: -11.65, y: copingY, z: sw.stepZ },
+            { x: -10.55, y: roofLoungeY, z: sw.stepZ },
+            { x: sw.cabanaX, y: roofLoungeY, z: sw.cabanaEntryZ },
+            { x: sw.cabanaX, y: roofLoungeY, z: sw.cabanaZ, face: Math.PI },
+          ];
+          if (sw.actor.brain) {
+            setBrainThought(
+              sw.actor.brain,
+              'Relaxed',
+              'Walking to cabana to change clothes',
+              'Finishing laps and heading into the teak changing cabana to change back into dry lounge wear.'
+            );
+          }
+        }
+      } else {
+        sw.ripple.visible = false;
+        if (sw.phase === 'toChangeOut') {
+          // Swim the first leg cleanly to pool exit edge (-12.15), then walk upright in dry/step poses
+          if (sw.wpQueue.length >= 5) {
+            const wp0 = sw.wpQueue[0];
+            const dx = wp0.x - sw.actor.g.position.x;
+            const dist = Math.abs(dx);
+            if (dist > 0.1) {
+              sw.ripple.visible = showRoof;
+              sw.dir = dx >= 0 ? 1 : -1;
+              sw.actor.g.position.x += sw.dir * Math.min(dist, sw.speed * dt);
+              sw.actor.tyaw = sw.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+              sw.ripple.position.set(sw.actor.g.position.x + sw.dir * 0.25, ROOF + 0.525, sw.laneZ);
+            } else {
+              sw.wpQueue.shift();
+              setPose(sw.actor, 'stand', this.P_LIB);
+            }
+          } else if (moveTowardQueue(sw, dt)) {
+            sw.phase = 'changingOut';
+            sw.phaseTimer = 1.8;
+            sw.changedMidway = false;
+            sw.actor.moving = false;
+            sw.actor.tyaw = Math.PI;
+            setPose(sw.actor, 'stand', this.P_LIB);
+          }
+        } else if (sw.phase === 'changingOut') {
+          sw.actor.moving = false;
+          sw.phaseTimer -= dt;
+          if (!sw.changedMidway && sw.phaseTimer <= 0.95) {
+            setSwimmerAttire(sw.actor, false);
+            sw.changedMidway = true;
+          }
+          if (sw.phaseTimer <= 0) {
+            sw.phase = 'relax';
+            sw.phaseTimer = 16 + i * 3;
+            const exitSofaWalk =
+              sw.relaxPoint.z > 5.0 && sw.relaxPoint.z < 5.7 && sw.relaxPoint.x > 0
+                ? [{ x: sw.relaxPoint.x, y: roofLoungeY, z: 5.9 }]
+                : [];
+            sw.wpQueue = [
+              { x: sw.cabanaX, y: roofLoungeY, z: sw.cabanaEntryZ },
+              { x: -4.6, y: roofLoungeY, z: 3.9 },
+              ...exitSofaWalk,
+              {
+                x: sw.relaxPoint.x,
+                y: roofLoungeY,
+                z: sw.relaxPoint.z,
+                face: sw.relaxPoint.face,
+                pose: sw.relaxPoint.pose,
+              },
+            ];
+            if (sw.actor.brain) {
+              setBrainThought(
+                sw.actor.brain,
+                'Relaxed',
+                'Relaxing in poolside lounge area',
+                'Back in fresh lounge clothes—time to unwind on the open cedar terrace with an iced drink.'
+              );
+            }
+          }
+        } else if (sw.phase === 'relax') {
+          if (!moveTowardQueue(sw, dt)) {
+            // Walking out to lounge spot
+          } else {
+            sw.actor.moving = false;
+            sw.actor.tyaw = sw.relaxPoint.face;
+            if (sw.actor.pose !== sw.relaxPoint.pose) {
+              setPose(sw.actor, sw.relaxPoint.pose, this.P_LIB);
+            }
+            sw.phaseTimer -= dt;
+            if (sw.phaseTimer <= 0) {
+              sw.phase = 'toChangeIn';
+              const leaveSeat =
+                sw.relaxPoint.z > 5.0 && sw.relaxPoint.z < 5.7 && sw.relaxPoint.x > 0
+                  ? [{ x: sw.relaxPoint.x, y: roofLoungeY, z: 5.9 }]
+                  : [];
+              sw.wpQueue = [
+                ...leaveSeat,
+                { x: -4.6, y: roofLoungeY, z: 3.9 },
+                { x: sw.cabanaX, y: roofLoungeY, z: sw.cabanaEntryZ },
+                { x: sw.cabanaX, y: roofLoungeY, z: sw.cabanaZ, face: Math.PI },
+              ];
+              if (sw.actor.brain) {
+                setBrainThought(
+                  sw.actor.brain,
+                  'Inspired',
+                  'Heading to cabana to change for swim',
+                  'Stepping into the teak changing cabana to change into swimwear for a quick lap session.'
+                );
+              }
+            }
+          }
+        } else if (sw.phase === 'toChangeIn') {
+          if (moveTowardQueue(sw, dt)) {
+            sw.phase = 'changingIn';
+            sw.phaseTimer = 1.8;
+            sw.changedMidway = false;
+            sw.actor.moving = false;
+            sw.actor.tyaw = Math.PI;
+            setPose(sw.actor, 'stand', this.P_LIB);
+          }
+        } else if (sw.phase === 'changingIn') {
+          sw.actor.moving = false;
+          sw.phaseTimer -= dt;
+          if (!sw.changedMidway && sw.phaseTimer <= 0.95) {
+            setSwimmerAttire(sw.actor, true);
+            sw.changedMidway = true;
+          }
+          if (sw.phaseTimer <= 0) {
+            sw.phase = 'toPool';
+            sw.wpQueue = [
+              { x: sw.cabanaX, y: roofLoungeY, z: sw.cabanaEntryZ },
+              { x: -10.55, y: roofLoungeY, z: sw.stepZ },
+              { x: -11.65, y: copingY, z: sw.stepZ },
+              { x: -12.35, y: copingY, z: sw.laneZ, face: -Math.PI / 2 },
+            ];
+            if (sw.actor.brain) {
+              setBrainThought(
+                sw.actor.brain,
+                'Inspired',
+                'Walking into rooftop infinity pool',
+                'Changed into swimwear—heading down the cedar steps into the heated infinity pool!'
+              );
+            }
+          }
+        } else if (sw.phase === 'toPool') {
+          if (moveTowardQueue(sw, dt)) {
+            sw.phase = 'swim';
+            sw.dir = -1;
+            sw.phaseTimer = 18 + i * 4;
+            sw.actor.moving = false;
+            sw.actor.tyaw = -Math.PI / 2;
+            setPose(sw.actor, 'swim', this.P_LIB);
+            if (sw.actor.brain) {
+              setBrainThought(
+                sw.actor.brain,
+                'Inspired',
+                'Swimming laps in rooftop pool',
+                'Nothing clears sprint fatigue like twenty crisp freestyle laps in the heated rooftop pool.'
+              );
+            }
+          }
+        }
+      }
+    }
+
+    for (let i = 0; i < this.ROOF_DECK_STAFF.length; i++) {
+      const dk = this.ROOF_DECK_STAFF[i];
+      const active = poolOpen && this.staffVisible;
+      dk.actor.g.visible = active;
+      if (!active) continue;
+
+      const wp = dk.waypoints[dk.wpIndex];
+      const dx = wp.x - dk.actor.g.position.x;
+      const dz = wp.z - dk.actor.g.position.z;
+      const dist = Math.hypot(dx, dz);
+
+      if (dist > 0.08) {
+        dk.actor.moving = true;
+        if (dk.actor.pose !== 'stand') setPose(dk.actor, 'stand', this.P_LIB);
+        const step = Math.min(dist, dk.speed * dt);
+        dk.actor.g.position.x += (dx / dist) * step;
+        dk.actor.g.position.z += (dz / dist) * step;
+        dk.actor.g.position.y = wp.y;
+        dk.actor.tyaw = Math.atan2(dx, dz);
+      } else {
+        dk.actor.g.position.set(wp.x, wp.y, wp.z);
+        dk.actor.moving = false;
+        dk.actor.tyaw = wp.face;
+        if (dk.actor.pose !== wp.pose) setPose(dk.actor, wp.pose, this.P_LIB);
+        dk.waitTimer -= dt;
+        if (dk.waitTimer <= 0) {
+          dk.wpIndex = (dk.wpIndex + 1) % dk.waypoints.length;
+          dk.waitTimer = dk.waypoints[dk.wpIndex].wait;
+        }
+      }
+    }
+  }
+
   /* =========================================================
      PER-FRAME SIMULATION TICK
      ========================================================= */
@@ -5329,6 +6087,7 @@ export class AtriumSimulation {
       }
     }
     this.updateChairs(dt);
+    this.stepRoofCrew(dt, t);
     this.districtSim.update(dt, t, this.simMin, camera);
     socialNetwork.tick(dt, this.simMin);
     this.phoneTexAccum += dt;
@@ -5618,6 +6377,7 @@ export class AtriumSimulation {
       brakeIntensity: this.driveOn ? Math.max(this.driveBrakeGlow, Math.abs(this.driveVel) < 0.2 ? 0.3 : 0) : 0,
       nightFactor: this.driveOn ? (this.driveHeadlights ? nightFactor : 0) : nightFactor,
       engineOn: this.driveOn,
+      showDriver: this.driveOn,
       signalDir: this.driveOn ? this.driveSignalDir : 0,
     });
 
@@ -5823,10 +6583,43 @@ export class AtriumSimulation {
     }
 
     if (activeLevel === 'roof') {
+      const activeSwimmers = this.staffVisible
+        ? this.POOL_SWIMMERS.filter((s) => s.actor.g.visible && s.phase === 'swim').length
+        : 0;
+      const changingCount = this.staffVisible
+        ? this.POOL_SWIMMERS.filter(
+            (s) =>
+              s.actor.g.visible &&
+              (s.phase === 'changingIn' ||
+                s.phase === 'changingOut' ||
+                s.phase === 'toChangeIn' ||
+                s.phase === 'toChangeOut' ||
+                s.phase === 'toPool')
+          ).length
+        : 0;
+      const relaxingCount = this.staffVisible
+        ? this.ROOF_DECK_STAFF.filter((d) => d.actor.g.visible).length +
+          this.POOL_SWIMMERS.filter((s) => s.actor.g.visible && s.phase === 'relax').length
+        : 0;
       return {
-        levelTitle: 'Solar Roof Deck',
-        activeCount: 0,
+        levelTitle: 'Solar Roof, Pool & Open Lounge',
+        activeCount: activeSwimmers + changingCount + relaxingCount,
         zones: [
+          {
+            zone: 'Infinity Lap Pool',
+            color: '#38bdf8',
+            count: activeSwimmers,
+            status:
+              activeSwimmers > 0
+                ? `${activeSwimmers} swimming laps in swimwear · heated 27°C`
+                : 'Lap lanes clear',
+          },
+          {
+            zone: 'Changing Cabanas & Lounge',
+            color: '#34d399',
+            count: changingCount + relaxingCount,
+            status: `${relaxingCount} relaxing on sun loungers & sofa · ${changingCount} changing attire`,
+          },
           {
             zone: 'PV Array & Chillers',
             color: '#7fb0ff',
@@ -6189,6 +6982,8 @@ export class AtriumSimulation {
       this.WORKERS.filter((w) => w.g.visible).length +
       this.DAYONLY.filter((d) => d.g.visible).length +
       this.BASEMENT_STAFF.filter((b) => b.g.visible).length +
+      this.POOL_SWIMMERS.filter((s) => s.actor.g.visible).length +
+      this.ROOF_DECK_STAFF.filter((r) => r.actor.g.visible).length +
       (this.secOffActor?.g.visible ? 1 : 0) +
       this.districtSim.getActiveCount();
     const activeCars = this.TRAF.filter((v) => v.state === 'street').length;

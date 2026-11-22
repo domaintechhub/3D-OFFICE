@@ -1411,6 +1411,7 @@ export class AtriumEngine {
       const y = a.g.position.y;
       if (y < -6.5) levelLabel = 'Basement 2 (B2)';
       else if (y < -2.0) levelLabel = 'Basement 1 (B1)';
+      else if (y >= 26.2) levelLabel = 'Rooftop Pool & Terrace';
       else {
         let bestLv = 0;
         let bestDiff = Infinity;

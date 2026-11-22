@@ -660,6 +660,217 @@ export function buildSceneArchitecture(
     const weir = new THREE.Mesh(new THREE.BoxGeometry(poolW - 0.6, 0.34, 0.06), M.glass);
     weir.position.set(poolCx, ROOF + 0.44, poolCz + poolD * 0.5);
     roofShellGroup.add(weir);
+
+    // Wide cedar transition steps leading cleanly from east pool coping (y=ROOF+0.46) down onto sun deck (y=ROOF+0.055)
+    boxAt(roofShellGroup, 0.42, 0.16, 2.2, -11.24, ROOF + 0.28, 5.2, archMats.timberSoffit, true, true, 0.015);
+    boxAt(roofShellGroup, 0.44, 0.14, 2.2, -10.82, ROOF + 0.14, 5.2, archMats.timberSoffit, true, true, 0.015);
+  }
+
+  // 2B. Open Poolside Relaxing Area, Sun Loungers, Changing Cabanas & Towel/Drink Bar (x in [-10.8, +5.8], z in [1.3, 9.6])
+  {
+    const loungeY = ROOF + 0.055;
+    const cedarMat = archMats.timberSoffit;
+    const teakFinMat = archMats.timberFin;
+    const frameMat = archMats.bronzeMullion;
+    const cushionMat = new THREE.MeshStandardMaterial({ color: 0xf5f1e8, roughness: 0.9, metalness: 0.0 });
+    const umbrellaMat = new THREE.MeshStandardMaterial({
+      color: 0xf7f2e7,
+      roughness: 0.88,
+      metalness: 0.0,
+      side: THREE.DoubleSide,
+    });
+    const frostedScreenMat = new THREE.MeshPhysicalMaterial({
+      color: 0xdbeafe,
+      roughness: 0.38,
+      metalness: 0.02,
+      transmission: 0.42,
+      transparent: true,
+      opacity: 0.68,
+    });
+    const wovenRugMat = new THREE.MeshStandardMaterial({ color: 0xc8bca8, roughness: 0.94, metalness: 0.0 });
+    const towelMats = [
+      new THREE.MeshStandardMaterial({ color: 0x0ea5e9, roughness: 0.92 }),
+      new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.92 }),
+      new THREE.MeshStandardMaterial({ color: 0x14b8a6, roughness: 0.92 }),
+    ];
+    const icedDrinkMat = new THREE.MeshPhysicalMaterial({
+      color: 0x38bdf8,
+      roughness: 0.12,
+      transparent: true,
+      opacity: 0.82,
+    });
+    const citrusDrinkMat = new THREE.MeshPhysicalMaterial({
+      color: 0xf59e0b,
+      roughness: 0.12,
+      transparent: true,
+      opacity: 0.84,
+    });
+
+    // Flush warm cedar plank deck spanning from pool east coping to conversation lounge
+    const sunDeckGeo = getRoundedSlabGeo(16.8, 8.2, 0.45, 0.03, 0.015);
+    const sunDeckMesh = new THREE.Mesh(sunDeckGeo, cedarMat);
+    sunDeckMesh.position.set(-2.35, ROOF + 0.04, 5.55);
+    sunDeckMesh.receiveShadow = true;
+    roofShellGroup.add(sunDeckMesh);
+
+    // Outdoor Poolside Rinse Shower (next to changing cabanas, x=-10.65, z=2.2)
+    boxAt(roofShellGroup, 0.96, 0.04, 0.96, -10.65, loungeY + 0.02, 2.2, teakFinMat, false, true, 0.01);
+    boxAt(roofShellGroup, 0.06, 2.05, 0.88, -11.1, loungeY + 1.025, 2.2, frostedScreenMat, true, false, 0.01);
+    cylAt(roofShellGroup, 0.024, 0.024, 2.08, -10.65, loungeY + 1.04, 1.82, M.metal, true, false, 12);
+    boxAt(roofShellGroup, 0.036, 0.036, 0.34, -10.65, loungeY + 2.04, 1.98, M.metal, false, false, 0.008);
+    cylAt(roofShellGroup, 0.12, 0.14, 0.025, -10.65, loungeY + 1.99, 2.13, M.metal, false, false, 16);
+
+    // Twin Teak & Frosted-Glass Changing Cabanas (Bay 1 x=-9.0, Bay 2 x=-6.6, z in [1.45, 2.95])
+    const cabLeft = -10.1;
+    const cabRight = -5.5;
+    const cabWidth = cabRight - cabLeft;
+    const cabZBack = 1.48;
+    const cabZFront = 2.92;
+    const cabH = 2.16;
+
+    // Back slat screen wall
+    for (let sx = cabLeft; sx <= cabRight; sx += 0.16) {
+      boxAt(roofShellGroup, 0.065, cabH, 0.065, sx, loungeY + cabH / 2, cabZBack, teakFinMat, true, false, 0.008);
+    }
+    // 3 vertical partition walls (left, center divider, right)
+    [cabLeft, -7.8, cabRight].forEach((wx) => {
+      boxAt(roofShellGroup, 0.07, cabH, cabZFront - cabZBack, wx, loungeY + cabH / 2, (cabZBack + cabZFront) / 2, cedarMat, true, true, 0.01);
+      // Bronze edge trim post
+      boxAt(roofShellGroup, 0.085, cabH + 0.04, 0.085, wx, loungeY + cabH / 2, cabZFront, frameMat, true, false, 0.01);
+    });
+    // Overhead architectural header & louvered pergola slats across both cabanas
+    boxAt(roofShellGroup, cabWidth + 0.16, 0.08, 0.1, (cabLeft + cabRight) / 2, loungeY + cabH + 0.02, cabZFront, frameMat, true, false, 0.01);
+    for (let lz = cabZBack + 0.14; lz <= cabZFront - 0.08; lz += 0.22) {
+      boxAt(roofShellGroup, cabWidth + 0.08, 0.04, 0.09, (cabLeft + cabRight) / 2, loungeY + cabH + 0.02, lz, teakFinMat, true, false, 0.006);
+    }
+
+    // Interior furnishings per Changing Cabana (bench + frosted modesty wing + coat hooks + draped towels)
+    [-8.95, -6.65].forEach((bx, idx) => {
+      // Teak changing bench inside cabana
+      boxAt(roofShellGroup, 1.35, 0.06, 0.42, bx, loungeY + 0.44, cabZBack + 0.34, cedarMat, true, true, 0.015);
+      boxAt(roofShellGroup, 0.06, 0.42, 0.36, bx - 0.54, loungeY + 0.21, cabZBack + 0.34, frameMat, false, false);
+      boxAt(roofShellGroup, 0.06, 0.42, 0.36, bx + 0.54, loungeY + 0.21, cabZBack + 0.34, frameMat, false, false);
+      // Folded clothes / towel stack on bench
+      boxAt(roofShellGroup, 0.38, 0.09, 0.28, bx + 0.32, loungeY + 0.515, cabZBack + 0.34, towelMats[idx], true, false, 0.02);
+      // Half-open frosted glass modesty panel on one side of doorway (leaves clear 1.1m walk-in opening)
+      boxAt(roofShellGroup, 0.92, cabH - 0.14, 0.035, bx - 0.58, loungeY + (cabH - 0.14) / 2 + 0.04, cabZFront, frostedScreenMat, true, false, 0.008);
+      // Chrome coat/robe hook strip + hanging towel
+      boxAt(roofShellGroup, 0.65, 0.05, 0.03, bx, loungeY + 1.48, cabZBack + 0.06, M.metal, false, false);
+      boxAt(roofShellGroup, 0.22, 0.48, 0.05, bx - 0.14, loungeY + 1.24, cabZBack + 0.085, M.white, true, false, 0.015);
+      // Warm vanity sconce inside cabana
+      boxAt(roofShellGroup, 0.24, 0.05, 0.05, bx, loungeY + 1.88, cabZBack + 0.07, M.lamp, false, false);
+    });
+
+    // Pool Towel & Refreshment Bar Credenza (x=-1.8, z=2.05)
+    boxAt(roofShellGroup, 3.0, 0.92, 0.72, -1.8, loungeY + 0.46, 2.05, cedarMat, true, true, 0.02);
+    boxAt(roofShellGroup, 3.08, 0.06, 0.8, -1.8, loungeY + 0.95, 2.05, cushionMat, true, true, 0.02);
+    // Rolled fresh pool towels stacked pyramid-style
+    [-2.85, -2.58, -2.31].forEach((tx, ti) => {
+      cylAt(roofShellGroup, 0.11, 0.11, 0.44, tx, loungeY + 1.09, 2.05, towelMats[ti % towelMats.length], true, false, 14).rotation.x = Math.PI / 2;
+    });
+    // Glass infused-water dispenser + chilled glasses
+    cylAt(roofShellGroup, 0.16, 0.16, 0.36, -0.95, loungeY + 1.16, 2.05, icedDrinkMat, false, false, 18);
+    cylAt(roofShellGroup, 0.17, 0.17, 0.04, -0.95, loungeY + 1.35, 2.05, M.metal, false, false, 16);
+    [-1.4, -1.24].forEach((gx) => {
+      cylAt(roofShellGroup, 0.038, 0.032, 0.13, gx, loungeY + 1.05, 2.18, M.glass, false, false, 10);
+    });
+
+    // Reclined Teak Sun Loungers + Side Tables + Resort Umbrellas (open relaxing zone east of pool)
+    const addSunLounger = (lx: number, lz: number, rotY: number, towelIdx: number, addDrink = true) => {
+      const lg = new THREE.Group();
+      lg.position.set(lx, loungeY, lz);
+      lg.rotation.y = rotY;
+      // Teak slatted base + legs
+      boxAt(lg, 0.76, 0.07, 1.96, 0, 0.29, 0, cedarMat, true, true, 0.015);
+      [
+        [-0.32, -0.82],
+        [0.32, -0.82],
+        [-0.32, 0.82],
+        [0.32, 0.82],
+      ].forEach(([px, pz]) => {
+        boxAt(lg, 0.065, 0.28, 0.065, px, 0.14, pz, frameMat, true, false, 0.01);
+      });
+      // Main plush cushion
+      boxAt(lg, 0.7, 0.085, 1.24, 0, 0.365, -0.34, cushionMat, true, true, 0.025);
+      // Angled reclined backrest + cushion + bolster pillow
+      const backGrp = new THREE.Group();
+      backGrp.position.set(0, 0.34, 0.28);
+      backGrp.rotation.x = 0.56;
+      boxAt(backGrp, 0.72, 0.055, 0.72, 0, 0.02, 0.36, cedarMat, true, false, 0.015);
+      boxAt(backGrp, 0.68, 0.08, 0.68, 0, 0.08, 0.36, cushionMat, true, true, 0.022);
+      const pillow = cylAt(backGrp, 0.065, 0.065, 0.46, 0, 0.15, 0.56, towelMats[towelIdx], true, false, 14);
+      pillow.rotation.z = Math.PI / 2;
+      lg.add(backGrp);
+      // Folded resort towel draped neatly across lower seat
+      boxAt(lg, 0.66, 0.032, 0.48, 0, 0.415, -0.46, towelMats[towelIdx], false, true, 0.012);
+
+      // Companion cedar side table + iced tropical drink
+      if (addDrink) {
+        cylAt(lg, 0.24, 0.24, 0.04, 0.62, 0.44, 0.15, cedarMat, true, true, 16);
+        cylAt(lg, 0.035, 0.04, 0.42, 0.62, 0.21, 0.15, frameMat, false, false, 10);
+        cylAt(lg, 0.045, 0.035, 0.14, 0.62, 0.53, 0.15, towelIdx % 2 === 0 ? icedDrinkMat : citrusDrinkMat, false, false, 12);
+      }
+      roofShellGroup.add(lg);
+    };
+
+    // Row of 3 sun loungers angled toward infinity pool & sunset vista
+    addSunLounger(-8.9, 6.2, -Math.PI / 2, 0, true);
+    addSunLounger(-8.9, 8.4, -Math.PI / 2, 2, true);
+    addSunLounger(-6.3, 8.1, -Math.PI * 0.62, 1, true);
+
+    // 2 Cream Resort Sun Umbrellas shading the loungers
+    [
+      [-7.7, 7.3],
+      [-5.1, 7.6],
+    ].forEach(([ux, uz]) => {
+      cylAt(roofShellGroup, 0.26, 0.3, 0.08, ux, loungeY + 0.04, uz, archMats.bullnoseConcrete, true, true, 16);
+      cylAt(roofShellGroup, 0.032, 0.032, 2.38, ux, loungeY + 1.2, uz, frameMat, true, false, 12);
+      const canopy = new THREE.Mesh(new THREE.ConeGeometry(1.55, 0.42, 8, 1, true), umbrellaMat);
+      canopy.position.set(ux, loungeY + 2.28, uz);
+      canopy.castShadow = true;
+      canopy.receiveShadow = true;
+      roofShellGroup.add(canopy);
+      cylAt(roofShellGroup, 0.04, 0.02, 0.08, ux, loungeY + 2.51, uz, cedarMat, false, false, 10);
+    });
+
+    // Open-Air Pergola Conversation Lounge (x=-1.4..+4.2, z=4.8..8.8)
+    boxAt(roofShellGroup, 5.2, 0.025, 3.8, 1.3, loungeY + 0.012, 6.7, wovenRugMat, false, true, 0.008);
+    sofaWide(roofShellGroup, 1.3, loungeY, 5.15, 0, cushionMat, M);
+    armchair(roofShellGroup, -0.75, loungeY, 7.35, Math.PI * 0.78, cushionMat, M);
+    armchair(roofShellGroup, 3.35, loungeY, 7.35, -Math.PI * 0.78, cushionMat, M);
+    // Low slatted cedar coffee table + travertine tray + pitcher + 2 tumblers
+    boxAt(roofShellGroup, 1.5, 0.055, 0.92, 1.3, loungeY + 0.39, 6.95, cedarMat, true, true, 0.02);
+    [
+      [-0.6, -0.34],
+      [0.6, -0.34],
+      [-0.6, 0.34],
+      [0.6, 0.34],
+    ].forEach(([px, pz]) => {
+      boxAt(roofShellGroup, 0.05, 0.36, 0.05, 1.3 + px, loungeY + 0.18, 6.95 + pz, frameMat, false, false);
+    });
+    boxAt(roofShellGroup, 0.44, 0.025, 0.3, 1.3, loungeY + 0.43, 6.95, cushionMat, false, false, 0.01);
+    cylAt(roofShellGroup, 0.075, 0.06, 0.22, 1.2, loungeY + 0.55, 6.95, icedDrinkMat, false, false, 14);
+    cylAt(roofShellGroup, 0.036, 0.03, 0.11, 1.38, loungeY + 0.5, 6.9, citrusDrinkMat, false, false, 10);
+    cylAt(roofShellGroup, 0.036, 0.03, 0.11, 1.46, loungeY + 0.5, 7.02, citrusDrinkMat, false, false, 10);
+
+    // Flank lounge with lush potted plants + warm evening terrace bollard lanterns
+    plant(roofShellGroup, -2.0, loungeY, 5.1, 0.96, 204, M, 'palm');
+    plant(roofShellGroup, 4.45, loungeY, 5.1, 0.96, 209, M, 'monst');
+    // Stainless steel pool entry handrails beside the east cedar steps
+    [4.65, 5.75].forEach((rz) => {
+      cylAt(roofShellGroup, 0.022, 0.022, 0.68, -11.9, ROOF + 0.78, rz, M.metal, true, false, 12);
+      boxAt(roofShellGroup, 0.42, 0.036, 0.036, -12.1, ROOF + 1.1, rz, M.metal, true, false, 0.01);
+      cylAt(roofShellGroup, 0.022, 0.022, 0.56, -12.3, ROOF + 0.82, rz, M.metal, false, false, 12);
+    });
+    [
+      [-10.4, 9.2],
+      [-3.5, 9.2],
+      [4.5, 9.2],
+      [4.5, 2.2],
+    ].forEach(([lx, lz]) => {
+      boxAt(roofShellGroup, 0.14, 0.58, 0.14, lx, loungeY + 0.29, lz, frameMat, true, false, 0.015);
+      boxAt(roofShellGroup, 0.1, 0.14, 0.1, lx, loungeY + 0.52, lz, M.lamp, false, false, 0.01);
+    });
   }
 
   // 3. Rounded Fluted Timber & Glass Stairwell Pavilion over x in [20.0, 24.5], z in [0.9, 8.5] (Image 2 crown!)

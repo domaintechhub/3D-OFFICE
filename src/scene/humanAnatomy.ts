@@ -573,6 +573,122 @@ export function buildContinuousTorsoPelvisGeo(
   return loftRings(rings, true, true, [0, 1], 2);
 }
 
+/**
+ * Fitted swimwear outer shell matching the continuous torso contour over bare skin:
+ * - Female: sleek one-piece swimsuit (y=0.805..1.375)
+ * - Male: crisp swim trunk waistband & hips (y=0.805..0.945)
+ */
+export function buildSwimwearShellGeo(isFem: boolean, detail: DetailLevel = 'office'): THREE.BufferGeometry {
+  const segs = detail === 'studio' ? 44 : 28;
+  const rows = detail === 'studio' ? 24 : 16;
+  const yStart = 0.805;
+  const yEnd = isFem ? 1.372 : 0.942;
+  const shellPad = 0.0042;
+  const rings: LoftRingPoint[][] = [];
+
+  for (let r = 0; r <= rows; r++) {
+    const t = r / rows;
+    const y = THREE.MathUtils.lerp(yStart, yEnd, t);
+    const tTorso = THREE.MathUtils.clamp((y - 0.86) / 0.652, 0, 1);
+    const belowHip = y < 0.86 ? smoothstep(0.86, yStart, y) : 0;
+
+    let halfW: number;
+    let halfD: number;
+    if (isFem) {
+      const hipFlare = 0.048 * Math.exp(-Math.pow((tTorso - 0.04) / 0.18, 2));
+      const waistPinch = -0.042 * Math.exp(-Math.pow((tTorso - 0.34) / 0.16, 2));
+      const ribChest = 0.036 * Math.exp(-Math.pow((tTorso - 0.7) / 0.23, 2));
+      const shoulderShelf = 0.022 * Math.exp(-Math.pow((tTorso - 0.85) / 0.08, 2));
+      halfW = 0.124 + hipFlare + waistPinch + ribChest + shoulderShelf - belowHip * 0.025 + shellPad;
+      halfD = 0.09 + 0.013 * Math.sin(tTorso * Math.PI) - belowHip * 0.015 + shellPad;
+    } else {
+      const hipBase = 0.145 + 0.012 * Math.exp(-Math.pow((tTorso - 0.05) / 0.16, 2));
+      const vTaper = 0.048 * Math.exp(-Math.pow((tTorso - 0.78) / 0.24, 2)) - 0.015 * Math.exp(-Math.pow((tTorso - 0.3) / 0.16, 2));
+      halfW = hipBase + vTaper - belowHip * 0.025 + shellPad;
+      halfD = 0.098 + 0.014 * Math.sin(tTorso * Math.PI) - belowHip * 0.015 + shellPad;
+    }
+
+    const spineShiftZ = Math.sin(tTorso * Math.PI * 1.25) * 0.008;
+    const ring: LoftRingPoint[] = [];
+    for (let s = 0; s < segs; s++) {
+      const ang = (s / segs) * Math.PI * 2;
+      const cosA = Math.cos(ang);
+      const sinA = Math.sin(ang);
+      let rz = halfD;
+      if (isFem) {
+        if (sinA > 0) {
+          rz += 0.022 * sinA * Math.exp(-Math.pow((tTorso - 0.63) / 0.14, 2));
+        } else {
+          rz += 0.018 * (-sinA) * Math.exp(-Math.pow((tTorso - 0.03) / 0.13, 2));
+          rz -= 0.011 * (-sinA) * Math.exp(-Math.pow((tTorso - 0.34) / 0.15, 2));
+        }
+      }
+      if (sinA < -0.7 && tTorso > 0.2 && tTorso < 0.85) {
+        rz -= Math.pow(-sinA, 3) * 0.0055;
+      }
+      const sq = 1 + 0.05 * Math.pow(Math.sin(2 * ang), 2);
+      ring.push({
+        x: cosA * (halfW * sq),
+        y,
+        z: sinA * (rz * sq) + spineShiftZ,
+      });
+    }
+    rings.push(ring);
+  }
+  return loftRings(rings, true, true, [0, 1], 2);
+}
+
+/** Female one-piece swimsuit shoulder straps arcing cleanly over both shoulders. */
+export function buildSwimStrapsFemGeo(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  for (const sx of [-1, 1]) {
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(sx * 0.056, 1.36, 0.088),
+      new THREE.Vector3(sx * 0.062, 1.448, 0.048),
+      new THREE.Vector3(sx * 0.064, 1.484, -0.002),
+      new THREE.Vector3(sx * 0.058, 1.442, -0.052),
+      new THREE.Vector3(sx * 0.052, 1.355, -0.082),
+    ]);
+    const tube = new THREE.TubeGeometry(curve, 16, 0.0095, 8, false);
+    parts.push(normalizeForMerge(tube));
+  }
+  const merged = mergeGeometries(parts, false);
+  parts.forEach((p) => p.dispose());
+  return merged;
+}
+
+/** Mid-thigh male swim trunk sleeve wrapping cleanly over bare upper leg (y=0.89 down to 0.60). */
+export function buildSwimTrunksLegGeo(detail: DetailLevel = 'office'): THREE.BufferGeometry {
+  const segs = detail === 'studio' ? 24 : 18;
+  const rows = 10;
+  const rings: LoftRingPoint[][] = [];
+  for (let r = 0; r <= rows; r++) {
+    const t = r / rows;
+    const y = THREE.MathUtils.lerp(0.89, 0.60, t);
+    const tFull = (0.89 - y) / 0.43; // fraction to knee
+    const rx = THREE.MathUtils.lerp(0.074, 0.048, Math.pow(tFull, 0.85)) + 0.008;
+    const rz = THREE.MathUtils.lerp(0.08, 0.052, Math.pow(tFull, 0.85)) + 0.008;
+    const oz = Math.sin(tFull * Math.PI) * 0.0065;
+    const ring: LoftRingPoint[] = [];
+    for (let s = 0; s < segs; s++) {
+      const a = (s / segs) * Math.PI * 2;
+      ring.push({ x: Math.cos(a) * rx, y, z: Math.sin(a) * rz + oz });
+    }
+    rings.push(ring);
+  }
+  return loftRings(rings, true, true, [0, 1], 1);
+}
+
+/** Minimalist resort pool slide strap over the forefoot instep. */
+export function buildPoolSlideStrapGeo(): THREE.BufferGeometry {
+  const geo = new THREE.CylinderGeometry(0.036, 0.038, 0.046, 14, 1, false, -Math.PI * 0.5, Math.PI);
+  geo.rotateZ(Math.PI / 2);
+  geo.rotateY(Math.PI / 2);
+  geo.scale(0.95, 0.72, 1.0);
+  geo.translate(0, 0.029, 0.072);
+  return geo;
+}
+
 /* =========================================================
    CONTINUOUS ARM + ARTICULATED 5-FINGER SCULPTED HAND
    ========================================================= */
