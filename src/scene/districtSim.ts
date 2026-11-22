@@ -14,6 +14,8 @@ import {
 import type { FloorActivitySummary, FloorZoneActivity } from './constants';
 import {
   makePerson,
+  MODES,
+  pickMode,
   SEATED_POSES,
   setPose,
   updatePersonKinematics,
@@ -29,6 +31,7 @@ import {
   resolveDistrictObstacle,
   type TrackedChairCollider,
 } from './obstacles';
+import { socialNetwork } from './socialNetwork';
 
 interface DistrictChairPair {
   handle: DistrictChairHandle;
@@ -218,6 +221,26 @@ export class DistrictSim {
       homePose: pose,
     });
 
+    if (bId !== 'street' && identity.topicKey !== 'diner' && identity.topicKey !== 'client') {
+      socialNetwork.registerWorker(bId, identity.name, identity.role);
+    }
+
+    if (
+      bId !== 'street' &&
+      identity.topicKey !== 'diner' &&
+      identity.topicKey !== 'client' &&
+      SEATED_POSES.has(pose)
+    ) {
+      p.modes = [
+        ['type', 0.34],
+        ['monitorLook', 0.18],
+        ['leanScreen', 0.14],
+        ['sitPhone', 0.16],
+        ['phone', 0.08],
+        ['writeNotes', 0.1],
+      ];
+    }
+
     this.setSafePose(p, pose, true);
     this.peopleGroup.add(p.g);
     this.ACTORS.push(p);
@@ -400,7 +423,7 @@ export class DistrictSim {
     [-4.6, -0.2].forEach((ox, i) => {
       const fem = i === 0;
       this.spawnActor(
-        'bank', 0, bank.cx + ox, bank.cz - 4.75, 0, i === 0 ? 'type' : 'sitReadDoc',
+        'bank', 0, bank.cx + ox, bank.cz - 4.75, 0, i === 0 ? 'type' : 'monitorLook',
         nextPersonOpts(fem, 0x1c2b46, { outfit: 'suit', blazer: true, lanyard: true }),
         {
           id: `bank-teller-${i}`,
@@ -537,7 +560,7 @@ export class DistrictSim {
     [-5.5, 5.5].forEach((ox, i) => {
       const fem = i === 1;
       this.spawnActor(
-        'tourism', 0, tourism.cx + ox, tourism.cz + 6.08, Math.PI, i === 0 ? 'sitCollaborate' : 'type',
+        'tourism', 0, tourism.cx + ox, tourism.cz + 6.08, Math.PI, i === 0 ? 'leanScreen' : 'type',
         nextPersonOpts(fem, 0x4b5c34, { outfit: 'smartCasual', sleeve: 'rolled' }),
         {
           id: `tourism-planner-${i}`,
@@ -600,7 +623,7 @@ export class DistrictSim {
       '24h Pharmacy & Patient Intake', M
     );
     this.spawnActor(
-      'medical', 0, med.cx + 10.5, med.cz - 3.48, 0, 'sitTalk',
+      'medical', 0, med.cx + 10.5, med.cz - 3.48, 0, 'type',
       nextPersonOpts(false, 0xf8fafc, { coat: true, outfit: 'suit', glasses: true }),
       {
         id: 'med-doctor',
@@ -663,7 +686,7 @@ export class DistrictSim {
     [3.8, 7.8].forEach((ox, i) => {
       const fem = i === 1;
       this.spawnActor(
-        'logistics', 0, log.cx + ox, log.cz + 3.65, Math.PI, i === 0 ? 'type' : 'sitReadDoc',
+        'logistics', 0, log.cx + ox, log.cz + 3.65, Math.PI, i === 0 ? 'type' : 'sitPhone',
         nextPersonOpts(fem, 0x1f2937, { outfit: 'shirtTrousers', lanyard: true }),
         {
           id: `logistics-dispatch-${i}`,
@@ -722,22 +745,23 @@ export class DistrictSim {
       'Dispatch & Waybill Control', M, 0.95
     );
 
-    // Upper floor office staff across all 8 district buildings (2 per floor seated at registered chairs)
+    // Upper floor office staff across all 8 district buildings (staff every registered desk chair)
+    const upperPoses = ['type', 'sitPhone', 'monitorLook'];
     for (const [bId, handle] of this.buildings) {
       const spec = handle.spec;
       for (let lv = 1; lv < spec.floors; lv++) {
         const floorChairs = handle.chairs.filter((c) => c.lv === lv);
-        const count = Math.min(floorChairs.length, 2);
+        const count = floorChairs.length;
         for (let ci = 0; ci < count; ci++) {
           const ch = floorChairs[ci];
           const fem = (lv + ci) % 2 === 1;
           this.spawnActor(
-            bId, lv, ch.restX, ch.restZ, ch.restRot, ci === 0 ? 'type' : 'sitReadDoc',
+            bId, lv, ch.restX, ch.restZ, ch.restRot, upperPoses[ci % upperPoses.length],
             nextPersonOpts(fem, undefined, { lanyard: true }),
             {
               id: `${bId}-u-${lv}-${ci}`,
               name: generateCharacterName(fem, seedCounter + lv * 11 + ci),
-              role: `Operations Specialist · L${lv}`,
+              role: `Operations & Comms · L${lv}`,
               department: `${spec.name} · Level ${lv}`,
               seniority: ci === 0 ? 'Senior' : 'Junior',
               accentColor: spec.accent,
@@ -1156,6 +1180,26 @@ export class DistrictSim {
     this.decideFreeWill(a, true);
   }
 
+  public nudgeCompany(bId: BuildingId) {
+    const job = socialNetwork.getActiveJobForBuilding(bId);
+    const candidates = this.ACTORS.filter(
+      (a) => a.buildingId === bId && a.g.visible && a.brain && a.mode === 'home' && a.modes
+    );
+    const actor = candidates[0];
+    if (!actor || !actor.brain) return;
+    if (actor.modes) {
+      this.setSafePose(actor, Math.random() < 0.55 ? 'type' : 'sitPhone');
+    }
+    if (job) {
+      setBrainThought(
+        actor.brain,
+        job.priority === 'Urgent' ? 'Alert' : 'Focused',
+        `Processing ${job.code} via ${job.platform.toUpperCase()}`,
+        `Picked up ${job.code} (${job.title}) from ${job.fromName} on my console.`
+      );
+    }
+  }
+
   private updateChairs(dt: number) {
     const k = 1 - Math.exp(-dt * 6.5);
     for (let i = 0; i < this.chairPairs.length; i++) {
@@ -1298,6 +1342,13 @@ export class DistrictSim {
           }
         }
       } else if (a.brain) {
+        if (a.mode === 'home' && a.modes) {
+          a.timer -= dt;
+          if (a.timer <= 0) {
+            a.timer = 4.5 + Math.random() * 5.0;
+            this.setSafePose(a, pickMode(a.modes));
+          }
+        }
         a.brain.nextDecisionIn -= dt;
         if (a.brain.nextDecisionIn <= 0) {
           this.decideFreeWill(a, false);
@@ -1417,9 +1468,11 @@ export class DistrictSim {
       return { workerActivity: 'Workstation idle · after hours', isOccupied: false };
     }
     const atHome = match.mode === 'home';
+    const activeJob = socialNetwork.getActiveJobForBuilding(bId);
+    const jobSuffix = activeJob ? ` · ${activeJob.code} (${activeJob.progress}%)` : '';
     return {
       workerActivity: atHome
-        ? `${match.roleLabel} actively operating console`
+        ? `${match.roleLabel} operating console${jobSuffix}`
         : match.brain?.actionLabel || 'Stepped away briefly',
       isOccupied: atHome,
     };

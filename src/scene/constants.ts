@@ -57,6 +57,7 @@ export interface FloorActivitySummary {
 
 export interface InspectedMonitor {
   id: string;
+  buildingId: BuildingId;
   stationKey: string;
   seatIndex: number;
   projectTitle: string;
@@ -71,6 +72,7 @@ export interface InspectedMonitor {
 
 export interface SelectedCharacterSnapshot {
   id: string;
+  buildingId: BuildingId | 'street';
   name: string;
   role: string;
   department: string;

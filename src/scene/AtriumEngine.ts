@@ -25,7 +25,7 @@ import {
 } from './districtData';
 import { createMaterials, type MaterialLibrary } from './materials';
 import { synthesizeProceduralFoliage, type ProceduralFoliageResult } from './organicFoliage';
-import { createScreenRegistry, updateAllScreens, type ScreenRegistry } from './screens';
+import { createScreenRegistry, renderWorkScreenFrame, updateAllScreens, type ScreenRegistry } from './screens';
 import { AtriumSimulation } from './simulation';
 import { AmbientAudioManager } from './audio';
 import { getMaxAnisotropy, setMaxAnisotropy } from './textures';
@@ -916,7 +916,7 @@ export class AtriumEngine {
           if (bId !== this.activeBuilding) return false;
           return cut < 0 ? m.lv === cut : m.lv >= 0 && m.lv <= cut;
         }
-        return m.lv === 0 || (bId === 'hub' && m.lv >= 0);
+        return m.lv >= 0;
       })
       .flatMap((m) => m.meshes);
     const visibleBuildingMeshes = this.buildingPickList
@@ -1005,7 +1005,7 @@ export class AtriumEngine {
           if (bId !== this.activeBuilding) return false;
           return cut < 0 ? m.lv === cut : m.lv >= 0 && m.lv <= cut;
         }
-        return m.lv === 0 || (bId === 'hub' && m.lv >= 0);
+        return m.lv >= 0;
       })
       .flatMap((m) => m.meshes);
     const visibleBuildingMeshes = this.buildingPickList
@@ -1314,9 +1314,7 @@ export class AtriumEngine {
         const s = this.inspectedMonitor.screenRef;
         if (this.elapsed >= s.next) {
           s.next = this.elapsed + 0.18;
-          s.g.clearRect(0, 0, s.g.canvas.width, s.g.canvas.height);
-          s.fn(s.g, s.g.canvas.width, s.g.canvas.height, this.elapsed + s.off);
-          (s.tx as THREE.CanvasTexture).needsUpdate = true;
+          renderWorkScreenFrame(s, this.elapsed);
         }
       }
 
@@ -1345,6 +1343,7 @@ export class AtriumEngine {
     const ws = this.sim.getMonitorWorkerStatus(m.lv, m.seatX, m.seatZ, m.buildingId ?? 'hub');
     return {
       id: m.id,
+      buildingId: m.buildingId ?? 'hub',
       stationKey: m.stationKey,
       seatIndex: m.seatIndex,
       projectTitle: m.projectTitle,
@@ -1395,6 +1394,7 @@ export class AtriumEngine {
     }
     return {
       id: b.identity.id,
+      buildingId: (distActor.buildingId as BuildingId | 'street') ?? 'hub',
       name: b.identity.name,
       role: b.identity.role,
       department: b.identity.department,
@@ -1507,6 +1507,13 @@ export class AtriumEngine {
     this.sim.nudgeCharacterFreeWill(this.selectedActor);
     this.lastDrawnThoughtKey = '';
     this.updateSelectedVisuals();
+    this.emitHud();
+  }
+
+  public notifyCompanyJob(buildingId: BuildingId) {
+    this.sim.nudgeCompanyForJob(buildingId);
+    this.lastDrawnThoughtKey = '';
+    if (this.selectedActor) this.updateSelectedVisuals();
     this.emitHud();
   }
 

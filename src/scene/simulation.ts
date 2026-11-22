@@ -37,6 +37,7 @@ import {
   makePerson,
   MODES,
   pickMode,
+  refreshPhoneScreenTexture,
   SEATED_POSES,
   setPose,
   updatePersonKinematics,
@@ -44,6 +45,7 @@ import {
   type MakePersonOptions,
   type PersonActor,
 } from './human';
+import { socialNetwork } from './socialNetwork';
 import {
   createCharacterBrain,
   generateCharacterName,
@@ -301,6 +303,7 @@ export class AtriumSimulation {
   private cutawayMinY: number | null = null;
   private cutawayMaxY: number | null = null;
   private weatherTimeMultiplier = 1.0;
+  private phoneTexAccum = 0;
   private readonly districtSim: DistrictSim;
 
   // Pre-allocated scratch vectors for zero-GC update loops
@@ -604,12 +607,17 @@ export class AtriumSimulation {
           p.stairJitter = (((idx * 3 + k) % 5) - 2) * 0.13;
           p.laneZ = 8.95 + ((idx + k + sh) % 5) * 0.22;
           if (sh === 1) p.g.visible = false;
+          const charName = generateCharacterName(fem, id + idx * 13 + k * 5);
+          const charRole = DEPT_ROLE[d.t] || 'Software Specialist';
+          if (sh === 0) {
+            socialNetwork.registerWorker('hub', charName, charRole);
+          }
           this.attachBrain(
             p,
             {
               id: `worker-${d.t}-${k}-${sh}`,
-              name: generateCharacterName(fem, id + idx * 13 + k * 5),
-              role: DEPT_ROLE[d.t] || 'Software Specialist',
+              name: charName,
+              role: charRole,
               department: `${d.n} · ${d.lv === 0 ? 'Ground' : `Level ${d.lv}`}`,
               seniority: k === 1 ? 'Senior' : 'Junior',
               accentColor: `#${d.c.toString(16).padStart(6, '0')}`,
@@ -658,6 +666,24 @@ export class AtriumSimulation {
       p.cab = 0;
       p.stairJitter = ((dayIdx % 5) - 2) * 0.13;
       p.laneZ = 8.95 + (dayIdx % 5) * 0.22;
+      if (['secr', 'hod', 'ceo', 'security_ops', 'hr', 'strategy'].includes(meta.topicKey)) {
+        p.modes = [
+          ['type', 0.34],
+          ['monitorLook', 0.18],
+          ['leanScreen', 0.14],
+          ['sitPhone', 0.16],
+          ['phone', 0.08],
+          ['writeNotes', 0.1],
+        ];
+        socialNetwork.registerWorker('hub', meta.name, meta.role);
+      } else if (meta.topicKey === 'reception') {
+        p.modes = [
+          ['standType', 0.56],
+          ['hold', 0.24],
+          ['standPhone', 0.2],
+        ];
+        socialNetwork.registerWorker('hub', meta.name, meta.role);
+      }
       this.attachBrain(
         p,
         {
@@ -1337,6 +1363,7 @@ export class AtriumSimulation {
       p.seniority = seniority;
       p.roleLabel = roleLabel;
       const isDeskWorker = opts.startPose === 'type';
+      socialNetwork.registerWorker('hub', name, roleLabel);
       this.attachBrain(
         p,
         {
@@ -3167,6 +3194,31 @@ export class AtriumSimulation {
     this.decideFreeWill(actor, true);
   }
 
+  public nudgeCompanyForJob(buildingId: BuildingId) {
+    if (buildingId !== 'hub') {
+      this.districtSim.nudgeCompany(buildingId);
+      return;
+    }
+    const job = socialNetwork.getActiveJobForBuilding('hub');
+    const candidate = this.WORKERS.find((w) => {
+      if (!w.g.visible || w.state !== 'atDesk' || !w.brain) return false;
+      const ag = this.freeAgents.get(w);
+      return ag?.mode === 'home';
+    });
+    if (!candidate || !candidate.brain) return;
+    if (candidate.modes) {
+      this.setSafePose(candidate, Math.random() < 0.55 ? 'type' : 'sitPhone');
+    }
+    if (job) {
+      setBrainThought(
+        candidate.brain,
+        job.priority === 'Urgent' ? 'Alert' : 'Focused',
+        `Processing ${job.code} via ${job.platform.toUpperCase()}`,
+        `Picked up ${job.code} (${job.title}) from ${job.fromName} on my workstation.`
+      );
+    }
+  }
+
   public getAllActors(): PersonActor[] {
     return [...this.STAFF, ...this.districtSim.ACTORS, this.guideActor];
   }
@@ -3270,6 +3322,14 @@ export class AtriumSimulation {
           p.state = 'toLift';
         }
       } else {
+        const ag = this.freeAgents.get(p);
+        if (ag && ag.mode === 'home' && ag.queue.length === 0 && p.modes) {
+          p.timer -= dt;
+          if (p.timer <= 0) {
+            p.timer = 4.5 + Math.random() * 5.0;
+            this.setSafePose(p, pickMode(p.modes));
+          }
+        }
         this.stepFreeAgent(p, dt);
       }
       return;
@@ -3426,6 +3486,14 @@ export class AtriumSimulation {
           p.state = 'toLift';
         }
       } else {
+        const ag = this.freeAgents.get(p);
+        if (ag && ag.mode === 'home' && ag.queue.length === 0 && p.modes) {
+          p.timer -= dt;
+          if (p.timer <= 0) {
+            p.timer = 4.5 + Math.random() * 5.0;
+            this.setSafePose(p, pickMode(p.modes));
+          }
+        }
         this.stepFreeAgent(p, dt);
       }
       return;
@@ -4885,6 +4953,12 @@ export class AtriumSimulation {
     }
     this.updateChairs(dt);
     this.districtSim.update(dt, t, this.simMin, camera);
+    socialNetwork.tick(dt, this.simMin);
+    this.phoneTexAccum += dt;
+    if (this.phoneTexAccum >= 0.75) {
+      this.phoneTexAccum = 0;
+      refreshPhoneScreenTexture(this.P_LIB, t);
+    }
 
     // Update all animated staff kinematics
     for (const P of this.STAFF) {
@@ -4998,7 +5072,7 @@ export class AtriumSimulation {
         typing++;
       } else if (a.pose === 'talk' || a.pose === 'sitTalk' || a.pose === 'collaborate' || a.pose === 'sitCollaborate' || a.pose === 'meeting') {
         talking++;
-      } else if (a.pose === 'phone' || a.pose === 'standPhone') {
+      } else if (a.pose === 'phone' || a.pose === 'standPhone' || a.pose === 'sitPhone') {
         phone++;
       } else if (a.pose === 'coffee') {
         coffee++;
@@ -5376,6 +5450,7 @@ export class AtriumSimulation {
       if (pose === 'standLowCounter') return 'Servicing hardware at maintenance trolley';
       if (pose === 'inspectPanel') return 'Inspecting equipment control panel';
       if (pose === 'phone' || pose === 'standPhone') return 'On a live client / team call';
+      if (pose === 'sitPhone' || pose === 'hold') return 'Messaging on SwiftChat / HubPulse phone';
       if (pose === 'point') return 'Reviewing & pointing on screen';
       if (pose === 'talk' || pose === 'sitTalk' || pose === 'collaborate' || pose === 'sitCollaborate') return 'Collaborating with colleague';
       if (pose === 'sit') return 'Working on laptop in ergonomic chair';
@@ -5387,6 +5462,8 @@ export class AtriumSimulation {
       if (pose === 'meeting') return 'Participating in conference meeting';
       return 'Working at workstation';
     };
+    const activeHubJob = socialNetwork.getActiveJobForBuilding('hub');
+    const hubJobTag = activeHubJob ? ` · ${activeHubJob.code} (${activeHubJob.progress}%)` : '';
 
     const worker = this.WORKERS.find(
       (w) => w.d.lv === lv && Math.hypot(w.seat.x - seatX, w.seat.z - seatZ) < 0.85 && w.g.visible
@@ -5400,7 +5477,7 @@ export class AtriumSimulation {
         };
       }
       return {
-        workerActivity: describePose(worker.pose, worker.state),
+        workerActivity: `${describePose(worker.pose, worker.state)}${hubJobTag}`,
         isOccupied: worker.state === 'atDesk',
       };
     }
@@ -5417,7 +5494,7 @@ export class AtriumSimulation {
         };
       }
       return {
-        workerActivity: describePose(dayActor.pose, dayActor.state),
+        workerActivity: `${describePose(dayActor.pose, dayActor.state)}${hubJobTag}`,
         isOccupied: dayActor.state === 'atDesk',
       };
     }
@@ -5435,7 +5512,7 @@ export class AtriumSimulation {
         };
       }
       return {
-        workerActivity: describePose(baseActor.pose, 'atDesk'),
+        workerActivity: `${describePose(baseActor.pose, 'atDesk')}${hubJobTag}`,
         isOccupied: true,
       };
     }

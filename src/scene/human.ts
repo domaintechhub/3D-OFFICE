@@ -28,7 +28,8 @@ import type { CharacterBrain } from './characterMind';
 import { getEyeIrisTexture, getHumanMicroMaps, getPhotorealFaceTexture } from './humanTextures';
 import type { MaterialLibrary } from './materials';
 import { contact, getRoundedBox } from './props';
-import { makeCanvasTex, plateTex } from './textures';
+import { DISTRICT_SOCIAL_DIRECTORY, socialNetwork } from './socialNetwork';
+import { getMaxAnisotropy, makeCanvasTex, plateTex, rr } from './textures';
 
 export type OutfitArchetype = 'suit' | 'dress' | 'blouseSkirt' | 'shirtTrousers' | 'smartCasual' | 'knit';
 export type SleeveStyle = 'long' | 'rolled' | 'short' | 'sleeveless';
@@ -88,6 +89,7 @@ export interface PersonActor {
   gest: boolean;
   fp: THREE.Mesh | null;
   pe: THREE.Mesh | null;
+  peScreen: THREE.Mesh | null;
   tor: THREE.Group;
   head: THREE.Group;
   route: Array<{ x: number; z: number; wait?: number; pose?: string; face?: number }> | null;
@@ -148,6 +150,7 @@ export const SEATED_POSES: ReadonlySet<string> = new Set([
   'writeNotes',
   'think',
   'phone',
+  'sitPhone',
   'leanScreen',
 ]);
 
@@ -355,6 +358,22 @@ POSES.think = PZ({
 });
 // Seated desk phone call
 POSES.phone = { ...POSES.type, sRx: -1.46, sRz: 0.1, eR: -2.14, fRy: 0.15, hRz: 0, hx: -0.02, hy: 0.14 };
+// Seated smartphone check / SwiftChat & HubPulse mobile dispatch at desk
+POSES.sitPhone = {
+  ...POSES.type,
+  hx: 0.22,
+  hy: -0.06,
+  sLx: -0.6,
+  sLz: -0.04,
+  eL: -0.96,
+  fLy: -1.34,
+  hLz: 0.04,
+  sRx: -0.78,
+  sRz: 0.14,
+  eR: -1.16,
+  fRy: 0.65,
+  hRz: 0,
+};
 // Standing mobile phone call (never bends legs into empty air)
 POSES.standPhone = PZ({ sRx: -1.46, sRz: 0.1, eR: -2.14, fRy: 0.15, hx: -0.02, hy: 0.14 });
 POSES.collaborate = PZ({
@@ -463,42 +482,48 @@ export const OFFICE_POSES_CATALOG: Array<{ key: string; label: string; descripti
   { key: 'writeNotes', label: '10 · Writing Notes', description: 'Taking notes in notebook at desk' },
   { key: 'think', label: '11 · Thinking at Desk', description: 'Contemplative hand-to-chin seated pose' },
   { key: 'phone', label: '12 · Telephone Call', description: 'Speaking on mobile call at desk' },
-  { key: 'collaborate', label: '13 · Collaborating', description: 'Interactive discussion angled toward peer' },
-  { key: 'leanScreen', label: '14 · Leaning to Screen', description: 'Leaning closer to examine workstation detail' },
-  { key: 'stand', label: '15 · Relaxed Standing', description: 'Contrapposto weight distribution stance' },
+  { key: 'sitPhone', label: '13 · Smartphone Messaging', description: 'Sending SwiftChat & HubPulse tasks at desk' },
+  { key: 'collaborate', label: '14 · Collaborating', description: 'Interactive discussion angled toward peer' },
+  { key: 'leanScreen', label: '15 · Leaning to Screen', description: 'Leaning closer to examine workstation detail' },
+  { key: 'stand', label: '16 · Relaxed Standing', description: 'Contrapposto weight distribution stance' },
 ];
 
 export const MODES: Record<string, Array<[string, number]>> = {
   def: [
-    ['type', 0.45],
+    ['type', 0.36],
     ['monitorLook', 0.18],
     ['leanScreen', 0.12],
-    ['think', 0.1],
-    ['writeNotes', 0.08],
-    ['phone', 0.07],
+    ['sitPhone', 0.14],
+    ['writeNotes', 0.1],
+    ['think', 0.05],
+    ['phone', 0.05],
   ],
   wa: [
-    ['type', 0.35],
-    ['phone', 0.45],
+    ['type', 0.28],
+    ['sitPhone', 0.28],
+    ['phone', 0.24],
     ['monitorLook', 0.12],
     ['think', 0.08],
   ],
   ppc: [
-    ['type', 0.45],
+    ['type', 0.38],
     ['leanScreen', 0.18],
-    ['phone', 0.22],
-    ['writeNotes', 0.15],
+    ['sitPhone', 0.16],
+    ['phone', 0.14],
+    ['writeNotes', 0.14],
   ],
   hand: [
-    ['type', 0.35],
-    ['phone', 0.35],
-    ['think', 0.15],
-    ['writeNotes', 0.15],
+    ['type', 0.3],
+    ['sitPhone', 0.25],
+    ['phone', 0.2],
+    ['think', 0.12],
+    ['writeNotes', 0.13],
   ],
   crm: [
-    ['type', 0.5],
+    ['type', 0.4],
     ['monitorLook', 0.2],
-    ['phone', 0.18],
+    ['sitPhone', 0.16],
+    ['phone', 0.12],
     ['leanScreen', 0.12],
   ],
 };
@@ -755,6 +780,7 @@ interface AnatomyGeos {
   watchStrap: THREE.CylinderGeometry;
   watchFace: THREE.BufferGeometry;
   phone: THREE.BufferGeometry;
+  phoneScreenFace: THREE.BufferGeometry;
   laptop: THREE.BufferGeometry;
   boxProp: THREE.BufferGeometry;
   mugGeo: THREE.LatheGeometry;
@@ -925,6 +951,7 @@ function initAnatomyGeos(detail: DetailLevel = 'office'): AnatomyGeos {
     watchStrap: new THREE.CylinderGeometry(0.024, 0.025, 0.014, 12),
     watchFace: getRoundedBox(0.01, 0.016, 0.018, 0.003, 1),
     phone: markShared(getRoundedBox(0.072, 0.142, 0.008, 0.0035, 2)),
+    phoneScreenFace: markShared(new THREE.PlaneGeometry(0.062, 0.126)),
     laptop: markShared(getRoundedBox(0.28, 0.016, 0.2, 0.005, 2)),
     boxProp: markShared(getRoundedBox(0.36, 0.26, 0.3, 0.025, 2)),
     mugGeo: markShared(
@@ -989,6 +1016,9 @@ export interface HumanPalette {
   lanyard: THREE.MeshStandardMaterial;
   badge: THREE.MeshStandardMaterial;
   phone: THREE.MeshStandardMaterial;
+  phoneScreen: THREE.MeshStandardMaterial;
+  phoneScreenTex: THREE.CanvasTexture;
+  phoneScreenCtx: CanvasRenderingContext2D;
   laptopProp: THREE.MeshStandardMaterial;
   boxProp: THREE.MeshStandardMaterial;
   folderProp: THREE.MeshStandardMaterial;
@@ -1072,7 +1102,15 @@ export function createHumanPalette(_M: MaterialLibrary): HumanPalette {
   const hairHexes = [0x070606, 0x16100d, 0x241812, 0x0b0b0d, 0x342318, 0x1c1614];
   const irisHexes = [0x2e1b10, 0x1f130b, 0x3d2616, 0x292214];
 
-  return {
+  const phoneCanvas = document.createElement('canvas');
+  phoneCanvas.width = 256;
+  phoneCanvas.height = 512;
+  const phoneScreenCtx = phoneCanvas.getContext('2d')!;
+  const phoneScreenTex = new THREE.CanvasTexture(phoneCanvas);
+  phoneScreenTex.colorSpace = THREE.SRGBColorSpace;
+  phoneScreenTex.anisotropy = getMaxAnisotropy();
+
+  const palette: HumanPalette = {
     skins: skinHexes.map(mkSkin),
     skinHexes,
     shirts: [
@@ -1138,7 +1176,17 @@ export function createHumanPalette(_M: MaterialLibrary): HumanPalette {
     irisHexes,
     lanyard: new THREE.MeshStandardMaterial({ color: 0x1a2842, roughness: 0.84 }),
     badge: new THREE.MeshStandardMaterial({ map: badgeTex, roughness: 0.56 }),
-    phone: new THREE.MeshStandardMaterial({ color: 0x111418, roughness: 0.42, emissive: 0x2a6fc0, emissiveIntensity: 0.4 }),
+    phone: new THREE.MeshStandardMaterial({ color: 0x111418, roughness: 0.38, metalness: 0.25 }),
+    phoneScreen: new THREE.MeshStandardMaterial({
+      color: 0x000000,
+      roughness: 0.32,
+      metalness: 0.05,
+      emissive: 0xffffff,
+      emissiveMap: phoneScreenTex,
+      emissiveIntensity: 1.05,
+    }),
+    phoneScreenTex,
+    phoneScreenCtx,
     laptopProp: new THREE.MeshStandardMaterial({ color: 0x2d343e, roughness: 0.38, metalness: 0.62 }),
     boxProp: new THREE.MeshStandardMaterial({ color: 0xb8895a, roughness: 0.84 }),
     folderProp: new THREE.MeshStandardMaterial({ color: 0xebe6db, roughness: 0.8 }),
@@ -1158,6 +1206,66 @@ export function createHumanPalette(_M: MaterialLibrary): HumanPalette {
       metalness: 0.28,
     }),
   };
+  refreshPhoneScreenTexture(palette, 0);
+  return palette;
+}
+
+export function refreshPhoneScreenTexture(P_LIB: HumanPalette, t: number) {
+  const g = P_LIB.phoneScreenCtx;
+  const W = 256;
+  const H = 512;
+  g.fillStyle = '#090e16';
+  g.fillRect(0, 0, W, H);
+
+  // Header bar: SwiftChat / HubPulse mobile UI
+  g.fillStyle = '#111a28';
+  g.fillRect(0, 0, W, 62);
+  g.fillStyle = '#4fe38a';
+  g.fillRect(14, 18, 10, 26);
+  g.fillStyle = '#f8fafc';
+  g.font = '700 22px "Plus Jakarta Sans",sans-serif';
+  g.textAlign = 'left';
+  g.textBaseline = 'middle';
+  g.fillText('SwiftChat', 32, 31);
+
+  const jobs = socialNetwork.getJobs().slice(0, 3);
+  jobs.forEach((job, idx) => {
+    const y = 78 + idx * 96;
+    const dir = DISTRICT_SOCIAL_DIRECTORY[job.toBuilding];
+    g.fillStyle = idx === Math.floor(t / 3) % 3 ? '#172438' : '#111824';
+    rr(g, 12, y, W - 24, 84, 12);
+    g.fill();
+    g.fillStyle = dir.accent;
+    g.font = '700 16px ui-monospace,monospace';
+    g.fillText(`${job.code} → ${dir.shortName.slice(0, 12)}`, 22, y + 22);
+    g.fillStyle = '#f8fafc';
+    g.font = '600 17px "Plus Jakarta Sans",sans-serif';
+    g.fillText(job.title.slice(0, 21), 22, y + 48);
+    g.fillStyle = 'rgba(255,255,255,0.14)';
+    rr(g, 22, y + 66, W - 48, 6, 3);
+    g.fill();
+    g.fillStyle = dir.accent;
+    rr(g, 22, y + 66, Math.max(12, Math.round(((W - 48) * job.progress) / 100)), 6, 3);
+    g.fill();
+  });
+
+  const post = socialNetwork.getPosts()[0];
+  g.fillStyle = '#132032';
+  rr(g, 12, 374, W - 24, 120, 12);
+  g.fill();
+  g.fillStyle = '#38bdf8';
+  g.font = '700 16px "Plus Jakarta Sans",sans-serif';
+  g.fillText(post ? `${post.authorHandle} · ${post.channel}` : 'HubPulse Feed', 22, 398);
+  g.fillStyle = '#cbd5e1';
+  g.font = '15px "Plus Jakarta Sans",sans-serif';
+  const bodyText = post?.body || 'Cross-company channels synced across monitors & phones.';
+  g.fillText(bodyText.slice(0, 24), 22, 430);
+  g.fillText(bodyText.slice(24, 48), 22, 454);
+  g.fillStyle = '#4fe38a';
+  g.font = '700 14px ui-monospace,monospace';
+  g.fillText('TAP TO DISPATCH JOB', 22, 480);
+
+  P_LIB.phoneScreenTex.needsUpdate = true;
 }
 
 export interface MakePersonOptions {
@@ -1982,6 +2090,7 @@ export function makePerson(
     gest: false,
     fp: null,
     pe: null,
+    peScreen: null,
     tor,
     head: headAnchor,
     route: null,
@@ -2045,9 +2154,13 @@ export function setPose(P: PersonActor, name: string, P_LIB: HumanPalette, snap 
   // Single-hand props locked directly onto RightHand bone so hands never touch air
   const ear = name === 'phone' || name === 'standPhone' || name === 'radio';
   const hasCup = name === 'coffee';
-  const holdingPhone = name === 'hold';
+  const holdingPhone = name === 'hold' || name === 'sitPhone';
   if ((ear || hasCup || holdingPhone) && !P.pe) {
     P.pe = P.mk(G.phone, P_LIB.phone, P.bones.RightHand, 0.024, -0.05, 0.025, 1, 1, 1, false);
+    const scr = new THREE.Mesh(G.phoneScreenFace, P_LIB.phoneScreen);
+    scr.position.set(0, 0, 0.0044);
+    P.pe.add(scr);
+    P.peScreen = scr;
   }
   if (P.pe) {
     if (ear) {
@@ -2056,20 +2169,24 @@ export function setPose(P: PersonActor, name: string, P_LIB: HumanPalette, snap 
       P.pe.position.set(0.028, -0.05, 0.022);
       P.pe.rotation.set(0.05, 0, -0.15);
       P.pe.visible = true;
+      if (P.peScreen) P.peScreen.visible = true;
     } else if (holdingPhone) {
       P.pe.geometry = G.phone;
       P.pe.material = P_LIB.phone;
       P.pe.position.set(0.026, -0.055, 0.024);
       P.pe.rotation.set(Math.PI * 0.42, 0.18, 0);
       P.pe.visible = true;
+      if (P.peScreen) P.peScreen.visible = true;
     } else if (hasCup) {
       P.pe.geometry = G.mugGeo;
       P.pe.material = P_LIB.white;
       P.pe.position.set(0.02, -0.055, 0.042);
       P.pe.rotation.set(1.58, 0, -0.15);
       P.pe.visible = true;
+      if (P.peScreen) P.peScreen.visible = false;
     } else {
       P.pe.visible = false;
+      if (P.peScreen) P.peScreen.visible = false;
     }
   }
   if (snap) {

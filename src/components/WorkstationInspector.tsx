@@ -16,37 +16,50 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Send,
   ShieldCheck,
   Table2,
   Terminal,
   X,
 } from 'lucide-react';
 import type { InspectedMonitor } from '../scene/constants';
+import { DISTRICT_BUILDINGS, type BuildingId } from '../scene/districtData';
+import {
+  DISTRICT_SOCIAL_DIRECTORY,
+  socialNetwork,
+  type JobPriority,
+  type SocialPlatformId,
+} from '../scene/socialNetwork';
 import {
   getModeForDesk,
   getWorkstationProfile,
   type BrowserSession,
+  type WorkstationMode,
 } from '../scene/workstations';
 
 interface WorkstationInspectorProps {
   monitor: InspectedMonitor;
   onClose: () => void;
   getInspectedScreenCanvas: () => HTMLCanvasElement | null;
+  onNotifyCompanyJob?: (buildingId: BuildingId) => void;
 }
 
 export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
   monitor,
   onClose,
   getInspectedScreenCanvas,
+  onNotifyCompanyJob,
 }) => {
   const profile = useMemo(() => getWorkstationProfile(monitor.stationKey), [monitor.stationKey]);
-  const activeMode = useMemo(
+  const defaultMode = useMemo(
     () => getModeForDesk(monitor.stationKey, monitor.seatIndex),
     [monitor.stationKey, monitor.seatIndex]
   );
 
+  const [activeMode, setActiveMode] = useState<WorkstationMode>(defaultMode);
   const [autoPilot, setAutoPilot] = useState(true);
   const [tick, setTick] = useState(0);
+  const [, setSocialVer] = useState(0);
 
   // Per-station persistent data-entry rows & custom browser queries
   const [rowsMap, setRowsMap] = useState<Record<string, Array<[string, string, string, string]>>>({});
@@ -58,17 +71,30 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
   const [newRow, setNewRow] = useState<[string, string, string, string]>(['', '', '', '']);
   const [justSaved, setJustSaved] = useState(false);
 
+  // Inline Monitor Social Job Dispatch state
+  const [monTargetBuilding, setMonTargetBuilding] = useState<BuildingId>(
+    monitor.buildingId === 'hub' ? 'bank' : 'hub'
+  );
+  const [monPlatform, setMonPlatform] = useState<SocialPlatformId>('worklink');
+  const [monPriority, setMonPriority] = useState<JobPriority>('Normal');
+  const [monJobTitle, setMonJobTitle] = useState('');
+
   const screenMirrorRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => socialNetwork.subscribe(() => setSocialVer((v) => v + 1)), []);
 
   // Reset browser & draft state when switching to a different monitor
   useEffect(() => {
+    setActiveMode(defaultMode);
     setAutoPilot(true);
     setBrowserTabIdx(0);
     setCustomSession(null);
     setSearchInput('');
     setNewRow(['', '', '', '']);
     setJustSaved(false);
-  }, [monitor.id]);
+    setMonTargetBuilding(monitor.buildingId === 'hub' ? 'bank' : 'hub');
+    setMonJobTitle('');
+  }, [monitor.id, monitor.buildingId, defaultMode]);
 
   // Initialize station rows & deliverables once per station id
   useEffect(() => {
@@ -289,32 +315,61 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
         </div>
       </div>
 
-      {/* Active Application Header (matches only what is open on this worker's monitor) */}
-      <div className="shrink-0 flex items-center justify-between gap-2 px-3.5 py-2 border-b border-white/10 bg-[#0b1017] text-xs font-medium text-white">
-        <div className="flex items-center gap-2 min-w-0">
-          {activeMode === 'browser' && <Globe className="w-3.5 h-3.5 text-sky-400 shrink-0" />}
-          {activeMode === 'dataEntry' && <Table2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
-          {activeMode === 'project' && (
-            <>
-              {profile.jobApp.appType === 'design' && <Layout className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
-              {profile.jobApp.appType === 'marketing' && <BarChart3 className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
-              {profile.jobApp.appType === 'social' && <MessageSquare className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
-              {profile.jobApp.appType === 'security' && <ShieldCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
-              {profile.jobApp.appType === 'executive' && <Briefcase className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
-              {profile.jobApp.appType === 'ide' && <Code2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
-            </>
-          )}
-          <span className="truncate">
-            {activeMode === 'browser'
-              ? 'Browser & Research'
-              : activeMode === 'dataEntry'
-                ? `Data Entry · ${profile.dataEntry.sheetTitle}`
-                : profile.jobApp.appName}
+      {/* Active Application Header & Window Switcher */}
+      <div className="shrink-0 px-3.5 py-2 border-b border-white/10 bg-[#0b1017] space-y-1.5">
+        <div className="flex items-center justify-between gap-2 text-xs font-medium text-white">
+          <div className="flex items-center gap-2 min-w-0">
+            {activeMode === 'browser' && <Globe className="w-3.5 h-3.5 text-sky-400 shrink-0" />}
+            {activeMode === 'dataEntry' && <Table2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+            {activeMode === 'social' && <MessageSquare className="w-3.5 h-3.5 text-sky-400 shrink-0" />}
+            {activeMode === 'project' && (
+              <>
+                {profile.jobApp.appType === 'design' && <Layout className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+                {profile.jobApp.appType === 'marketing' && <BarChart3 className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+                {profile.jobApp.appType === 'social' && <MessageSquare className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+                {profile.jobApp.appType === 'security' && <ShieldCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+                {profile.jobApp.appType === 'executive' && <Briefcase className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+                {profile.jobApp.appType === 'ide' && <Code2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+              </>
+            )}
+            <span className="truncate">
+              {activeMode === 'browser'
+                ? 'Browser & Research'
+                : activeMode === 'dataEntry'
+                  ? `Data Entry · ${profile.dataEntry.sheetTitle}`
+                  : activeMode === 'social'
+                    ? `WorkLink & HubPulse · ${DISTRICT_SOCIAL_DIRECTORY[monitor.buildingId].channel}`
+                    : profile.jobApp.appName}
+            </span>
+          </div>
+          <span className="text-[10px] uppercase tracking-wider font-mono-tabular text-slate-400 shrink-0">
+            {activeMode === 'social' ? 'Social Channels' : activeMode === 'browser' ? 'Research' : activeMode === 'dataEntry' ? 'Live Sheet' : 'Active App'}
           </span>
         </div>
-        <span className="text-[10px] uppercase tracking-wider font-mono-tabular text-slate-400 shrink-0">
-          {activeMode === 'browser' ? 'Research Window' : activeMode === 'dataEntry' ? 'Live Sheet' : 'Active App'}
-        </span>
+
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+          {(
+            [
+              { id: 'project', label: 'Project App' },
+              { id: 'social', label: 'Social & Channels' },
+              { id: 'dataEntry', label: 'Data Entry' },
+              { id: 'browser', label: 'Browser' },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveMode(tab.id)}
+              className={`px-2 py-0.5 text-[10.5px] rounded border whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+                activeMode === tab.id
+                  ? 'border-emerald-400/50 bg-emerald-500/18 text-white font-semibold'
+                  : 'border-white/10 bg-white/4 text-slate-400 hover:text-white'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Scrollable Active Workspace */}
@@ -777,6 +832,133 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
                     </span>
                     <span className={done ? 'text-slate-300 line-through' : 'text-white'}>{d.label}</span>
                   </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {activeMode === 'social' && (
+          <div className="space-y-2.5">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const title = monJobTitle.trim();
+                if (!title) return;
+                socialNetwork.dispatchJob({
+                  platform: monPlatform,
+                  fromBuilding: monitor.buildingId,
+                  fromName: monitor.role,
+                  sourceDevice: 'Monitor',
+                  toBuilding: monTargetBuilding,
+                  title,
+                  brief: `Dispatched from ${monitor.zone} (${monitor.role}) desktop monitor.`,
+                  priority: monPriority,
+                });
+                setMonJobTitle('');
+                setJustSaved(true);
+                onNotifyCompanyJob?.(monTargetBuilding);
+              }}
+              className="rounded border border-white/12 bg-[#0b1119] p-2.5 space-y-2"
+            >
+              <div className="flex items-center justify-between text-[10.5px] font-semibold text-white">
+                <span>Dispatch Job from This Monitor</span>
+                <span className="font-mono-tabular text-emerald-400">
+                  {DISTRICT_SOCIAL_DIRECTORY[monitor.buildingId].handle}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                <select
+                  value={monTargetBuilding}
+                  onChange={(e) => setMonTargetBuilding(e.target.value as BuildingId)}
+                  className="rounded border border-white/15 bg-[#070b10] px-1.5 py-1 text-[11px] text-white focus:border-emerald-400 focus:outline-none"
+                >
+                  {DISTRICT_BUILDINGS.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      To: {b.shortName}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={monPlatform}
+                  onChange={(e) => setMonPlatform(e.target.value as SocialPlatformId)}
+                  className="rounded border border-white/15 bg-[#070b10] px-1.5 py-1 text-[11px] text-white focus:border-emerald-400 focus:outline-none"
+                >
+                  <option value="worklink">WorkLink</option>
+                  <option value="hubpulse">HubPulse</option>
+                  <option value="swiftchat">SwiftChat</option>
+                </select>
+                <select
+                  value={monPriority}
+                  onChange={(e) => setMonPriority(e.target.value as JobPriority)}
+                  className="rounded border border-white/15 bg-[#070b10] px-1.5 py-1 text-[11px] text-white focus:border-emerald-400 focus:outline-none"
+                >
+                  <option value="Normal">Normal</option>
+                  <option value="Urgent">Urgent</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={monJobTitle}
+                  onChange={(e) => setMonJobTitle(e.target.value)}
+                  placeholder={`Send task to ${DISTRICT_SOCIAL_DIRECTORY[monTargetBuilding].shortName}…`}
+                  className="flex-1 rounded border border-white/15 bg-[#070b10] px-2 py-1 text-[11px] text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-500 text-slate-950 hover:bg-emerald-400 text-[11px] font-semibold cursor-pointer"
+                >
+                  <Send className="w-3 h-3" />
+                  <span>Send</span>
+                </button>
+              </div>
+            </form>
+
+            <div className="space-y-1.5">
+              <div className="text-[10px] uppercase tracking-wider font-semibold text-slate-400">
+                {DISTRICT_SOCIAL_DIRECTORY[monitor.buildingId].shortName} Channel Queue
+              </div>
+              {socialNetwork.getBuildingQueue(monitor.buildingId).map((job) => {
+                const toDir = DISTRICT_SOCIAL_DIRECTORY[job.toBuilding];
+                return (
+                  <div
+                    key={job.id}
+                    className="rounded border border-white/10 bg-[#080d14] p-2 space-y-1"
+                  >
+                    <div className="flex items-center justify-between gap-2 text-[10.5px]">
+                      <span className="font-mono-tabular font-semibold text-white">
+                        {job.code} → {toDir.shortName}
+                      </span>
+                      <span className="font-mono-tabular text-emerald-300">
+                        {job.status} · {job.progress}%
+                      </span>
+                    </div>
+                    <div className="text-[11px] font-medium text-slate-100">{job.title}</div>
+                    <div className="flex items-center justify-between gap-2 text-[10px] text-slate-400">
+                      <span>
+                        {job.platform.toUpperCase()} · {job.assignedWorker}
+                      </span>
+                      {job.status !== 'Completed' && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => socialNetwork.advanceJob(job.id)}
+                            className="px-1.5 py-0.5 rounded bg-white/8 hover:bg-white/15 text-slate-200 cursor-pointer"
+                          >
+                            Step
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => socialNetwork.completeJob(job.id)}
+                            className="px-1.5 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 cursor-pointer"
+                          >
+                            Done
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 );
               })}
             </div>

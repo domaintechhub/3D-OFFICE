@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode, useEffect, useRef, useState } from 'react';
 import { CharacterStudioModal } from './components/CharacterStudioModal';
 import { HudOverlay } from './components/HudOverlay';
+import { SocialChannelsPanel } from './components/SocialChannelsPanel';
 import { AtriumEngine } from './scene/AtriumEngine';
 import type { HudSnapshot } from './scene/constants';
 
@@ -84,6 +85,7 @@ function AtriumApp() {
   const [hud, setHud] = useState<HudSnapshot>(INITIAL_HUD);
   const [webglError, setWebglError] = useState<string | null>(null);
   const [studioOpen, setStudioOpen] = useState(false);
+  const [socialOpen, setSocialOpen] = useState(false);
 
   useEffect(() => {
     const el = mountRef.current;
@@ -155,8 +157,17 @@ function AtriumApp() {
         onToggleFollowCharacter={() => engineRef.current?.toggleFollowCharacter()}
         onNudgeCharacter={() => engineRef.current?.nudgeSelectedCharacter()}
         onOpenCharacters={() => setStudioOpen(true)}
+        onOpenSocialChannels={() => setSocialOpen(true)}
+        onNotifyCompanyJob={(bId) => engineRef.current?.notifyCompanyJob(bId)}
       />
       <CharacterStudioModal isOpen={studioOpen} onClose={() => setStudioOpen(false)} />
+      <SocialChannelsPanel
+        isOpen={socialOpen}
+        activeBuilding={hud.activeBuilding}
+        onClose={() => setSocialOpen(false)}
+        onSelectBuilding={(id) => engineRef.current?.selectBuilding(id)}
+        onJobDispatched={(bId) => engineRef.current?.notifyCompanyJob(bId)}
+      />
     </div>
   );
 }

@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { ROOMS, type RoomDef, type WorkScreenRef } from './constants';
+import { type BuildingId } from './districtData';
+import { DISTRICT_SOCIAL_DIRECTORY, socialNetwork } from './socialNetwork';
 import { getMaxAnisotropy, circ, rr } from './textures';
 import {
   getModeForDesk,
@@ -9,8 +11,8 @@ import {
   type WorkstationProfile,
 } from './workstations';
 
-const WS_LOGICAL_W = 384;
-const WS_LOGICAL_H = 216;
+export const WS_LOGICAL_W = 384;
+export const WS_LOGICAL_H = 216;
 const WS_SCALE = 2;
 const WS_W = WS_LOGICAL_W * WS_SCALE;
 const WS_H = WS_LOGICAL_H * WS_SCALE;
@@ -1238,6 +1240,163 @@ function wsJobScreen(
   });
 }
 
+function drawSocialDispatchHeaderChip(
+  g: CanvasRenderingContext2D,
+  w: number,
+  buildingId: BuildingId
+) {
+  const activeJob = socialNetwork.getActiveJobForBuilding(buildingId);
+  if (!activeJob) return;
+  const label = `${activeJob.code} · ${Math.round(activeJob.progress)}%`;
+  g.save();
+  g.font = `700 7.5px ${WS_MONO}`;
+  const tw = Math.min(130, g.measureText(label).width + 18);
+  const bx = w - tw - 22;
+  g.fillStyle = activeJob.priority === 'Urgent' ? 'rgba(245,158,11,0.22)' : 'rgba(16,185,129,0.2)';
+  rr(g, bx, 3, tw, 13, 3);
+  g.fill();
+  g.strokeStyle = activeJob.priority === 'Urgent' ? '#f59e0b' : '#4fe38a';
+  g.lineWidth = 0.8;
+  rr(g, bx, 3, tw, 13, 3);
+  g.stroke();
+  g.fillStyle = activeJob.priority === 'Urgent' ? '#fde68a' : '#86efac';
+  g.textAlign = 'left';
+  g.textBaseline = 'middle';
+  g.fillText(label, bx + 6, 9.5);
+  g.restore();
+}
+
+function wsSocialChannels(
+  g: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  t: number,
+  accent: string,
+  buildingId: BuildingId
+) {
+  const dir = DISTRICT_SOCIAL_DIRECTORY[buildingId] || DISTRICT_SOCIAL_DIRECTORY.hub;
+  const jobs = socialNetwork.getJobs({ buildingId }).slice(0, 3);
+  const posts = socialNetwork.getPosts().slice(0, 3);
+
+  g.fillStyle = '#0a0f17';
+  g.fillRect(0, 0, w, h);
+
+  // Header bar: HubPulse / WorkLink / SwiftChat Channel Stream
+  g.fillStyle = '#141d2b';
+  g.fillRect(0, 0, w, 20);
+  g.fillStyle = accent;
+  rr(g, 8, 5, 6, 10, 2);
+  g.fill();
+  g.fillStyle = '#f8fafc';
+  g.font = `700 9px ${WS_SANS}`;
+  g.textAlign = 'left';
+  g.textBaseline = 'middle';
+  g.fillText(`WorkLink · ${dir.channel} · ${dir.handle}`, 18, 10);
+
+  g.fillStyle = '#38bdf8';
+  g.font = `700 8px ${WS_MONO}`;
+  g.textAlign = 'right';
+  g.fillText(`HUBPULSE + SWIFTCHAT`, w - 10, 10);
+  g.textAlign = 'left';
+
+  // Left Column: Active Cross-Company Jobs Queue for this building
+  g.fillStyle = '#111824';
+  rr(g, 8, 26, 204, h - 54, 5);
+  g.fill();
+  g.strokeStyle = 'rgba(255,255,255,0.08)';
+  g.lineWidth = 1;
+  rr(g, 8, 26, 204, h - 54, 5);
+  g.stroke();
+
+  g.fillStyle = '#94a3b8';
+  g.font = `700 7.5px ${WS_SANS}`;
+  g.fillText('INCOMING & ACTIVE JOBS', 15, 37);
+
+  if (jobs.length === 0) {
+    g.fillStyle = '#64748b';
+    g.font = `8.5px ${WS_SANS}`;
+    g.fillText('Listening for dispatches…', 15, 62);
+  } else {
+    jobs.forEach((job, idx) => {
+      const jy = 46 + idx * 45;
+      const isTarget = job.toBuilding === buildingId;
+      g.fillStyle = idx === 0 ? 'rgba(56,189,248,0.1)' : 'rgba(255,255,255,0.04)';
+      rr(g, 13, jy, 194, 40, 4);
+      g.fill();
+
+      g.fillStyle = job.status === 'Completed' ? '#4fe38a' : job.priority === 'Urgent' ? '#fbbf24' : '#38bdf8';
+      g.font = `700 7.5px ${WS_MONO}`;
+      g.fillText(`${job.code} · ${job.sourceDevice.toUpperCase()}`, 18, jy + 10);
+
+      g.fillStyle = '#cbd5e1';
+      g.textAlign = 'right';
+      g.fillText(isTarget ? `FROM ${job.fromHandle}` : `TO ${DISTRICT_SOCIAL_DIRECTORY[job.toBuilding].handle}`, 202, jy + 10);
+      g.textAlign = 'left';
+
+      g.fillStyle = '#f8fafc';
+      g.font = `600 8.5px ${WS_SANS}`;
+      g.fillText(job.title.slice(0, 32), 18, jy + 22);
+
+      // Progress bar
+      g.fillStyle = 'rgba(255,255,255,0.12)';
+      rr(g, 18, jy + 31, 146, 4, 2);
+      g.fill();
+      g.fillStyle = job.status === 'Completed' ? '#4fe38a' : accent;
+      rr(g, 18, jy + 31, Math.max(8, Math.round((146 * job.progress) / 100)), 4, 2);
+      g.fill();
+
+      g.fillStyle = '#e2e8f0';
+      g.font = `700 7.5px ${WS_MONO}`;
+      g.textAlign = 'right';
+      g.fillText(`${Math.round(job.progress)}%`, 202, jy + 33);
+      g.textAlign = 'left';
+    });
+  }
+
+  // Right Column: Live HubPulse & SwiftChat Social Feed
+  g.fillStyle = '#111824';
+  rr(g, 218, 26, w - 226, h - 54, 5);
+  g.fill();
+  g.strokeStyle = 'rgba(255,255,255,0.08)';
+  rr(g, 218, 26, w - 226, h - 54, 5);
+  g.stroke();
+
+  g.fillStyle = '#94a3b8';
+  g.font = `700 7.5px ${WS_SANS}`;
+  g.fillText('SOCIAL CHANNELS STREAM', 225, 37);
+
+  posts.forEach((p, idx) => {
+    const py = 46 + idx * 45;
+    g.fillStyle = idx === Math.floor(t / 4) % 3 ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.03)';
+    rr(g, 223, py, w - 236, 40, 4);
+    g.fill();
+
+    g.fillStyle = p.accent;
+    g.font = `700 7.5px ${WS_SANS}`;
+    g.fillText(`${p.authorHandle} · ${p.device}`.slice(0, 25), 228, py + 10);
+
+    g.fillStyle = '#cbd5e1';
+    g.font = `8px ${WS_SANS}`;
+    wsWrap(g, p.body, w - 248)
+      .slice(0, 2)
+      .forEach((ln, li) => g.fillText(ln, 228, py + 22 + li * 10));
+  });
+
+  // Bottom live composer / ping bar
+  g.fillStyle = '#141d2b';
+  g.fillRect(0, h - 20, w, 20);
+  const pulseDot = Math.floor(t * 2) % 2 === 0;
+  g.fillStyle = pulseDot ? '#4fe38a' : accent;
+  circ(g, 12, h - 10, 3);
+  g.fillStyle = '#cbd5e1';
+  g.font = `600 8px ${WS_SANS}`;
+  g.fillText(
+    `Connected: HubPulse · WorkLink · SwiftChat Mobile  |  Click monitor to dispatch cross-company jobs`,
+    20,
+    h - 10
+  );
+}
+
 export function createDeskScreenMat(reg: ScreenRegistry, d: RoomDef, k: number): THREE.MeshStandardMaterial {
   d._ws = d._ws || [];
   if (d._ws[k]) return (d._ws[k] as WorkScreenRef).mat as THREE.MeshStandardMaterial;
@@ -1265,12 +1424,17 @@ export function createDeskScreenMat(reg: ScreenRegistry, d: RoomDef, k: number):
   const fn = (g: CanvasRenderingContext2D, w: number, h: number, t: number) => {
     g.save();
     g.setTransform(WS_SCALE, 0, 0, WS_SCALE, 0, 0);
-    if (mode === 'browser') {
+    if (mode === 'social') {
+      wsSocialChannels(g, w, h, t, acc, 'hub');
+    } else if (mode === 'browser') {
       wsBrowser(g, w, h, t, profile.browserSessions);
+      drawSocialDispatchHeaderChip(g, w, 'hub');
     } else if (mode === 'dataEntry') {
       wsDataEntry(g, w, h, t, acc, profile.dataEntry);
+      drawSocialDispatchHeaderChip(g, w, 'hub');
     } else {
       wsJobScreen(g, w, h, t, acc, profile);
+      drawSocialDispatchHeaderChip(g, w, 'hub');
     }
     g.restore();
   };
@@ -1324,16 +1488,22 @@ export function createExecScreen(reg: ScreenRegistry, key: string, k: number): W
           : key;
   const profile = getWorkstationProfile(stationKey);
   const mode = getModeForDesk(stationKey, k);
+  const buildingId: BuildingId = key in DISTRICT_SOCIAL_DIRECTORY ? (key as BuildingId) : 'hub';
 
   const fn = (g: CanvasRenderingContext2D, w: number, h: number, t: number) => {
     g.save();
     g.setTransform(WS_SCALE, 0, 0, WS_SCALE, 0, 0);
-    if (mode === 'browser') {
+    if (mode === 'social') {
+      wsSocialChannels(g, w, h, t, profile.projectWork.accent, buildingId);
+    } else if (mode === 'browser') {
       wsBrowser(g, w, h, t, profile.browserSessions);
+      drawSocialDispatchHeaderChip(g, w, buildingId);
     } else if (mode === 'dataEntry') {
       wsDataEntry(g, w, h, t, profile.projectWork.accent, profile.dataEntry);
+      drawSocialDispatchHeaderChip(g, w, buildingId);
     } else {
       wsJobScreen(g, w, h, t, profile.projectWork.accent, profile);
+      drawSocialDispatchHeaderChip(g, w, buildingId);
     }
     g.restore();
   };
@@ -1361,6 +1531,13 @@ export function createExecScreen(reg: ScreenRegistry, key: string, k: number): W
   s.fn(s.g, WS_LOGICAL_W, WS_LOGICAL_H, s.off);
   tx.needsUpdate = true;
   return s;
+}
+
+export function renderWorkScreenFrame(s: WorkScreenRef, t: number) {
+  s.g.setTransform(1, 0, 0, 1, 0, 0);
+  s.g.clearRect(0, 0, WS_W, WS_H);
+  s.fn(s.g, WS_LOGICAL_W, WS_LOGICAL_H, t + s.off);
+  (s.tx as THREE.CanvasTexture).needsUpdate = true;
 }
 
 export function createBoardScreenMat(reg: ScreenRegistry): THREE.MeshStandardMaterial {
@@ -1496,8 +1673,10 @@ export function updateAllScreens(
   if (t - scrLast >= 0.65) {
     scrLast = t;
     for (const b of reg.boardScreens) {
-      if (b.mesh && (!_tvFr.intersectsObject(b.mesh) || b.mesh.position.distanceTo(camera.position) > 135)) {
-        continue;
+      if (b.mesh) {
+        if (!_tvFr.intersectsObject(b.mesh)) continue;
+        b.mesh.getWorldPosition(_wsV);
+        if (_wsV.distanceTo(camera.position) > 135) continue;
       }
       b.fn(b.g, b.w, b.h, t);
       b.tx.needsUpdate = true;
@@ -1541,9 +1720,6 @@ export function updateAllScreens(
       continue;
     }
     s.next = t + (dist < 8 ? 0.55 : dist < 20 ? 1.2 : 2.2);
-    s.g.setTransform(1, 0, 0, 1, 0, 0);
-    s.g.clearRect(0, 0, WS_W, WS_H);
-    s.fn(s.g, WS_LOGICAL_W, WS_LOGICAL_H, t + s.off);
-    (s.tx as THREE.CanvasTexture).needsUpdate = true;
+    renderWorkScreenFrame(s, t);
   }
 }

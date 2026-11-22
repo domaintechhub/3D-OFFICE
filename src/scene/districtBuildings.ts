@@ -553,6 +553,7 @@ export function buildDistrictBuildings(
     const style = getBuildingArchStyle(spec.id);
     const dirZ = spec.doorSide === 'south' ? 1 : -1;
     const rotFacingDoor = spec.doorSide === 'south' ? 0 : Math.PI;
+    let upperMonIdx = 2;
 
     // Build all floors (0 .. spec.floors - 1) with sculpted rounded slabs, cedar soffits & wraparound balconies
     for (let lv = 0; lv < spec.floors; lv++) {
@@ -745,14 +746,28 @@ export function buildDistrictBuildings(
         lg.add(light);
         warmLights.push(light);
       } else {
-        // Upper floors populated cleanly with glass partition accents, desks, chairs, shelves & plants
+        // Upper floors populated cleanly with glass partition accents, desks, chairs, shelves & live monitors
         const deskXs = spec.w >= 30 ? [-10, 0, 10] : [-4.8, 4.8];
+        const roleLabels = [
+          `${spec.shortName} Operations Desk`,
+          `${spec.shortName} Social & Comms Desk`,
+          `${spec.shortName} Client Queue Desk`,
+        ];
         deskXs.forEach((dx, di) => {
           const px = spec.cx + dx;
           const pz = spec.cz - spec.d * 0.12;
           makeDeskAt(lg, px, floorSurfaceY, pz, 2.4, 1.0, M);
           registerChair(lv, px, floorSurfaceY, pz + 0.85, Math.PI, di % 2 ? 1 : -1);
-          monitor(lg, px, floorSurfaceY + 0.77, pz - 0.15, true, 0, M);
+          registerMonitor(
+            lv,
+            upperMonIdx++,
+            [px, floorSurfaceY + 0.77, pz - 0.15],
+            0,
+            px,
+            pz + 0.85,
+            `${roleLabels[di % roleLabels.length]} · L${lv}`,
+            `Level ${lv} Operations`
+          );
           if (di === 0) {
             shelfUnit(lg, px - 2.1, floorSurfaceY, spec.cz - spec.d * 0.42, 1.6, M);
           }

@@ -1,6 +1,6 @@
 import { DISTRICT_WORKSTATIONS } from './districtData';
 
-export type WorkstationMode = 'browser' | 'dataEntry' | 'project';
+export type WorkstationMode = 'browser' | 'dataEntry' | 'project' | 'social';
 export type JobAppType = 'ide' | 'design' | 'marketing' | 'social' | 'security' | 'executive';
 
 export interface ResearchSection {
@@ -2235,12 +2235,17 @@ export function getWorkstationProfile(stationKey: string): WorkstationProfile {
 }
 
 export function getModeForDesk(stationKey: string, seatIndex: number): WorkstationMode {
-  if (DISTRICT_WORKSTATIONS[stationKey]) return DISTRICT_WORKSTATIONS[stationKey].primaryMode;
+  if (DISTRICT_WORKSTATIONS[stationKey]) {
+    const cycle: WorkstationMode[] = ['project', 'social', 'dataEntry', 'browser'];
+    return cycle[Math.abs(seatIndex) % cycle.length];
+  }
   if (stationKey === 'reception-0') return 'dataEntry';
-  if (stationKey === 'reception-1') return 'project';
+  if (stationKey === 'reception-1') return 'social';
   if (stationKey === 'ceo-0') return 'project';
-  if (stationKey === 'ceo-1') return 'browser';
-  if (stationKey === 'pa' || stationKey === 'fin' || stationKey === 'hr') return seatIndex === 0 ? 'dataEntry' : 'project';
+  if (stationKey === 'ceo-1') return 'social';
+  if (stationKey === 'pa' || stationKey === 'fin' || stationKey === 'hr') {
+    return seatIndex === 0 ? 'dataEntry' : 'social';
+  }
   if (
     stationKey === 'tech' ||
     stationKey === 'mkt_head' ||
@@ -2249,14 +2254,16 @@ export function getModeForDesk(stationKey: string, seatIndex: number): Workstati
     stationKey === 'strategy' ||
     stationKey === 'power'
   ) {
-    return seatIndex === 1 ? 'dataEntry' : 'project';
+    return seatIndex === 1 ? 'social' : 'project';
   }
 
   // Department 3-desk bays:
-  // Seat 0 = Browser & Web Research
+  // Seat 0 = Browser & Web Research (or Social & Channels for social/marketing/whatsapp bays)
   // Seat 1 = Job-Specific Real-Life Tool (IDE, UI Studio, Search Console, Ads, Social Studio, NOC)
   // Seat 2 = Live Data Entry (Records / Sheets / Metrics / QA)
-  if (seatIndex === 0) return 'browser';
+  if (seatIndex === 0) {
+    return stationKey === 'social' || stationKey === 'wa' || stationKey === 'mkt' ? 'social' : 'browser';
+  }
   if (seatIndex === 2) return 'dataEntry';
   return 'project';
 }

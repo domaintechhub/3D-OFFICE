@@ -13,8 +13,11 @@ import {
   Crosshair,
   Eye,
   Footprints,
+  MessageSquare,
   Pause,
   Play,
+  Send,
+  Smartphone,
   Snowflake,
   Sparkles,
   Sun,
@@ -30,6 +33,11 @@ import {
   type WeatherMode,
 } from '../scene/constants';
 import { DISTRICT_BUILDINGS, type BuildingId } from '../scene/districtData';
+import {
+  DISTRICT_SOCIAL_DIRECTORY,
+  socialNetwork,
+  type SocialPlatformId,
+} from '../scene/socialNetwork';
 import { WorkstationInspector } from './WorkstationInspector';
 
 interface HudOverlayProps {
@@ -56,6 +64,8 @@ interface HudOverlayProps {
   onToggleFollowCharacter: () => void;
   onNudgeCharacter: () => void;
   onOpenCharacters: () => void;
+  onOpenSocialChannels: () => void;
+  onNotifyCompanyJob: (buildingId: BuildingId) => void;
 }
 
 function getFloorButtons(buildingId: BuildingId, totalFloors: number): Array<{ key: string; label: string }> {
@@ -136,11 +146,30 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
   onToggleFollowCharacter,
   onNudgeCharacter,
   onOpenCharacters,
+  onOpenSocialChannels,
+  onNotifyCompanyJob,
 }) => {
   const [dockOpen, setDockOpen] = useState(true);
+  const [, setSocialVer] = useState(0);
+  const [phoneTarget, setPhoneTarget] = useState<BuildingId>('bank');
+  const [phonePlatform, setPhonePlatform] = useState<SocialPlatformId>('swiftchat');
+  const [phoneJobText, setPhoneJobText] = useState('');
+  const [phoneSentNote, setPhoneSentNote] = useState<string | null>(null);
   const joyRef = useRef<HTMLDivElement | null>(null);
   const [joyKnob, setJoyKnob] = useState({ x: 0, y: 0 });
   const joyActive = useRef(false);
+
+  useEffect(() => socialNetwork.subscribe(() => setSocialVer((v) => v + 1)), []);
+
+  useEffect(() => {
+    setPhoneSentNote(null);
+    setPhoneJobText('');
+    if (hud.selectedCharacter) {
+      const charBld: BuildingId =
+        hud.selectedCharacter.buildingId === 'street' ? 'hub' : hud.selectedCharacter.buildingId;
+      setPhoneTarget(charBld === 'hub' ? 'logistics' : 'hub');
+    }
+  }, [hud.selectedCharacter?.id]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -221,6 +250,18 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
             <>
               <button
                 type="button"
+                onClick={onOpenSocialChannels}
+                title="Open District Social Platforms & Cross-Company Dispatch"
+                className="pointer-events-auto flex items-center gap-1.5 border border-sky-400/35 bg-[#0d121a]/92 px-3 py-2 text-xs font-medium text-sky-200 hover:bg-sky-500/20 hover:text-white rounded-md transition-colors cursor-pointer"
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-sky-400" />
+                <span>Social Channels</span>
+                <span className="font-mono-tabular px-1.5 py-0.5 text-[10px] rounded bg-sky-500/20 text-sky-200">
+                  {socialNetwork.getStatsSummary().activeJobs}
+                </span>
+              </button>
+              <button
+                type="button"
                 onClick={onOpenCharacters}
                 title="Open 3D Character Studio"
                 className="pointer-events-auto flex items-center gap-1.5 border border-emerald-400/35 bg-[#0d121a]/92 px-3 py-2 text-xs font-medium text-emerald-200 hover:bg-emerald-500/20 hover:text-white rounded-md transition-colors cursor-pointer"
@@ -245,7 +286,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
 
       {/* Hovered Bay / Character / Monitor Card */}
       {hud.hoveredRoom && !hud.walking && !hud.tourActive && (
-        <div className="pointer-events-none fixed top-16 left-3 sm:left-4 w-[min(80vw,285px)] border border-white/15 bg-[#0d121a]/94 px-3 py-2.5 rounded-md shadow-xl">
+        <div className="pointer-events-none fixed top-[88px] left-3 sm:left-4 w-[min(80vw,285px)] border border-white/15 bg-[#0d121a]/94 px-3 py-2.5 rounded-md shadow-xl">
           <div className="flex items-center gap-2">
             <span
               className="inline-block h-2.5 w-2.5 shrink-0 rounded-xs"
@@ -360,6 +401,99 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
             </div>
           )}
 
+          {/* Smartphone · SwiftChat & HubPulse Mobile Dispatch */}
+          {(() => {
+            const sc = hud.selectedCharacter;
+            const charBuilding: BuildingId = sc.buildingId === 'street' ? 'hub' : sc.buildingId;
+            const dir = DISTRICT_SOCIAL_DIRECTORY[charBuilding];
+            const activeJob = socialNetwork.getActiveJobForBuilding(charBuilding);
+            const handle = `@${sc.name.toLowerCase().replace(/^dr\.\s*/i, '').replace(/[^a-z0-9\s]/g, '').trim().split(/\s+/).slice(0, 2).join('.')}`;
+            return (
+              <div className="mt-2.5 pt-2.5 border-t border-white/10 space-y-1.5">
+                <div className="flex items-center justify-between text-[10px] uppercase tracking-wider font-semibold text-sky-300">
+                  <span className="inline-flex items-center gap-1">
+                    <Smartphone className="w-3 h-3" />
+                    <span>Phone · SwiftChat & HubPulse</span>
+                  </span>
+                  <span className="font-mono-tabular text-slate-400 normal-case">{handle}</span>
+                </div>
+                {activeJob && (
+                  <div className="rounded border border-white/10 bg-[#080d14] px-2 py-1.5 text-[10.5px]">
+                    <div className="flex items-center justify-between font-mono-tabular text-emerald-300">
+                      <span>{activeJob.code} · {dir.channel}</span>
+                      <span>{activeJob.progress}%</span>
+                    </div>
+                    <div className="text-slate-200 truncate">{activeJob.title}</div>
+                  </div>
+                )}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const txt = phoneJobText.trim();
+                    if (!txt) return;
+                    const created = socialNetwork.dispatchJob({
+                      platform: phonePlatform,
+                      fromBuilding: charBuilding,
+                      fromName: sc.name,
+                      sourceDevice: 'Phone',
+                      toBuilding: phoneTarget,
+                      title: txt,
+                      brief: `Sent from ${sc.name}'s phone (${sc.role}) via ${phonePlatform.toUpperCase()}.`,
+                    });
+                    setPhoneJobText('');
+                    setPhoneSentNote(`Sent ${created.code} → ${DISTRICT_SOCIAL_DIRECTORY[phoneTarget].shortName}`);
+                    onNotifyCompanyJob(phoneTarget);
+                  }}
+                  className="space-y-1.5"
+                >
+                  <div className="grid grid-cols-2 gap-1">
+                    <select
+                      value={phoneTarget}
+                      onChange={(e) => setPhoneTarget(e.target.value as BuildingId)}
+                      className="rounded border border-white/15 bg-[#080c12] px-1.5 py-1 text-[10.5px] text-white focus:border-sky-400 focus:outline-none"
+                    >
+                      {DISTRICT_BUILDINGS.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          To: {b.shortName}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={phonePlatform}
+                      onChange={(e) => setPhonePlatform(e.target.value as SocialPlatformId)}
+                      className="rounded border border-white/15 bg-[#080c12] px-1.5 py-1 text-[10.5px] text-white focus:border-sky-400 focus:outline-none"
+                    >
+                      <option value="swiftchat">SwiftChat</option>
+                      <option value="hubpulse">HubPulse</option>
+                      <option value="worklink">WorkLink</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="text"
+                      value={phoneJobText}
+                      onChange={(e) => setPhoneJobText(e.target.value)}
+                      placeholder="Send job or task via phone…"
+                      className="flex-1 rounded border border-white/15 bg-[#080c12] px-2 py-1 text-[11px] text-white placeholder:text-slate-500 focus:border-sky-400 focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      className="px-2 py-1 rounded bg-sky-500 text-slate-950 hover:bg-sky-400 text-[10.5px] font-semibold cursor-pointer inline-flex items-center gap-1"
+                    >
+                      <Send className="w-3 h-3" />
+                      <span>Send</span>
+                    </button>
+                  </div>
+                  {phoneSentNote && (
+                    <div className="text-[10.5px] font-mono-tabular text-emerald-300">
+                      {phoneSentNote}
+                    </div>
+                  )}
+                </form>
+              </div>
+            );
+          })()}
+
           {/* Controls */}
           <div className="mt-2.5 pt-2 border-t border-white/10 flex flex-wrap items-center gap-1.5">
             {!(hud.selectedCharacter.isGuide && hud.tourActive) && (
@@ -412,13 +546,14 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
           monitor={hud.inspectedMonitor}
           onClose={onCloseMonitor}
           getInspectedScreenCanvas={getInspectedScreenCanvas}
+          onNotifyCompanyJob={onNotifyCompanyJob}
         />
       )}
 
       {/* Active Floor Cutaway Activity Card */}
       {hud.floorActivity && !hud.walking && !hud.tourActive && !hud.hoveredRoom && (
         <div
-          className={`pointer-events-auto fixed top-16 left-3 sm:left-4 w-[min(80vw,268px)] max-h-[calc(100vh-11.2rem)] overflow-y-auto border border-white/15 bg-[#0d121a]/94 px-3 py-2.5 rounded-md shadow-xl ${
+          className={`pointer-events-auto fixed top-[88px] left-3 sm:left-4 w-[min(80vw,268px)] max-h-[calc(100vh-12.5rem)] overflow-y-auto border border-white/15 bg-[#0d121a]/94 px-3 py-2.5 rounded-md shadow-xl ${
             hud.selectedCharacter || hud.inspectedMonitor ? 'hidden lg:block' : ''
           }`}
         >
