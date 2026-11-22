@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import type { MaterialLibrary } from './materials';
-import { leafTex, makeCanvasTex } from './textures';
+import { leafTex } from './textures';
 
 export const GEO_SHARED = {
   box: new THREE.BoxGeometry(1, 1, 1),
@@ -213,11 +213,11 @@ function getLeafMat(kind: string, color: number): THREE.MeshStandardMaterial {
       map: leafTex(kind),
       color,
       transparent: true,
-      alphaTest: 0.42,
+      alphaTest: 0.36,
       side: THREE.DoubleSide,
-      roughness: 0.78,
+      roughness: 0.74,
       metalness: 0,
-      envMapIntensity: 0.16,
+      envMapIntensity: 0.18,
     });
     LEAF_MATS.set(k, m);
   }
@@ -238,33 +238,97 @@ interface SpeciesProfile {
 }
 
 const SPECIES: Record<string, SpeciesProfile> = {
-  palm: { h: 1.0, spread: 0.46, n: 7, leaf: 'frond', pot: 'concrete', potR: 0.26, potH: 0.42, potTaper: 0.74, greens: [0x2f6b2c, 0x3d8434, 0x285a26], leafScale: [0.95, 0.28] },
-  ficus: { h: 1.05, spread: 0.4, n: 9, leaf: 'broad', pot: 'terracotta', potR: 0.27, potH: 0.4, potTaper: 0.72, greens: [0x2e6b30, 0x3f8a3a, 0x24572a], leafScale: [1.05, 0.62] },
-  sanse: { h: 0.92, spread: 0.26, n: 11, leaf: 'strap', pot: 'dark', potR: 0.23, potH: 0.36, potTaper: 0.7, greens: [0x357a34, 0x2c6529], leafScale: [0.42, 1.5] },
-  monst: { h: 0.78, spread: 0.52, n: 8, leaf: 'split', pot: 'concrete', potR: 0.3, potH: 0.36, potTaper: 0.8, greens: [0x2f7430, 0x276027], leafScale: [1.15, 0.85] },
-  fern: { h: 0.62, spread: 0.56, n: 12, leaf: 'blade', pot: 'terracotta', potR: 0.26, potH: 0.34, potTaper: 0.78, greens: [0x4a8f3c, 0x3a7a34, 0x5aa044], leafScale: [0.9, 0.55] },
-  grass: { h: 0.86, spread: 0.3, n: 14, leaf: 'blade', pot: 'dark', potR: 0.22, potH: 0.34, potTaper: 0.68, greens: [0x5da343, 0x4a8f3c, 0x6fb84e], leafScale: [0.5, 1.15] },
-  olive: { h: 1.1, spread: 0.44, n: 10, leaf: 'broad', pot: 'brass', potR: 0.25, potH: 0.44, potTaper: 0.7, greens: [0x6b8a52, 0x5d7c47, 0x7d9a5e], leafScale: [0.55, 0.72] },
+  palm: { h: 1.02, spread: 0.52, n: 12, leaf: 'frond', pot: 'concrete', potR: 0.27, potH: 0.42, potTaper: 0.74, greens: [0x3d7c33, 0x4b8f3b, 0x2f6629], leafScale: [0.95, 0.36] },
+  ficus: { h: 1.08, spread: 0.45, n: 14, leaf: 'broad', pot: 'terracotta', potR: 0.27, potH: 0.4, potTaper: 0.72, greens: [0x367432, 0x488f3d, 0x295d28], leafScale: [1.0, 0.68] },
+  sanse: { h: 0.94, spread: 0.28, n: 15, leaf: 'strap', pot: 'dark', potR: 0.23, potH: 0.36, potTaper: 0.7, greens: [0x3d8236, 0x316d2b, 0x4b933f], leafScale: [0.42, 1.45] },
+  monst: { h: 0.82, spread: 0.56, n: 12, leaf: 'split', pot: 'concrete', potR: 0.3, potH: 0.36, potTaper: 0.8, greens: [0x367d33, 0x2c6829, 0x458d3e], leafScale: [1.1, 0.88] },
+  fern: { h: 0.68, spread: 0.62, n: 18, leaf: 'blade', pot: 'terracotta', potR: 0.26, potH: 0.34, potTaper: 0.78, greens: [0x4f943e, 0x3e7f34, 0x62a847], leafScale: [0.88, 0.62] },
+  grass: { h: 0.88, spread: 0.34, n: 22, leaf: 'blade', pot: 'dark', potR: 0.22, potH: 0.34, potTaper: 0.68, greens: [0x61a643, 0x4d913c, 0x76bd52], leafScale: [0.46, 1.15] },
+  olive: { h: 1.12, spread: 0.48, n: 15, leaf: 'broad', pot: 'brass', potR: 0.25, potH: 0.44, potTaper: 0.7, greens: [0x719156, 0x607f49, 0x84a264], leafScale: [0.6, 0.78] },
 };
 const SPECIES_KEYS = Object.keys(SPECIES);
 
-const SOIL_MAT = new THREE.MeshStandardMaterial({ color: 0x382b1e, roughness: 1 });
-const PEBBLE_MAT = new THREE.MeshStandardMaterial({ color: 0x6c6860, roughness: 0.88 });
-const STEM_MAT = new THREE.MeshStandardMaterial({ color: 0x46682f, roughness: 0.85 });
-const LEAF_CARD_GEO = (() => {
-  // Arched botanical leaf card with slight V-fold midrib curvature
-  const g = new THREE.PlaneGeometry(1, 1, 2, 5);
+const SOIL_MAT = new THREE.MeshStandardMaterial({ color: 0x36281b, roughness: 0.98 });
+const PEBBLE_MAT = new THREE.MeshStandardMaterial({ color: 0x716c63, roughness: 0.88 });
+const STEM_MAT = new THREE.MeshStandardMaterial({ color: 0x45662d, roughness: 0.85 });
+
+/** Shared deeply arched botanical leaf blade mesh (3x6 segments, cupped + drooping midrib). */
+export const ARCH_LEAF_GEO = (() => {
+  const g = new THREE.PlaneGeometry(1, 1, 3, 6);
   const pos = g.attributes.position;
   for (let i = 0; i < pos.count; i++) {
-    const lx = pos.getX(i);
-    const ly = pos.getY(i);
-    const t = 0.5 - ly; // 0 at tip/top, 1 at base
-    const arch = -0.14 * (ly * ly) + 0.06 * (1 - t);
-    const vfold = Math.abs(lx) * 0.08;
-    pos.setZ(i, arch + vfold);
+    const lx = pos.getX(i); // -0.5..0.5
+    const ly = pos.getY(i); // -0.5..0.5
+    const t = 0.5 - ly; // 0 at top tip, 1 at base
+    const stemCurve = Math.sin(t * Math.PI) * 0.14 - 0.16 * (1 - t) * (1 - t);
+    const vfold = Math.abs(lx) * 0.14 - (lx * lx) * 0.1;
+    pos.setZ(i, stemCurve + vfold);
   }
   g.computeVertexNormals();
   return g;
+})();
+
+/**
+ * Shared 3D crossed cambered foliage cluster geometry (3 intersecting curved sprays at 0°, 60°, 120° + horizontal cap tilt)
+ * so trees, bushes, hedges, and planter canopies read lush & volumetric from every camera angle with 1 draw call.
+ */
+export const CROSSED_SPRAY_GEO: THREE.BufferGeometry = (() => {
+  const planes: Array<{ rotY: number; tiltX: number; tiltZ: number; dy: number; scale: number }> = [
+    { rotY: 0.0, tiltX: 0.26, tiltZ: 0.14, dy: 0.0, scale: 1.0 },
+    { rotY: Math.PI / 3, tiltX: -0.24, tiltZ: 0.18, dy: 0.03, scale: 0.96 },
+    { rotY: (Math.PI * 2) / 3, tiltX: 0.22, tiltZ: -0.2, dy: -0.02, scale: 0.94 },
+    { rotY: 0.52, tiltX: 1.18, tiltZ: 0.08, dy: 0.06, scale: 0.88 }, // nearly horizontal sun-catching crown layer
+  ];
+
+  const base = new THREE.PlaneGeometry(1, 1, 2, 2);
+  const bPos = base.attributes.position;
+  for (let i = 0; i < bPos.count; i++) {
+    const px = bPos.getX(i);
+    const py = bPos.getY(i);
+    // Subtle spherical dome camber
+    bPos.setZ(i, 0.12 - (px * px + py * py) * 0.24);
+  }
+  base.computeVertexNormals();
+
+  const bNorm = base.attributes.normal;
+  const bUv = base.attributes.uv;
+  const bIdx = base.index!;
+
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+
+  const q = new THREE.Quaternion();
+  const e = new THREE.Euler();
+  const v = new THREE.Vector3();
+  const n = new THREE.Vector3();
+
+  for (let p = 0; p < planes.length; p++) {
+    const cfg = planes[p];
+    e.set(cfg.tiltX, cfg.rotY, cfg.tiltZ);
+    q.setFromEuler(e);
+    const offset = positions.length / 3;
+    for (let i = 0; i < bPos.count; i++) {
+      v.set(bPos.getX(i) * cfg.scale, bPos.getY(i) * cfg.scale, bPos.getZ(i) * cfg.scale).applyQuaternion(q);
+      v.y += cfg.dy;
+      positions.push(v.x, v.y, v.z);
+      n.set(bNorm.getX(i), bNorm.getY(i), bNorm.getZ(i)).applyQuaternion(q).normalize();
+      normals.push(n.x, n.y, n.z);
+      uvs.push(bUv.getX(i), bUv.getY(i));
+    }
+    for (let i = 0; i < bIdx.count; i++) {
+      indices.push(offset + bIdx.getX(i));
+    }
+  }
+  base.dispose();
+
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  out.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  out.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  out.setIndex(indices);
+  return out;
 })();
 
 function makeSculptedPotGeo(potR: number, potH: number, taper: number): THREE.LatheGeometry {
@@ -272,8 +336,8 @@ function makeSculptedPotGeo(potR: number, potH: number, taper: number): THREE.La
   const pts = [
     new THREE.Vector2(0.001, 0),
     new THREE.Vector2(b, 0),
-    new THREE.Vector2(b * 1.03, potH * 0.14),
-    new THREE.Vector2(potR * 0.98, potH * 0.84),
+    new THREE.Vector2(b * 1.04, potH * 0.14),
+    new THREE.Vector2(potR * 0.99, potH * 0.82),
     new THREE.Vector2(potR * 1.07, potH * 0.91),
     new THREE.Vector2(potR * 1.07, potH),
     new THREE.Vector2(potR * 0.9, potH),
@@ -298,8 +362,9 @@ export function plant(
   const kind = forceKind || SPECIES_KEYS[Math.floor(rnd(7) * SPECIES_KEYS.length) % SPECIES_KEYS.length];
   const sp = SPECIES[kind];
   const scale = s * sp.h;
+  g.userData.genericPlantBlock = { kind: 'pottedPlant', species: kind, scale };
 
-  contact(g, 0, 0.012, 0, sp.potR * 2.6 * s, sp.potR * 2.6 * s, 0.52, M.textures.shadowTex);
+  contact(g, 0, 0.012, 0, sp.potR * 2.7 * s, sp.potR * 2.7 * s, 0.52, M.textures.shadowTex);
 
   const pm = getPotMat(sp.pot);
   const potR = sp.potR * s;
@@ -309,57 +374,62 @@ export function plant(
   potMesh.receiveShadow = true;
   g.add(potMesh);
 
-  cylAt(g, potR * 0.88, potR * 0.88, 0.02, 0, potH * 0.89, 0, SOIL_MAT, false, false, 16);
+  // Dark soil mound + natural pebble collar
+  const soilMound = new THREE.Mesh(new THREE.SphereGeometry(potR * 0.87, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), SOIL_MAT);
+  soilMound.scale.set(1, 0.22, 1);
+  soilMound.position.set(0, potH * 0.87, 0);
+  g.add(soilMound);
+
   const pebbleRing = new THREE.Mesh(new THREE.TorusGeometry(potR * 0.72, potR * 0.08, 6, 16), PEBBLE_MAT);
   pebbleRing.rotation.x = Math.PI / 2;
-  pebbleRing.scale.set(1, 1, 0.45);
+  pebbleRing.scale.set(1, 1, 0.48);
   pebbleRing.position.set(0, potH * 0.905, 0);
   g.add(pebbleRing);
 
   const leafMats = sp.greens.map((c) => getLeafMat(sp.leaf, c));
-  const stems: Array<{ sg: THREE.Group; hh: number; a: number; i: number; len: number }> = [];
+  const golden = 2.39996323; // golden angle phyllotaxis spiral
   const n = sp.n;
+
   for (let i = 0; i < n; i++) {
-    const a = rnd(i + 21) * Math.PI * 2;
-    const rad = (0.04 + rnd(i + 31) * sp.spread * 0.62) * scale;
-    const hh = (0.34 + rnd(i + 41) * 0.72) * scale;
+    const t = i / Math.max(1, n - 1);
+    const a = i * golden + rnd(i + 21) * 0.35;
+    const rad = (0.03 + Math.sqrt(t) * sp.spread * 0.56) * scale;
+    const hh = (0.36 + (1 - t * 0.35) * 0.56 + rnd(i + 41) * 0.26) * scale;
     const sg = new THREE.Group();
     sg.position.set(Math.cos(a) * rad, potH * 0.88, Math.sin(a) * rad);
-    sg.rotation.z = (rnd(i + 51) - 0.5) * 0.55;
-    sg.rotation.x = (rnd(i + 61) - 0.5) * 0.55;
-    const stemLen = kind === 'grass' || kind === 'sanse' ? hh * 1.05 : hh * 0.86;
-    cylAt(sg, 0.011 * scale, 0.006 * scale, stemLen, 0, stemLen / 2, 0, STEM_MAT, false, false, 7);
+    const leanOut = kind === 'sanse' ? 0.14 : 0.25 + t * 0.48;
+    sg.rotation.y = -a + Math.PI / 2;
+    sg.rotation.x = leanOut;
     g.add(sg);
-    stems.push({ sg, hh, a, i, len: stemLen });
+
+    const stemLen = kind === 'grass' || kind === 'sanse' ? hh * 0.78 : hh * 0.76;
+    if (kind !== 'sanse') {
+      cylAt(sg, 0.011 * scale, 0.005 * scale, stemLen, 0, stemLen * 0.5, 0, STEM_MAT, false, false, 6);
+    }
+
+    const per = kind === 'grass' || kind === 'sanse' ? 1 : 2;
+    for (let k = 0; k < per; k++) {
+      const mat = leafMats[(i + k) % leafMats.length];
+      const card = new THREE.Mesh(ARCH_LEAF_GEO, mat);
+      const lw = (0.32 + rnd(i * 7 + k + 11) * 0.22) * scale * (k === 1 ? 0.78 : 1);
+      const lh = lw * sp.leafScale[1];
+      card.scale.set(lw, lh, lw * 0.85);
+      const dropY = k === 0 ? stemLen - lh * 0.18 : stemLen * 0.58;
+      card.position.set(k === 1 ? (i % 2 ? 0.05 : -0.05) * scale : 0, dropY, lh * 0.14);
+      const pitch = kind === 'grass' ? -0.35 : kind === 'sanse' ? -0.06 : -0.78 - t * 0.28;
+      card.rotation.set(pitch, (k === 1 ? (i % 2 ? 0.5 : -0.5) : 0) + (rnd(i + k + 81) - 0.5) * 0.25, (rnd(i + k + 91) - 0.5) * 0.24);
+      sg.add(card);
+    }
   }
 
-  stems.forEach((st) => {
-    const per = kind === 'grass' || kind === 'fern' || kind === 'sanse' ? 1 : 2;
-    for (let k = 0; k < per; k++) {
-      const mat = leafMats[(st.i + k) % leafMats.length];
-      const card = new THREE.Mesh(LEAF_CARD_GEO, mat);
-      const lw = (0.34 + rnd(st.i * 7 + k + 11) * 0.26) * scale;
-      const lh = lw * sp.leafScale[1];
-      card.scale.set(lw, lh, 1);
-      const out = kind === 'grass' || kind === 'sanse' ? 0.01 * scale : (0.03 + rnd(st.i + k + 101) * 0.05) * scale;
-      card.position.set(Math.cos(st.a) * out, st.len - (k ? 0.07 * scale : 0) - lh * 0.28, Math.sin(st.a) * out);
-      const tilt = kind === 'grass' ? 0.22 : kind === 'sanse' ? 0.1 : 0.62;
-      card.rotation.set(-tilt + (rnd(st.i + k + 71) - 0.5) * 0.3, -st.a + Math.PI / 2 + (rnd(st.i + k + 81) - 0.5) * 0.5, (rnd(st.i + k + 91) - 0.5) * 0.5);
-      st.sg.add(card);
-    }
-  });
-
-  const crownN = kind === 'grass' ? 0 : kind === 'sanse' ? 3 : 4;
-  for (let i = 0; i < crownN; i++) {
-    const a = rnd(i + 121) * Math.PI * 2;
-    const rad = (0.08 + rnd(i + 131) * sp.spread * 0.5) * scale;
-    const card = new THREE.Mesh(LEAF_CARD_GEO, leafMats[(i + 1) % leafMats.length]);
-    const lw = (0.36 + rnd(i + 141) * 0.3) * scale;
-    const lh = lw * sp.leafScale[1];
-    card.scale.set(lw, lh, 1);
-    card.position.set(Math.cos(a) * rad, potH + (0.3 + rnd(i + 151) * 0.42) * scale, Math.sin(a) * rad);
-    card.rotation.set(-0.5 + (rnd(i + 161) - 0.5) * 0.6, -a + Math.PI / 2, (rnd(i + 171) - 0.5) * 0.5);
-    g.add(card);
+  // Olive / Ficus upper lush 3D shrub crown so canopy plants look rich from all eye angles
+  if (kind === 'olive' || kind === 'ficus') {
+    const sprayMat = getLeafMat('shrubCluster', sp.greens[1]);
+    const crown = new THREE.Mesh(CROSSED_SPRAY_GEO, sprayMat);
+    const cr = sp.spread * 1.45 * scale;
+    crown.scale.set(cr, cr * 0.9, cr);
+    crown.position.set(0, potH + 0.68 * scale, 0);
+    g.add(crown);
   }
 
   parent.add(g);
@@ -369,34 +439,19 @@ export function plant(
 let treeCanopyMats: THREE.MeshStandardMaterial[] | null = null;
 function getTreeCanopyMats(): THREE.MeshStandardMaterial[] {
   if (treeCanopyMats) return treeCanopyMats;
-  const cl = makeCanvasTex('treeleaf', 128, 128, (g, W, H) => {
-    g.clearRect(0, 0, W, H);
-    for (let i = 0; i < 80; i++) {
-      const x = Math.random() * W;
-      const y = Math.random() * H;
-      const r = 6 + Math.random() * 12;
-      g.save();
-      g.translate(x, y);
-      g.rotate(Math.random() * 7);
-      g.fillStyle = Math.random() < 0.45 ? 'rgba(116,170,80,0.96)' : 'rgba(72,134,58,0.96)';
-      g.beginPath();
-      g.ellipse(0, 0, r, r * 0.42, 0, 0, Math.PI * 2);
-      g.fill();
-      g.restore();
-    }
-  });
+  const tex = leafTex('treeCanopy');
   const mk = (c: number) =>
     new THREE.MeshStandardMaterial({
-      map: cl,
+      map: tex,
       color: c,
       transparent: true,
-      alphaTest: 0.38,
+      alphaTest: 0.34,
       side: THREE.DoubleSide,
-      roughness: 0.88,
+      roughness: 0.84,
       metalness: 0,
-      envMapIntensity: 0.14,
+      envMapIntensity: 0.18,
     });
-  treeCanopyMats = [mk(0xffffff), mk(0xe6eed6), mk(0xcfdcB4), mk(0xf0f4e2)];
+  treeCanopyMats = [mk(0xffffff), mk(0xe9f2d5), mk(0xd4e2ba), mk(0xbccf9c)];
   return treeCanopyMats;
 }
 
@@ -413,25 +468,38 @@ export function tree(
   const rnd = (n: number) => (((Math.sin(seed * 12.9898 + n * 78.233) * 43758.5453) % 1) + 1) % 1;
   const g = new THREE.Group();
   g.position.set(x, y, z);
-  const trunkR = h * 0.04;
+  g.userData.organicTree = { canopyR, height: h };
+  const trunkR = h * 0.042;
   const canopyMats = getTreeCanopyMats();
-  contact(g, 0, 0.02, 0, canopyR * 0.9, canopyR * 0.9, 0.48, M.textures.shadowTex);
+  contact(g, 0, 0.02, 0, canopyR * 1.25, canopyR * 1.25, 0.5, M.textures.shadowTex);
 
-  // Organic curved trunk via TubeGeometry + root buttress flare
+  // Flared root buttresses gripping ground naturally
+  for (let r = 0; r < 4; r++) {
+    const ra = (r / 4) * Math.PI * 2 + rnd(r + 1) * 0.6;
+    const rootCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(Math.cos(ra) * trunkR * 0.5, h * 0.11, Math.sin(ra) * trunkR * 0.5),
+      new THREE.Vector3(Math.cos(ra) * trunkR * 1.5, h * 0.03, Math.sin(ra) * trunkR * 1.5),
+      new THREE.Vector3(Math.cos(ra) * trunkR * 2.4, -0.02, Math.sin(ra) * trunkR * 2.4),
+    ]);
+    const rootMesh = new THREE.Mesh(new THREE.TubeGeometry(rootCurve, 5, trunkR * 0.42, 6, false), M.barkDark);
+    rootMesh.castShadow = true;
+    g.add(rootMesh);
+  }
+
+  // Organic curved tapered trunk via TubeGeometry
   const leanX = (rnd(3) - 0.5) * 0.28;
   const leanZ = (rnd(4) - 0.5) * 0.24;
   const trunkCurve = new THREE.CatmullRomCurve3([
     new THREE.Vector3(0, 0, 0),
-    new THREE.Vector3(leanX * h * 0.08, h * 0.22, leanZ * h * 0.08),
-    new THREE.Vector3(leanX * h * 0.2, h * 0.54, leanZ * h * 0.18),
+    new THREE.Vector3(leanX * h * 0.08, h * 0.24, leanZ * h * 0.08),
+    new THREE.Vector3(leanX * h * 0.2, h * 0.56, leanZ * h * 0.18),
   ]);
   const trunkGeo = new THREE.TubeGeometry(trunkCurve, 10, trunkR, 8, false);
-  // Taper the trunk vertices organically upward
   const pos = trunkGeo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     const py = pos.getY(i);
-    const t = Math.max(0, Math.min(1, py / (h * 0.54)));
-    const scaleR = 1.45 - t * 0.85;
+    const t = Math.max(0, Math.min(1, py / (h * 0.56)));
+    const scaleR = 1.55 - t * 0.92;
     const center = trunkCurve.getPointAt(t);
     pos.setX(i, center.x + (pos.getX(i) - center.x) * scaleR);
     pos.setZ(i, center.z + (pos.getZ(i) - center.z) * scaleR);
@@ -442,16 +510,16 @@ export function tree(
   trunkMesh.receiveShadow = true;
   g.add(trunkMesh);
 
-  const forkOrigin = trunkCurve.getPointAt(0.92);
-  const limbs = 4 + Math.floor(rnd(9) * 3);
+  const forkOrigin = trunkCurve.getPointAt(0.88);
+  const limbs = 5 + Math.floor(rnd(9) * 2);
   for (let i = 0; i < limbs; i++) {
-    const a = (i / limbs) * Math.PI * 2 + rnd(i + 11) * 0.7;
-    const spread = canopyR * (0.55 + rnd(i + 31) * 0.45);
+    const a = (i / limbs) * Math.PI * 2 + rnd(i + 11) * 0.55;
+    const spread = canopyR * (0.62 + rnd(i + 31) * 0.42);
     const tipY = h * (0.76 + rnd(i + 41) * 0.2);
     const mid = new THREE.Vector3(
-      forkOrigin.x + Math.cos(a) * spread * 0.52,
+      forkOrigin.x + Math.cos(a) * spread * 0.54,
       forkOrigin.y + (tipY - forkOrigin.y) * 0.62,
-      forkOrigin.z + Math.sin(a) * spread * 0.52
+      forkOrigin.z + Math.sin(a) * spread * 0.54
     );
     const tip = new THREE.Vector3(
       forkOrigin.x + Math.cos(a) * spread,
@@ -459,33 +527,48 @@ export function tree(
       forkOrigin.z + Math.sin(a) * spread
     );
     const lCurve = new THREE.CatmullRomCurve3([forkOrigin.clone(), mid, tip]);
-    const limbMesh = new THREE.Mesh(new THREE.TubeGeometry(lCurve, 6, trunkR * 0.36, 6, false), M.barkDark);
+    const limbMesh = new THREE.Mesh(new THREE.TubeGeometry(lCurve, 6, trunkR * 0.34, 6, false), M.barkDark);
     limbMesh.castShadow = true;
     g.add(limbMesh);
 
-    // Multi-angle foliage clusters along the limb and tip so the crown has full 3D volume
-    for (let f = 0; f < 3; f++) {
-      const pt = f === 0 ? mid : tip;
-      const cm = new THREE.Mesh(LEAF_CARD_GEO, canopyMats[(i + f) % canopyMats.length]);
-      const cw = canopyR * (0.68 + rnd(i * 11 + f) * 0.44);
-      cm.scale.set(cw, cw * 0.82, 1);
+    // Secondary forked sub-branch for organic feathery silhouette (Reference Image 2)
+    const subAngle = a + (i % 2 ? 0.45 : -0.45);
+    const subTip = new THREE.Vector3(
+      mid.x + Math.cos(subAngle) * spread * 0.58,
+      tipY + canopyR * (0.14 + rnd(i + 77) * 0.16),
+      mid.z + Math.sin(subAngle) * spread * 0.58
+    );
+    const sCurve = new THREE.CatmullRomCurve3([mid, subTip]);
+    g.add(new THREE.Mesh(new THREE.TubeGeometry(sCurve, 4, trunkR * 0.18, 5, false), M.barkDark));
+
+    // Volumetric 3D crossed foliage clusters along mid, primary tip & secondary sub-tip
+    const anchors = [mid, tip, subTip];
+    for (let f = 0; f < anchors.length; f++) {
+      const pt = anchors[f];
+      const matIdx = f === 0 ? 3 : (i + f) % 3; // darker underside/interior, sunlit outer clusters
+      const cm = new THREE.Mesh(CROSSED_SPRAY_GEO, canopyMats[matIdx]);
+      const cw = canopyR * (0.86 + rnd(i * 11 + f) * 0.46);
+      cm.scale.set(cw, cw * 0.85, cw);
       cm.position.set(
-        pt.x + (rnd(i * 7 + f) - 0.5) * canopyR * 0.28,
-        pt.y + (f === 2 ? canopyR * 0.2 : 0),
-        pt.z + (rnd(i * 13 + f) - 0.5) * canopyR * 0.28
+        pt.x + (rnd(i * 7 + f) - 0.5) * canopyR * 0.24,
+        pt.y + (f === 2 ? canopyR * 0.12 : 0),
+        pt.z + (rnd(i * 13 + f) - 0.5) * canopyR * 0.24
       );
-      cm.rotation.set(-0.25 - f * 0.22, a + f * 1.1, (rnd(i + f) - 0.5) * 0.35);
+      cm.rotation.set((rnd(i + f + 5) - 0.5) * 0.35, a + f * 1.05, (rnd(i + f + 9) - 0.5) * 0.35);
+      cm.castShadow = true;
       g.add(cm);
     }
   }
 
-  for (let i = 0; i < 5; i++) {
+  // Crown apex clusters closing the tree top cleanly from aerial/overview angles
+  for (let i = 0; i < 4; i++) {
     const a = rnd(i + 111) * Math.PI * 2;
-    const cm = new THREE.Mesh(LEAF_CARD_GEO, canopyMats[(i + 2) % canopyMats.length]);
-    const cw = canopyR * (0.76 + rnd(i + 121) * 0.4);
-    cm.scale.set(cw, cw * 0.82, 1);
-    cm.position.set(Math.cos(a) * canopyR * 0.22, h * 0.84 + rnd(i + 131) * h * 0.14, Math.sin(a) * canopyR * 0.22);
-    cm.rotation.set(-0.22, a + Math.PI / 2, (rnd(i + 141) - 0.5) * 0.4);
+    const cm = new THREE.Mesh(CROSSED_SPRAY_GEO, canopyMats[i % 2]);
+    const cw = canopyR * (0.94 + rnd(i + 121) * 0.38);
+    cm.scale.set(cw, cw * 0.84, cw);
+    cm.position.set(Math.cos(a) * canopyR * 0.26, h * 0.89 + rnd(i + 131) * h * 0.11, Math.sin(a) * canopyR * 0.26);
+    cm.rotation.y = a + Math.PI * 0.4;
+    cm.castShadow = true;
     g.add(cm);
   }
 

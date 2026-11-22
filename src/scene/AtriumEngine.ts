@@ -23,7 +23,8 @@ import {
   getBuildingRoofView,
   type BuildingId,
 } from './districtData';
-import { createMaterials } from './materials';
+import { createMaterials, type MaterialLibrary } from './materials';
+import { synthesizeProceduralFoliage, type ProceduralFoliageResult } from './organicFoliage';
 import { createScreenRegistry, updateAllScreens, type ScreenRegistry } from './screens';
 import { AtriumSimulation } from './simulation';
 import { AmbientAudioManager } from './audio';
@@ -52,6 +53,7 @@ export class AtriumEngine {
   private readonly controls: OrbitControls;
   private readonly screenReg: ScreenRegistry;
   private readonly arch: ArchitectureHandles;
+  private readonly proceduralFoliage: ProceduralFoliageResult;
   private readonly sim: AtriumSimulation;
   private readonly weather: WeatherSystem;
   private readonly asphaltMat: THREE.MeshStandardMaterial;
@@ -311,6 +313,7 @@ export class AtriumEngine {
     this.asphaltMat = M.asphalt;
     this.screenReg = createScreenRegistry();
     this.arch = buildSceneArchitecture(this.scene, M, this.screenReg);
+    this.proceduralFoliage = this.runProceduralFoliageScript(M);
     this.weather = new WeatherSystem(this.scene, this.arch.levelGroups);
 
     // Build dynamic office simulation (staff, district NPCs, Zuri, vehicles, walk controls)
@@ -404,6 +407,10 @@ export class AtriumEngine {
       this.loop(performance.now());
     });
     (window as unknown as { __atrium?: AtriumEngine }).__atrium = this;
+  }
+
+  private runProceduralFoliageScript(M: MaterialLibrary): ProceduralFoliageResult {
+    return synthesizeProceduralFoliage(this.scene, M);
   }
 
   private markInteraction() {
@@ -1240,6 +1247,24 @@ export class AtriumEngine {
       this.sim.setWeatherTimeMultiplier(this.weather.getTimeMultiplier());
       this.updateTimeOfDayLighting(this.sim.simMin, wState);
 
+      // Organic foliage breeze modulated by current weather atmosphere
+      const windMul =
+        wState.activeWeather === 'storm'
+          ? 2.4
+          : wState.activeWeather === 'rain'
+            ? 1.75
+            : wState.activeWeather === 'overcast'
+              ? 1.35
+              : 1.0;
+      const windSpeed = wState.activeWeather === 'storm' ? 1.55 : 1.0;
+      const tWind = this.elapsed * windSpeed;
+      for (const item of this.proceduralFoliage.windItems) {
+        const w = Math.sin(tWind * item.freq + item.phase);
+        const w2 = Math.cos(tWind * item.freq * 0.83 + item.phase * 1.27);
+        item.obj.rotation.x = item.baseRotX + w * item.amp * windMul;
+        item.obj.rotation.z = item.baseRotZ + w2 * item.amp * 0.78 * windMul;
+      }
+
       // Staff, lifts, traffic, tour & first-person walk
       if (this.selectedActor) {
         this._lastActorPos.copy(this.selectedActor.g.position);
@@ -1691,6 +1716,8 @@ export class AtriumEngine {
     (this.selectionRing.material as THREE.Material).dispose();
     this.controls.dispose();
     clearArchitecturalFormsCache();
+    for (const g of this.proceduralFoliage.geometries) g.dispose();
+    for (const mat of this.proceduralFoliage.materials) mat.dispose();
 
     const geometries = new Set<THREE.BufferGeometry>();
     const materials = new Set<THREE.Material>();

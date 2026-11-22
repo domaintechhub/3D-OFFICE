@@ -3,6 +3,7 @@ import type { BuildingId, DistrictBuildingSpec } from './districtData';
 import { DISTRICT_BUILDINGS } from './districtData';
 import type { MonitorPickTarget, OfficeChairHandle } from './architecture';
 import {
+  buildOrganicShrub,
   buildPlanterTrough,
   buildTropicalPalm,
   buildVinePergolaCanopy,
@@ -350,16 +351,84 @@ export function buildDistrictBuildings(
     side: THREE.DoubleSide,
   });
 
-  const bankStoneMat = std({ color: 0xc9c3b8, roughness: 0.84 });
+  const mkTileTex = (t: THREE.Texture, rx: number, ry: number) => {
+    const c = t.clone();
+    c.needsUpdate = true;
+    c.wrapS = c.wrapT = THREE.RepeatWrapping;
+    c.repeat.set(rx, ry);
+    return c;
+  };
+
+  const bankStoneMat = std({
+    map: mkTileTex(M.textures.concreteTex, 3, 2),
+    normalMap: mkTileTex(M.textures.concreteNormal, 3, 2),
+    normalScale: new THREE.Vector2(0.45, 0.45),
+    color: 0xc9c3b8,
+    roughness: 0.84,
+  });
   const cryptoWallMat = std({ color: 0x1b232e, roughness: 0.52, metalness: 0.32 });
-  const medicalWallMat = std({ color: 0xe2ece9, roughness: 0.62 });
+  const medicalWallMat = std({
+    normalMap: M.textures.plasterNormal,
+    normalScale: new THREE.Vector2(0.32, 0.32),
+    color: 0xe2ece9,
+    roughness: 0.62,
+  });
   const logisticsWallMat = std({ color: 0x2d3744, roughness: 0.58, metalness: 0.28 });
-  const woodCedarMat = std({ color: 0x8b5836, roughness: 0.76 });
-  const terracottaMat = std({ color: 0x9b4d38, roughness: 0.78 });
+  const woodCedarMat = std({
+    map: mkTileTex(M.textures.woodTex, 3, 2),
+    normalMap: mkTileTex(M.textures.woodNormal, 3, 2),
+    normalScale: new THREE.Vector2(0.48, 0.48),
+    color: 0xa46c44,
+    roughness: 0.72,
+  });
+  const terracottaMat = std({
+    normalMap: M.textures.plasterNormal,
+    normalScale: new THREE.Vector2(0.42, 0.42),
+    color: 0x9b4d38,
+    roughness: 0.78,
+  });
   const frameDarkMat = std({ color: 0x2a333e, roughness: 0.44, metalness: 0.48 });
-  const floorWarmOak = std({ color: 0x946b48, roughness: 0.62 });
-  const floorTerrazzo = std({ color: 0xd8dce0, roughness: 0.52 });
-  const floorSlate = std({ color: 0x2c3440, roughness: 0.56 });
+
+  const floorWarmOak = std({
+    map: mkTileTex(M.textures.oakFloorTex, 4, 3),
+    normalMap: mkTileTex(M.textures.oakFloorNormal, 4, 3),
+    normalScale: new THREE.Vector2(0.55, 0.55),
+    roughnessMap: mkTileTex(M.textures.roughTex, 4, 3),
+    color: 0xdcc4a6,
+    roughness: 0.54,
+    metalness: 0.0,
+    envMapIntensity: 0.24,
+  });
+  const floorTerrazzo = std({
+    map: mkTileTex(M.textures.terrazzoTex, 4, 3),
+    normalMap: mkTileTex(M.textures.terrazzoNormal, 4, 3),
+    normalScale: new THREE.Vector2(0.42, 0.42),
+    roughnessMap: mkTileTex(M.textures.terrazzoRoughness, 4, 3),
+    color: 0xf4f1ea,
+    roughness: 0.52,
+    metalness: 0.02,
+    envMapIntensity: 0.3,
+  });
+  const floorSlate = std({
+    map: mkTileTex(M.textures.slateFloorTex, 4, 3),
+    normalMap: mkTileTex(M.textures.slateFloorNormal, 4, 3),
+    normalScale: new THREE.Vector2(0.58, 0.58),
+    roughnessMap: mkTileTex(M.textures.roughTex, 4, 3),
+    color: 0x9aa4b2,
+    roughness: 0.56,
+    metalness: 0.05,
+    envMapIntensity: 0.26,
+  });
+  const exteriorCobbleApronMat = std({
+    map: mkTileTex(M.textures.paveTex, 6, 4),
+    normalMap: mkTileTex(M.textures.paveNormal, 6, 4),
+    normalScale: new THREE.Vector2(0.75, 0.75),
+    roughnessMap: mkTileTex(M.textures.paveRoughness, 6, 4),
+    color: 0xd0d4da,
+    roughness: 0.84,
+    metalness: 0.02,
+    envMapIntensity: 0.24,
+  });
 
   const globeTex = makeGlobeTexture();
   globeTex.colorSpace = THREE.SRGBColorSpace;
@@ -1774,16 +1843,31 @@ export function buildDistrictBuildings(
       pickMeshes.push(baseDeck, shedTop);
     }
 
-    // Exterior paved apron & soft contact shadow
-    const pl = new THREE.Mesh(
-      new THREE.PlaneGeometry(spec.w + 6, spec.d + 6),
-      std({ color: 0x8b8f94, roughness: 0.9 })
+    // Exterior beveled interlocking cobblestone forecourt apron + organic corner shrubs
+    const apronPad = new THREE.Mesh(
+      getRoundedSlabGeo(spec.w + 5.6, spec.d + 5.6, 2.2, 0.04, 0.018),
+      exteriorCobbleApronMat
     );
-    pl.rotation.x = -Math.PI / 2;
-    pl.position.set(spec.cx, spec.groundY - 0.004, spec.cz);
-    pl.receiveShadow = true;
-    cityGroup.add(pl);
-    contact(cityGroup, spec.cx, spec.groundY, spec.cz, spec.w + 9, spec.d + 9, 0.45, M.textures.shadowTex);
+    apronPad.position.set(spec.cx, spec.groundY - 0.012, spec.cz);
+    apronPad.receiveShadow = true;
+    cityGroup.add(apronPad);
+    contact(cityGroup, spec.cx, spec.groundY - 0.002, spec.cz, spec.w + 9, spec.d + 9, 0.42, M.textures.shadowTex);
+
+    // Organic foundation shrubs softening building corners without impinging on door walkways
+    [-1, 1].forEach((side, si) => {
+      buildOrganicShrub(
+        cityGroup,
+        spec.cx + side * (spec.w * 0.5 + 0.65),
+        spec.groundY,
+        spec.cz + dirZ * (spec.d * 0.5 - 0.9),
+        0.58,
+        0.74,
+        spec.cx * 3 + si * 19,
+        M,
+        archMats,
+        (spec.cx + si) % 2 === 0
+      );
+    });
 
     handles.set(spec.id, {
       spec,

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { getMaxAnisotropy } from './textures';
 
 export type CarStyle = 'sedan' | 'suv' | 'hatch' | 'van';
@@ -131,15 +132,15 @@ const STYLE_SPECS: Record<CarStyle, StyleSpec> = {
     rideH: 0.27,
     hoodY: 0.97,
     beltY: 1.03,
-    roofY: 1.65,
+    roofY: 1.56,
     trunkY: 1.04,
     noseY: 0.81,
     rearDeckY: 0.99,
     windshieldBotZ: 0.92,
-    windshieldTopZ: 0.42,
-    rearGlassTopZ: -1.34,
-    rearGlassBotZ: -1.84,
-    cabinTaper: 0.15,
+    windshieldTopZ: 0.38,
+    rearGlassTopZ: -1.06,
+    rearGlassBotZ: -1.72,
+    cabinTaper: 0.17,
     mirrorZ: 0.68,
     mirrorY: 1.07,
     grilleY: 0.54,
@@ -629,12 +630,27 @@ interface StyleGeoCache {
   tyre: THREE.BufferGeometry;
   rimBarrel: THREE.BufferGeometry;
   rimFace: THREE.BufferGeometry;
+  spokeStar: THREE.BufferGeometry;
   rotor: THREE.BufferGeometry;
   caliper: THREE.BufferGeometry;
   wheelLiner: THREE.BufferGeometry;
   fenderArch: THREE.BufferGeometry;
   contactShadow: THREE.BufferGeometry;
   headPool: THREE.BufferGeometry;
+  grilleFrame: THREE.BufferGeometry;
+  grilleCore: THREE.BufferGeometry;
+  airDam: THREE.BufferGeometry;
+  headlampHousing: THREE.BufferGeometry;
+  headlampGlass: THREE.BufferGeometry;
+  drlBlade: THREE.BufferGeometry;
+  taillampHousing: THREE.BufferGeometry;
+  taillampBlade: THREE.BufferGeometry;
+  tailBar: THREE.BufferGeometry;
+  diffuser: THREE.BufferGeometry;
+  sunroof: THREE.BufferGeometry;
+  sharkFin: THREE.BufferGeometry;
+  mirrorStalk: THREE.BufferGeometry;
+  doorHandle: THREE.BufferGeometry;
 }
 
 const STYLE_GEO_CACHE = new Map<CarStyle, StyleGeoCache>();
@@ -731,12 +747,12 @@ function buildCreasedBodyGeometry(rings: Array<{ z: number; pts: Array<[number, 
     for (let r = 0; r < nRings; r++) {
       const ring = rings[r];
       const tNorm = r / Math.max(1, nRings - 1);
-      const frontSweep = smoothstep(0.84, 1.0, tNorm);
-      const rearSweep = 1.0 - smoothstep(0.0, 0.14, tNorm);
+      const frontSweep = smoothstep(0.8, 1.0, tNorm);
+      const rearSweep = 1.0 - smoothstep(0.0, 0.16, tNorm);
       for (let j = 0; j < stride; j++) {
         const [x, y] = ring.pts[ptOrder[j]];
-        const xSq = Math.min(1, Math.abs(x) / 0.96);
-        const zCurved = ring.z - frontSweep * 0.13 * xSq * xSq + rearSweep * 0.10 * xSq * xSq;
+        const xSq = Math.min(1, Math.abs(x) / 0.94);
+        const zCurved = ring.z - frontSweep * 0.14 * xSq * xSq + rearSweep * 0.11 * xSq * xSq;
         positions.push(x, y, zCurved);
         uvs.push(j / Math.max(1, stride - 1), tNorm);
       }
@@ -755,57 +771,76 @@ function buildCreasedBodyGeometry(rings: Array<{ z: number; pts: Array<[number, 
     }
   };
 
-  // Strip A: Right flank (underbody edge -> rocker/arch -> mid door -> right beltline shoulder)
-  addStrip([1, 2, 3, 4]);
-  // Strip B: Upper hood, beltline deck & trunk top (right shoulder -> center -> left shoulder)
-  addStrip([4, 5, 6, 7, 8]);
-  // Strip C: Left flank (left beltline shoulder -> mid door -> rocker/arch -> underbody edge)
-  addStrip([8, 9, 10, 11]);
-  // Strip D: Underbody floorpan
-  addStrip([11, 0, 1]);
+  // 16-pt sculpted ring indices:
+  // 0:botCenter, 1:underR, 2:sillR, 3:rockerR, 4:doorMidR, 5:haunchR, 6:shoulderR, 7:hoodR,
+  // 8:topCenter, 9:hoodL, 10:shoulderL, 11:haunchL, 12:doorMidL, 13:rockerL, 14:sillL, 15:underL
+  addStrip([1, 2, 3, 4, 5, 6]); // Right sculpted flank
+  addStrip([6, 7, 8, 9, 10]); // Upper hood, beltline deck & trunk dome
+  addStrip([10, 11, 12, 13, 14, 15]); // Left sculpted flank
+  addStrip([15, 0, 1]); // Underbody floorpan
 
-  // Isolated Rear Bumper / Tailgate cap (ring 0)
-  const rearRing = rings[0];
-  const nPts = rearRing.pts.length;
-  const rearRimStart = positions.length / 3;
-  let rcx = 0;
-  let rcy = 0;
-  for (let p = 0; p < nPts; p++) {
-    const [x, y] = rearRing.pts[p];
-    const xSq = Math.min(1, Math.abs(x) / 0.96);
-    positions.push(x, y, rearRing.z + 0.10 * xSq * xSq);
-    uvs.push(0.5 + x * 0.4, y * 0.5);
-    rcx += x;
-    rcy += y;
-  }
-  const rearCenterIdx = positions.length / 3;
-  positions.push(rcx / nPts, rcy / nPts, rearRing.z);
-  uvs.push(0.5, 0.5);
-  for (let p = 0; p < nPts; p++) {
-    const pNext = (p + 1) % nPts;
-    indices.push(rearCenterIdx, rearRimStart + pNext, rearRimStart + p);
-  }
+  // Contoured multi-step spherical bumper wraparound dome at rear & front (eliminates flat end rectangles!)
+  const addContouredBumperCap = (ring: { z: number; pts: Array<[number, number]> }, dir: -1 | 1) => {
+    const nPts = ring.pts.length;
+    let cx = 0;
+    let cy = 0;
+    for (let p = 0; p < nPts; p++) {
+      cx += ring.pts[p][0];
+      cy += ring.pts[p][1];
+    }
+    cx /= nPts;
+    cy /= nPts;
 
-  // Isolated Front Bumper Fascia cap (ring nRings - 1)
-  const frontRing = rings[nRings - 1];
-  const frontRimStart = positions.length / 3;
-  let fcx = 0;
-  let fcy = 0;
-  for (let p = 0; p < nPts; p++) {
-    const [x, y] = frontRing.pts[p];
-    const xSq = Math.min(1, Math.abs(x) / 0.96);
-    positions.push(x, y, frontRing.z - 0.13 * xSq * xSq);
-    uvs.push(0.5 + x * 0.4, y * 0.5);
-    fcx += x;
-    fcy += y;
-  }
-  const frontCenterIdx = positions.length / 3;
-  positions.push(fcx / nPts, fcy / nPts, frontRing.z);
-  uvs.push(0.5, 0.5);
-  for (let p = 0; p < nPts; p++) {
-    const pNext = (p + 1) % nPts;
-    indices.push(frontCenterIdx, frontRimStart + p, frontRimStart + pNext);
-  }
+    const domeSteps = [
+      { shrink: 1.0, zPush: 0.0, sweepScale: 1.0 },
+      { shrink: 0.84, zPush: 0.042, sweepScale: 0.68 },
+      { shrink: 0.56, zPush: 0.078, sweepScale: 0.34 },
+      { shrink: 0.24, zPush: 0.098, sweepScale: 0.1 },
+    ];
+    const sweepAmp = dir > 0 ? 0.14 : 0.11;
+    const baseVert = positions.length / 3;
+
+    for (let s = 0; s < domeSteps.length; s++) {
+      const st = domeSteps[s];
+      for (let p = 0; p < nPts; p++) {
+        const [x, y] = ring.pts[p];
+        const xSq = Math.min(1, Math.abs(x) / 0.94);
+        const px = cx + (x - cx) * st.shrink;
+        const py = cy + (y - cy) * (0.28 + 0.72 * st.shrink);
+        const pz = ring.z + dir * st.zPush - dir * sweepAmp * xSq * xSq * st.sweepScale;
+        positions.push(px, py, pz);
+        uvs.push(0.5 + px * 0.4, py * 0.5);
+      }
+    }
+
+    for (let s = 0; s < domeSteps.length - 1; s++) {
+      const aBase = baseVert + s * nPts;
+      const bBase = baseVert + (s + 1) * nPts;
+      for (let p = 0; p < nPts; p++) {
+        const pNext = (p + 1) % nPts;
+        if (dir > 0) {
+          indices.push(aBase + p, aBase + pNext, bBase + p);
+          indices.push(aBase + pNext, bBase + pNext, bBase + p);
+        } else {
+          indices.push(aBase + pNext, aBase + p, bBase + p);
+          indices.push(bBase + pNext, aBase + pNext, bBase + p);
+        }
+      }
+    }
+
+    const apexIdx = positions.length / 3;
+    positions.push(cx, cy + 0.02, ring.z + dir * 0.105);
+    uvs.push(0.5, 0.5);
+    const tipBase = baseVert + (domeSteps.length - 1) * nPts;
+    for (let p = 0; p < nPts; p++) {
+      const pNext = (p + 1) % nPts;
+      if (dir > 0) indices.push(apexIdx, tipBase + p, tipBase + pNext);
+      else indices.push(apexIdx, tipBase + pNext, tipBase + p);
+    }
+  };
+
+  addContouredBumperCap(rings[0], -1);
+  addContouredBumperCap(rings[nRings - 1], 1);
 
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -816,65 +851,65 @@ function buildCreasedBodyGeometry(rings: Array<{ z: number; pts: Array<[number, 
 }
 
 function buildBodyHullGeometry(spec: StyleSpec, style: CarStyle): THREE.BufferGeometry {
-  const zBack = -spec.halfLenRear;
-  const zFront = spec.halfLenFront;
+  // Inset loft end rings slightly so contoured dome caps reach exact spec.halfLenRear / halfLenFront
+  const zBack = -spec.halfLenRear + 0.09;
+  const zFront = spec.halfLenFront - 0.09;
   const archCutR = spec.wheelR + 0.088;
   const archApexY = 2 * spec.wheelR + 0.085;
 
-  // Uniform Z stations eliminate triangle-aspect normal banding across hood & doors
-  const zSteps = 56;
+  const zSteps = 60;
   const rings: Array<{ z: number; pts: Array<[number, number]> }> = [];
 
   for (let i = 0; i <= zSteps; i++) {
     const tNorm = i / zSteps; // 0 = rear, 1 = front
     const z = zBack + (zFront - zBack) * tNorm;
 
-    // Smooth plan-view taper at nose & tail corners
-    const frontTaper = smoothstep(0.74, 1.0, tNorm);
-    const rearTaper = style === 'van' ? 0 : 1.0 - smoothstep(0.0, 0.20, tNorm);
-    const cornerTaper = 1.0 - 0.13 * frontTaper * frontTaper - 0.10 * rearTaper * rearTaper;
+    // Smooth plan-view aero taper at nose & tail corners
+    const frontTaper = smoothstep(0.72, 1.0, tNorm);
+    const rearTaper = style === 'van' ? 0 : 1.0 - smoothstep(0.0, 0.22, tNorm);
+    const cornerTaper = 1.0 - 0.15 * frontTaper * frontTaper - 0.12 * rearTaper * rearTaper;
 
-    // Muscular fender hip bulge over front and rear wheel arches (kept on mid-flank so hood stays ripple-free)
+    // Sculpted muscular front fenders + wide coupe/GT rear haunches (Reference Image 4)
     const dFrontAxle = Math.abs(z - spec.wbZ);
     const dRearAxle = Math.abs(z + spec.wbZ);
-    const fenderFlare =
-      0.030 * Math.exp(-Math.pow(dFrontAxle / (archCutR * 1.2), 2)) +
-      0.036 * Math.exp(-Math.pow(dRearAxle / (archCutR * 1.2), 2));
+    const frontFlare = 0.036 * Math.exp(-Math.pow(dFrontAxle / (archCutR * 1.25), 2));
+    const rearFlare = (style === 'van' ? 0.02 : 0.052) * Math.exp(-Math.pow(dRearAxle / (archCutR * 1.3), 2));
+    const fenderFlare = frontFlare + rearFlare;
 
-    const wUpperShoulder = (spec.halfW - (style === 'van' ? 0.038 : 0.055)) * cornerTaper + fenderFlare * 0.25;
+    const wUpperShoulder = (spec.halfW - (style === 'van' ? 0.036 : 0.058)) * cornerTaper + fenderFlare * 0.42;
+    const wHaunch = (spec.halfW - 0.014) * cornerTaper + fenderFlare * 0.92;
     const wBelt = spec.halfW * cornerTaper + fenderFlare;
-    const wRocker = (spec.halfW - 0.035) * cornerTaper + fenderFlare * 0.45;
+    const wRocker = (spec.halfW - 0.042) * cornerTaper + fenderFlare * 0.35;
 
     // Smooth height profile along Z
     let yBelt = spec.beltY;
     if (z > spec.windshieldBotZ) {
       const hoodT = (z - spec.windshieldBotZ) / Math.max(0.1, zFront - spec.windshieldBotZ);
-      yBelt = spec.beltY - (spec.beltY - spec.noseY) * Math.pow(hoodT, 1.72);
+      yBelt = spec.beltY - (spec.beltY - spec.noseY) * Math.pow(hoodT, 1.65);
     } else if (z < spec.rearGlassBotZ) {
       if (style === 'van') {
         yBelt = spec.beltY;
       } else {
         const tailT = (spec.rearGlassBotZ - z) / Math.max(0.1, spec.rearGlassBotZ - zBack);
-        yBelt = spec.trunkY - (spec.trunkY - spec.rearDeckY) * Math.pow(tailT, 1.45);
+        yBelt = spec.trunkY - (spec.trunkY - spec.rearDeckY) * Math.pow(tailT, 1.42);
       }
     } else {
       const midT = (spec.windshieldBotZ - z) / Math.max(0.1, spec.windshieldBotZ - spec.rearGlassBotZ);
-      yBelt = spec.beltY + (style === 'hatch' ? 0.04 : style === 'van' ? 0 : 0.02) * midT;
+      yBelt = spec.beltY + (style === 'hatch' ? 0.042 : style === 'van' ? 0 : 0.025) * midT;
     }
 
-    // Centerline hood/deck crown
+    // Smooth hood power-dome crown & rear haunch rise
     const crownBoost =
       z > spec.windshieldBotZ
-        ? 0.046 * (1 - Math.pow((z - spec.windshieldBotZ) / (zFront - spec.windshieldBotZ), 2))
-        : 0.024;
+        ? 0.052 * (1 - Math.pow((z - spec.windshieldBotZ) / (zFront - spec.windshieldBotZ), 2))
+        : 0.028;
     const yTopCenter = yBelt + crownBoost;
 
-    // Lower sill height with approach/departure bumper rake
     let yBot = spec.rideH;
-    if (tNorm > 0.88) yBot += 0.065 * smoothstep(0.88, 1.0, tNorm);
-    if (tNorm < 0.11) yBot += 0.075 * (1 - smoothstep(0.0, 0.11, tNorm));
+    if (tNorm > 0.87) yBot += 0.068 * smoothstep(0.87, 1.0, tNorm);
+    if (tNorm < 0.12) yBot += 0.078 * (1 - smoothstep(0.0, 0.12, tNorm));
 
-    // Full wheel-well arch cutout clearing the entire top of each tyre (2 * wheelR + suspension gap)
+    // Wheel-well arch cutout clearing tire cleanly
     let archLift = 0;
     if (dFrontAxle < archCutR) {
       const u = dFrontAxle / archCutR;
@@ -884,23 +919,26 @@ function buildBodyHullGeometry(spec: StyleSpec, style: CarStyle): THREE.BufferGe
       const u = dRearAxle / archCutR;
       archLift = Math.max(archLift, (archApexY - yBot) * Math.sqrt(Math.max(0, 1 - u * u)));
     }
-    const ySideBot = Math.min(yBelt - 0.045, yBot + archLift);
-    const yMidSide = ySideBot + (yBelt - ySideBot) * 0.54;
+    const ySideBot = Math.min(yBelt - 0.055, yBot + archLift);
+    const spanY = Math.max(0.05, yBelt - ySideBot);
 
-    // Closed cross-section ring (clockwise around +Z so outward normals face out)
     const pts: Array<[number, number]> = [
       [0, yBot], // 0: bottom center
-      [wRocker * 0.66, yBot], // 1: underbody right edge (strictly inboard of tyre inner wall)
-      [wRocker, ySideBot], // 2: lower rocker / arch lip right
-      [wBelt, yMidSide], // 3: mid door bulge right
-      [wUpperShoulder, yBelt], // 4: beltline shoulder right
-      [wUpperShoulder * 0.56, yTopCenter - 0.008], // 5: hood/deck crown right
-      [0, yTopCenter], // 6: top center ridge
-      [-wUpperShoulder * 0.56, yTopCenter - 0.008], // 7: hood/deck crown left
-      [-wUpperShoulder, yBelt], // 8: beltline shoulder left
-      [-wBelt, yMidSide], // 9: mid door bulge left
-      [-wRocker, ySideBot], // 10: lower rocker / arch lip left
-      [-wRocker * 0.66, yBot], // 11: underbody left edge
+      [wRocker * 0.65, yBot], // 1: underbody right edge
+      [wRocker * 0.94, ySideBot], // 2: lower sill tuck right
+      [wRocker * 1.02, ySideBot + spanY * 0.16], // 3: lower rocker right
+      [wBelt * 1.01, ySideBot + spanY * 0.50], // 4: sculpted door belly right
+      [wHaunch, ySideBot + spanY * 0.82], // 5: upper hip haunch right
+      [wUpperShoulder, yBelt], // 6: beltline shoulder right
+      [wUpperShoulder * 0.56, yTopCenter - 0.011], // 7: hood/deck crown right
+      [0, yTopCenter], // 8: top center ridge
+      [-wUpperShoulder * 0.56, yTopCenter - 0.011], // 9: hood/deck crown left
+      [-wUpperShoulder, yBelt], // 10: beltline shoulder left
+      [-wHaunch, ySideBot + spanY * 0.82], // 11: upper hip haunch left
+      [-wBelt * 1.01, ySideBot + spanY * 0.50], // 12: sculpted door belly left
+      [-wRocker * 1.02, ySideBot + spanY * 0.16], // 13: lower rocker left
+      [-wRocker * 0.94, ySideBot], // 14: lower sill tuck left
+      [-wRocker * 0.65, yBot], // 15: underbody left edge
     ];
 
     rings.push({ z, pts });
@@ -910,82 +948,79 @@ function buildBodyHullGeometry(spec: StyleSpec, style: CarStyle): THREE.BufferGe
 }
 
 function buildCabinGlassGeometry(spec: StyleSpec): THREE.BufferGeometry {
-  const baseW = spec.halfW - 0.11;
+  const baseW = spec.halfW - 0.105;
   const topW = baseW - spec.cabinTaper;
   const yBase = spec.beltY - 0.05;
-  const yTop = spec.roofY - 0.025;
+  const yTop = spec.roofY - 0.022;
 
-  const zStations = [
-    { z: spec.rearGlassBotZ, wBot: baseW * 0.94, wTop: baseW * 0.86, yTop: yBase + 0.05 },
-    { z: spec.rearGlassTopZ, wBot: baseW * 0.97, wTop: topW * 0.96, yTop },
-    { z: (spec.rearGlassTopZ + spec.windshieldTopZ) * 0.5, wBot: baseW, wTop: topW, yTop: yTop + 0.015 },
-    { z: spec.windshieldTopZ, wBot: baseW * 0.98, wTop: topW * 0.96, yTop },
-    { z: spec.windshieldBotZ, wBot: baseW * 0.95, wTop: baseW * 0.88, yTop: yBase + 0.04 },
+  // 7 curved longitudinal stations with tumblehome belly curve for sleek greenhouse silhouette (Ref 1, 2, 4)
+  const midZ = (spec.rearGlassTopZ + spec.windshieldTopZ) * 0.5;
+  const stations = [
+    { z: spec.rearGlassBotZ, wBot: baseW * 0.91, wTop: baseW * 0.82, yTop: yBase + 0.048 },
+    { z: spec.rearGlassBotZ * 0.55 + spec.rearGlassTopZ * 0.45, wBot: baseW * 0.95, wTop: (baseW * 0.6 + topW * 0.4) * 0.96, yTop: yBase + (yTop - yBase) * 0.56 },
+    { z: spec.rearGlassTopZ, wBot: baseW * 0.97, wTop: topW * 0.95, yTop: yTop - 0.01 },
+    { z: midZ, wBot: baseW, wTop: topW, yTop: yTop + 0.016 },
+    { z: spec.windshieldTopZ, wBot: baseW * 0.98, wTop: topW * 0.95, yTop: yTop - 0.008 },
+    { z: spec.windshieldTopZ * 0.45 + spec.windshieldBotZ * 0.55, wBot: baseW * 0.96, wTop: (baseW * 0.55 + topW * 0.45) * 0.95, yTop: yBase + (yTop - yBase) * 0.55 },
+    { z: spec.windshieldBotZ, wBot: baseW * 0.92, wTop: baseW * 0.84, yTop: yBase + 0.042 },
   ];
 
-  const rings = zStations.map((st) => ({
-    z: st.z,
-    pts: [
-      [0, yBase],
-      [st.wBot, yBase],
-      [st.wTop, st.yTop],
-      [0, st.yTop + 0.018],
-      [-st.wTop, st.yTop],
-      [-st.wBot, yBase],
-    ] as Array<[number, number]>,
-  }));
+  const rings = stations.map((st) => {
+    const midSideW = st.wBot * 0.42 + st.wTop * 0.58 + 0.022;
+    const midSideY = yBase + (st.yTop - yBase) * 0.54;
+    return {
+      z: st.z,
+      pts: [
+        [0, yBase],
+        [st.wBot, yBase],
+        [midSideW, midSideY],
+        [st.wTop, st.yTop],
+        [st.wTop * 0.55, st.yTop + 0.016],
+        [0, st.yTop + 0.022],
+        [-st.wTop * 0.55, st.yTop + 0.016],
+        [-st.wTop, st.yTop],
+        [-midSideW, midSideY],
+        [-st.wBot, yBase],
+      ] as Array<[number, number]>,
+    };
+  });
 
   return buildLoftedHull(rings);
 }
 
 function buildRoofCapGeometry(spec: StyleSpec, style: CarStyle): THREE.BufferGeometry {
-  const topW = spec.halfW - 0.11 - spec.cabinTaper + 0.032;
-  const yRoof = spec.roofY - 0.022;
-  const yCrown = spec.roofY + 0.018;
-  const zBack = style === 'van' ? -spec.halfLenRear + 0.03 : spec.rearGlassTopZ - 0.06;
+  const topW = spec.halfW - 0.105 - spec.cabinTaper + 0.036;
+  const yRoof = spec.roofY - 0.02;
+  const yCrown = spec.roofY + 0.022;
+  const zBack = style === 'van' ? -spec.halfLenRear + 0.04 : spec.rearGlassTopZ - 0.06;
   const zFront = spec.windshieldTopZ + 0.06;
   const zMid = (zBack + zFront) * 0.5;
 
-  const rings = [
-    {
-      z: zBack,
-      pts: [
-        [0, yRoof - 0.01],
-        [topW * 0.94, yRoof - 0.01],
-        [topW * 0.92, yRoof + 0.018],
-        [0, yCrown + 0.008],
-        [-topW * 0.92, yRoof + 0.018],
-        [-topW * 0.94, yRoof - 0.01],
-      ] as Array<[number, number]>,
-    },
-    {
-      z: zMid,
-      pts: [
-        [0, yRoof],
-        [topW, yRoof],
-        [topW * 0.97, yRoof + 0.025],
-        [0, yCrown + 0.02],
-        [-topW * 0.97, yRoof + 0.025],
-        [-topW, yRoof],
-      ] as Array<[number, number]>,
-    },
-    {
-      z: zFront,
-      pts: [
-        [0, yRoof - 0.01],
-        [topW * 0.94, yRoof - 0.01],
-        [topW * 0.92, yRoof + 0.016],
-        [0, yCrown + 0.005],
-        [-topW * 0.92, yRoof + 0.016],
-        [-topW * 0.94, yRoof - 0.01],
-      ] as Array<[number, number]>,
-    },
-  ];
-  return buildLoftedHull(rings);
+  const mkRing = (z: number, s: number, dy: number) => ({
+    z,
+    pts: [
+      [0, yRoof - 0.01 + dy],
+      [topW * s, yRoof - 0.01 + dy],
+      [topW * s * 0.96, yRoof + 0.018 + dy],
+      [topW * s * 0.5, yCrown + 0.01 + dy],
+      [0, yCrown + 0.016 + dy],
+      [-topW * s * 0.5, yCrown + 0.01 + dy],
+      [-topW * s * 0.96, yRoof + 0.018 + dy],
+      [-topW * s, yRoof - 0.01 + dy],
+    ] as Array<[number, number]>,
+  });
+
+  return buildLoftedHull([
+    mkRing(zBack, 0.92, -0.008),
+    mkRing((zBack + zMid) * 0.5, 0.98, 0.006),
+    mkRing(zMid, 1.0, 0.012),
+    mkRing((zFront + zMid) * 0.5, 0.98, 0.005),
+    mkRing(zFront, 0.92, -0.008),
+  ]);
 }
 
 function buildTyreLatheGeometry(radius: number, width: number): THREE.BufferGeometry {
-  const rimR = radius * 0.61;
+  const rimR = radius * 0.62;
   const hw = width * 0.5;
   const pts: THREE.Vector2[] = [
     new THREE.Vector2(rimR, -hw * 0.86),
@@ -999,10 +1034,89 @@ function buildTyreLatheGeometry(radius: number, width: number): THREE.BufferGeom
     new THREE.Vector2(rimR, hw * 0.86),
   ];
   const geo = new THREE.LatheGeometry(pts, 28);
-  // Rotate so wheel axle aligns with X axis
   geo.rotateZ(Math.PI / 2);
   geo.computeVertexNormals();
   return geo;
+}
+
+/** Single sculpted 5-twin Y-spoke diamond-cut star alloy wheel face (no BoxGeometry spokes!). */
+function buildAlloySpokeStarGeometry(wheelR: number): THREE.BufferGeometry {
+  const rimR = wheelR * 0.6;
+  const hubR = 0.056;
+  const shape = new THREE.Shape();
+  const spokes = 5;
+  const totalPts = spokes * 4;
+  for (let i = 0; i < totalPts; i++) {
+    const a = (i / totalPts) * Math.PI * 2;
+    const mod = i % 4;
+    // Narrow Y-twin outer spoke fingers + deep pocket cutouts
+    const r = mod === 1 || mod === 3 ? rimR : mod === 2 ? rimR * 0.54 : hubR * 1.25;
+    const x = Math.cos(a) * r;
+    const y = Math.sin(a) * r;
+    if (i === 0) shape.moveTo(x, y);
+    else shape.lineTo(x, y);
+  }
+  shape.closePath();
+
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: 0.022,
+    bevelEnabled: true,
+    bevelThickness: 0.008,
+    bevelSize: 0.006,
+    bevelSegments: 2,
+  });
+  // Orient outward normal along +X (wheel axis)
+  geo.rotateY(Math.PI / 2);
+  geo.translate(-0.011, 0, 0);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function makeTaperedPillGeo(w: number, h: number, depth: number, taperTop = 0.84, r = 0.03): THREE.BufferGeometry {
+  const hw = w * 0.5;
+  const hh = h * 0.5;
+  const tw = hw * taperTop;
+  const s = new THREE.Shape();
+  s.moveTo(-hw + r, -hh);
+  s.lineTo(hw - r, -hh);
+  s.quadraticCurveTo(hw, -hh, hw, -hh + r);
+  s.lineTo(tw, hh - r);
+  s.quadraticCurveTo(tw, hh, tw - r, hh);
+  s.lineTo(-tw + r, hh);
+  s.quadraticCurveTo(-tw, hh, -tw, hh - r);
+  s.lineTo(-hw, -hh + r);
+  s.quadraticCurveTo(-hw, -hh, -hw + r, -hh);
+  const g = new THREE.ExtrudeGeometry(s, {
+    depth,
+    bevelEnabled: true,
+    bevelThickness: Math.min(0.012, depth * 0.35),
+    bevelSize: Math.min(0.012, h * 0.2),
+    bevelSegments: 2,
+    curveSegments: 8,
+  });
+  g.translate(0, 0, -depth * 0.5);
+  return g;
+}
+
+function makeSweptLampGeo(w: number, h: number, depth: number): THREE.BufferGeometry {
+  const hw = w * 0.5;
+  const hh = h * 0.5;
+  const s = new THREE.Shape();
+  s.moveTo(-hw, -hh * 0.45);
+  s.quadraticCurveTo(0, -hh * 0.95, hw, -hh * 0.25);
+  s.quadraticCurveTo(hw * 0.96, hh * 0.72, hw * 0.4, hh * 0.88);
+  s.quadraticCurveTo(-hw * 0.45, hh * 0.65, -hw, hh * 0.15);
+  s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, {
+    depth,
+    bevelEnabled: true,
+    bevelThickness: 0.01,
+    bevelSize: 0.01,
+    bevelSegments: 2,
+    curveSegments: 8,
+  });
+  g.translate(0, 0, -depth * 0.5);
+  return g;
 }
 
 function getStyleGeos(style: CarStyle): StyleGeoCache {
@@ -1013,7 +1127,6 @@ function getStyleGeos(style: CarStyle): StyleGeoCache {
   const rimR = spec.wheelR * 0.62;
   const hw = spec.wheelW * 0.5;
 
-  // Rim barrel (recessed inner lip + outer rim ring)
   const barrelPts = [
     new THREE.Vector2(rimR * 0.88, -hw * 0.82),
     new THREE.Vector2(rimR, -hw * 0.86),
@@ -1026,18 +1139,14 @@ function getStyleGeos(style: CarStyle): StyleGeoCache {
   rimBarrel.rotateZ(Math.PI / 2);
   rimBarrel.computeVertexNormals();
 
-  // Rim inner center backing disc
-  const rimFace = new THREE.CylinderGeometry(rimR * 0.34, rimR * 0.34, spec.wheelW * 0.38, 16);
+  const rimFace = new THREE.CylinderGeometry(rimR * 0.86, rimR * 0.86, spec.wheelW * 0.12, 20);
   rimFace.rotateZ(Math.PI / 2);
 
-  // Brake rotor disc
   const rotor = new THREE.CylinderGeometry(spec.wheelR * 0.47, spec.wheelR * 0.47, 0.028, 20);
   rotor.rotateZ(Math.PI / 2);
 
-  // Brake caliper block
-  const caliper = new THREE.BoxGeometry(0.065, spec.wheelR * 0.28, spec.wheelR * 0.18);
+  const caliper = new RoundedBoxGeometry(0.065, spec.wheelR * 0.28, spec.wheelR * 0.18, 2, 0.015);
 
-  // Inner dark wheel-well liner drum (open-ended upper semicircle arch wrapping strictly above axle)
   const wheelLiner = new THREE.CylinderGeometry(
     spec.wheelR + 0.072,
     spec.wheelR + 0.072,
@@ -1050,19 +1159,46 @@ function getStyleGeos(style: CarStyle): StyleGeoCache {
   );
   wheelLiner.rotateZ(-Math.PI / 2);
 
-  // Fender arch flare lip (semicircle torus arch matching hull arch cutout)
   const fenderArch = new THREE.TorusGeometry(spec.wheelR + 0.086, 0.032, 10, 26, Math.PI);
   fenderArch.rotateY(Math.PI / 2);
 
-  // Lower rocker/splitter trim bar (tucked strictly inboard of wheel wells)
   const len = spec.halfLenFront + spec.halfLenRear;
-  const lowerTrim = new THREE.BoxGeometry(spec.halfW * 1.18, 0.07, len * 0.94);
+  const lowerTrim = new RoundedBoxGeometry(spec.halfW * 1.18, 0.07, len * 0.92, 2, 0.02);
 
   const contactShadow = new THREE.PlaneGeometry(spec.halfW * 2.45, len * 1.08);
   contactShadow.rotateX(-Math.PI / 2);
 
   const headPool = new THREE.PlaneGeometry(2.6, 5.8);
   headPool.rotateX(-Math.PI / 2);
+
+  const sunW = (spec.halfW - 0.11 - spec.cabinTaper) * 1.44;
+  const sunL = (spec.windshieldTopZ - spec.rearGlassTopZ) * 0.62;
+
+  const sharkShape = new THREE.Shape();
+  sharkShape.moveTo(-0.08, 0);
+  sharkShape.lineTo(0.08, 0);
+  sharkShape.quadraticCurveTo(0.02, 0.068, -0.055, 0.07);
+  sharkShape.closePath();
+  const sharkFin = new THREE.ExtrudeGeometry(sharkShape, {
+    depth: 0.022,
+    bevelEnabled: true,
+    bevelThickness: 0.005,
+    bevelSize: 0.005,
+    bevelSegments: 2,
+  });
+  sharkFin.rotateY(Math.PI / 2);
+  sharkFin.translate(-0.011, 0, 0);
+
+  // Curved LED tail lightbar tube wrapping forward with rear bumper arc (Ref 4)
+  const barW = spec.halfW * 0.55;
+  const barCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-barW, 0, 0.056),
+    new THREE.Vector3(-barW * 0.45, 0, 0.014),
+    new THREE.Vector3(0, 0, 0.0),
+    new THREE.Vector3(barW * 0.45, 0, 0.014),
+    new THREE.Vector3(barW, 0, 0.056),
+  ]);
+  const tailBar = new THREE.TubeGeometry(barCurve, 14, 0.012, 6, false);
 
   const geos: StyleGeoCache = {
     bodyHull: buildBodyHullGeometry(spec, style),
@@ -1072,12 +1208,27 @@ function getStyleGeos(style: CarStyle): StyleGeoCache {
     tyre: buildTyreLatheGeometry(spec.wheelR, spec.wheelW),
     rimBarrel,
     rimFace,
+    spokeStar: buildAlloySpokeStarGeometry(spec.wheelR),
     rotor,
     caliper,
     wheelLiner,
     fenderArch,
     contactShadow,
     headPool,
+    grilleFrame: makeTaperedPillGeo(spec.grilleW * 0.84 + 0.05, spec.grilleH + 0.04, 0.042, 0.84, 0.04),
+    grilleCore: makeTaperedPillGeo(spec.grilleW * 0.82, spec.grilleH, 0.048, 0.84, 0.036),
+    airDam: makeTaperedPillGeo(spec.grilleW * 0.98, 0.064, 0.058, 0.9, 0.024),
+    headlampHousing: makeSweptLampGeo(0.26, 0.082, 0.07),
+    headlampGlass: makeSweptLampGeo(0.265, 0.086, 0.02),
+    drlBlade: makeSweptLampGeo(0.22, 0.02, 0.024),
+    taillampHousing: makeSweptLampGeo(0.26, 0.084, 0.07),
+    taillampBlade: makeSweptLampGeo(0.22, 0.032, 0.028),
+    tailBar,
+    diffuser: makeTaperedPillGeo(spec.halfW * 1.18, 0.105, 0.065, 0.88, 0.035),
+    sunroof: new RoundedBoxGeometry(sunW, 0.018, Math.max(0.2, sunL), 2, 0.008),
+    sharkFin,
+    mirrorStalk: new RoundedBoxGeometry(0.085, 0.032, 0.042, 2, 0.012),
+    doorHandle: new RoundedBoxGeometry(0.028, 0.024, 0.16, 2, 0.01),
   };
   STYLE_GEO_CACHE.set(style, geos);
   return geos;
@@ -1304,26 +1455,21 @@ export function makeCar(col: number, style: CarStyle = 'sedan', options?: CarBui
     highBrake.position.set(0, spec.roofY - 0.055, zRearCargo - 0.006);
     bodyPivot.add(highBrake);
   } else {
-    // Panoramic sunroof glass inset on passenger cars
-    const sunW = (spec.halfW - 0.11 - spec.cabinTaper) * 1.48;
-    const sunL = (spec.windshieldTopZ - spec.rearGlassTopZ) * 0.64;
-    const sunroof = new THREE.Mesh(new THREE.BoxGeometry(sunW, 0.018, sunL), matSunroof);
-    sunroof.position.set(0, spec.roofY + 0.022, (spec.windshieldTopZ + spec.rearGlassTopZ) * 0.5);
+    // Flush curved panoramic sunroof + swept shark-fin antenna
+    const sunroof = new THREE.Mesh(geos.sunroof, matSunroof);
+    sunroof.position.set(0, spec.roofY + 0.028, (spec.windshieldTopZ + spec.rearGlassTopZ) * 0.5);
     bodyPivot.add(sunroof);
 
-    // Shark-fin roof antenna
-    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.065, 0.14), bodyMat);
-    fin.position.set(0, spec.roofY + 0.045, spec.rearGlassTopZ + 0.12);
-    fin.rotation.x = 0.28;
+    const fin = new THREE.Mesh(geos.sharkFin, bodyMat);
+    fin.position.set(0, spec.roofY + 0.018, spec.rearGlassTopZ + 0.14);
     bodyPivot.add(fin);
   }
 
-  // Sculpted A, B, C pillars (tucked cleanly into roof cap so zero tips protrude)
+  // Sculpted A, B, C pillars (tucked cleanly into roof cap)
   const baseW = spec.halfW - 0.105;
   const topW = baseW - spec.cabinTaper;
   const bPillarZ = style === 'van' ? spec.rearGlassBotZ + 0.08 : (spec.windshieldTopZ + spec.rearGlassTopZ) * 0.45;
   [-1, 1].forEach((side) => {
-    // A-pillar (body color)
     addPillar(
       bodyPivot,
       side * baseW * 0.94,
@@ -1336,7 +1482,6 @@ export function makeCar(col: number, style: CarStyle = 'sedan', options?: CarBui
       0.052,
       bodyMat
     );
-    // B-pillar (gloss black window divider)
     addPillar(
       bodyPivot,
       side * baseW * 0.97,
@@ -1350,7 +1495,6 @@ export function makeCar(col: number, style: CarStyle = 'sedan', options?: CarBui
       matTrim
     );
     if (style !== 'van') {
-      // C-pillar (body color)
       addPillar(
         bodyPivot,
         side * baseW * 0.94,
@@ -1366,121 +1510,122 @@ export function makeCar(col: number, style: CarStyle = 'sedan', options?: CarBui
     }
   });
 
-  // 6. Front Fascia: Honeycomb grille + chrome bezel + emblem + lower air dam + flush headlights + front plate
+  // 6. Sculpted Front Fascia: Tapered grille + chrome bezel + emblem + aero chin splitter + swept headlights
   const frontZ = spec.halfLenFront;
-  const grilleBezel = new THREE.Mesh(new THREE.BoxGeometry(spec.grilleW * 0.84 + 0.05, spec.grilleH + 0.04, 0.048), matChrome);
-  grilleBezel.position.set(0, spec.grilleY, frontZ - 0.008);
+  const grilleBezel = new THREE.Mesh(geos.grilleFrame, matChrome);
+  grilleBezel.position.set(0, spec.grilleY, frontZ - 0.012);
   bodyPivot.add(grilleBezel);
 
-  const grilleMesh = new THREE.Mesh(new THREE.BoxGeometry(spec.grilleW * 0.84, spec.grilleH, 0.052), matGrille);
-  grilleMesh.position.set(0, spec.grilleY, frontZ - 0.002);
+  const grilleMesh = new THREE.Mesh(geos.grilleCore, matGrille);
+  grilleMesh.position.set(0, spec.grilleY, frontZ - 0.004);
   bodyPivot.add(grilleMesh);
 
-  // Center front brand emblem badge
   const emblem = new THREE.Mesh(new THREE.CylinderGeometry(0.044, 0.044, 0.022, 16), matChrome);
   emblem.rotation.x = Math.PI / 2;
   emblem.position.set(0, spec.grilleY + spec.grilleH * 0.5 + 0.052, frontZ + 0.012);
   bodyPivot.add(emblem);
 
-  // Lower chin air intake + splitter lip
-  const airDam = new THREE.Mesh(new THREE.BoxGeometry(spec.grilleW * 1.02, 0.068, 0.065), matTrim);
-  airDam.position.set(0, spec.rideH + 0.075, frontZ - 0.012);
+  const airDam = new THREE.Mesh(geos.airDam, matTrim);
+  airDam.position.set(0, spec.rideH + 0.075, frontZ - 0.016);
   bodyPivot.add(airDam);
 
-  // Front license plate
   const frontPlateTex = getLicensePlateTexture(plateStr, false, isShowroom);
   const frontPlate = new THREE.Mesh(
-    new THREE.BoxGeometry(0.42, 0.096, 0.02),
+    new RoundedBoxGeometry(0.42, 0.096, 0.022, 2, 0.008),
     new THREE.MeshStandardMaterial({ map: frontPlateTex, roughness: 0.35, metalness: 0.1 })
   );
   frontPlate.position.set(0, spec.rideH + 0.145, frontZ + 0.014);
   bodyPivot.add(frontPlate);
 
-  // Wraparound Headlight housings, dual projector lenses, LED DRL blades & amber turn indicators
   [-1, 1].forEach((side) => {
-    const lx = side * (spec.halfW * 0.65);
+    const lx = side * (spec.halfW * 0.61);
     const sigMat = side < 0 ? leftSignalMat : rightSignalMat;
-    const hlZ = frontZ - 0.068;
-    const hlRot = side * -0.34;
+    const hlZ = frontZ - 0.115;
+    const hlRot = side * 0.36;
 
-    const hlHousing = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.078, 0.11), matTrim);
+    const hlHousing = new THREE.Mesh(geos.headlampHousing, matTrim);
     hlHousing.position.set(lx, spec.lampY, hlZ);
     hlHousing.rotation.y = hlRot;
+    if (side < 0) hlHousing.scale.x = -1;
     bodyPivot.add(hlHousing);
 
-    const hlGlass = new THREE.Mesh(new THREE.BoxGeometry(0.315, 0.082, 0.024), matLensCover);
-    hlGlass.position.set(lx + side * 0.014, spec.lampY, hlZ + 0.048);
+    const hlGlass = new THREE.Mesh(geos.headlampGlass, matLensCover);
+    hlGlass.position.set(lx + side * 0.012, spec.lampY, hlZ + 0.032);
     hlGlass.rotation.y = hlRot;
+    if (side < 0) hlGlass.scale.x = -1;
     bodyPivot.add(hlGlass);
 
-    const drl = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.022, 0.03), headLampMat);
-    drl.position.set(lx + side * 0.008, spec.lampY - 0.02, hlZ + 0.044);
+    const drl = new THREE.Mesh(geos.drlBlade, headLampMat);
+    drl.position.set(lx + side * 0.008, spec.lampY - 0.018, hlZ + 0.032);
     drl.rotation.y = hlRot;
+    if (side < 0) drl.scale.x = -1;
     bodyPivot.add(drl);
 
-    [-0.046, 0.046].forEach((ox) => {
-      const proj = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.036, 12), headLampMat);
+    [-0.036, 0.036].forEach((ox) => {
+      const proj = new THREE.Mesh(new THREE.CylinderGeometry(0.021, 0.021, 0.034, 12), headLampMat);
       proj.rotation.x = Math.PI / 2;
-      proj.position.set(lx + ox * 0.9, spec.lampY + 0.01, hlZ + 0.038);
+      proj.position.set(lx + ox * 0.9, spec.lampY + 0.01, hlZ + 0.022);
       proj.rotation.y = hlRot;
       bodyPivot.add(proj);
     });
 
-    const fSig = new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.038, 0.055), sigMat);
-    fSig.position.set(lx + side * 0.125, spec.lampY, hlZ + 0.008);
+    const fSig = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.036, 10), sigMat);
+    fSig.rotation.z = Math.PI / 2;
+    fSig.position.set(lx + side * 0.08, spec.lampY, hlZ + 0.008);
     fSig.rotation.y = hlRot;
     bodyPivot.add(fSig);
   });
 
-  // 7. Rear Fascia: Smoked tail lamp housings, LED blades, center light bar, rear diffuser, exhausts & rear plate
+  // 7. Rear Fascia: Continuous curved LED tailbar, swept tail lenses, sculpted diffuser & twin exhausts
   const backZ = -spec.halfLenRear;
   if (style !== 'hatch' && style !== 'van') {
-    const centerBar = new THREE.Mesh(new THREE.BoxGeometry(spec.halfW * 0.94, 0.024, 0.025), tailLampMat);
-    centerBar.position.set(0, spec.tailY, backZ - 0.008);
+    const centerBar = new THREE.Mesh(geos.tailBar, tailLampMat);
+    centerBar.position.set(0, spec.tailY + 0.006, backZ + 0.012);
     bodyPivot.add(centerBar);
   }
 
   [-1, 1].forEach((side) => {
-    const tx = side * (spec.halfW * 0.65);
+    const tx = side * (spec.halfW * 0.61);
     const sigMat = side < 0 ? leftSignalMat : rightSignalMat;
-    const tlZ = backZ + 0.058;
-    const tlRot = side * 0.34;
+    const tlZ = backZ + 0.095;
+    const tlRot = side * -0.38;
 
-    const tlHousing = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.088, 0.11), matTrim);
+    const tlHousing = new THREE.Mesh(geos.taillampHousing, matTrim);
     tlHousing.position.set(tx, spec.tailY, tlZ);
     tlHousing.rotation.y = tlRot;
+    if (side < 0) tlHousing.scale.x = -1;
     bodyPivot.add(tlHousing);
 
-    const tlBlade = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.038, 0.038), tailLampMat);
-    tlBlade.position.set(tx + side * 0.008, spec.tailY + 0.008, tlZ - 0.048);
+    const tlBlade = new THREE.Mesh(geos.taillampBlade, tailLampMat);
+    tlBlade.position.set(tx + side * 0.008, spec.tailY + 0.006, tlZ - 0.03);
     tlBlade.rotation.y = tlRot;
+    if (side < 0) tlBlade.scale.x = -1;
     bodyPivot.add(tlBlade);
 
-    const rSig = new THREE.Mesh(new THREE.BoxGeometry(0.095, 0.026, 0.048), sigMat);
-    rSig.position.set(tx + side * 0.082, spec.tailY - 0.022, tlZ - 0.042);
+    const rSig = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.072, 10), sigMat);
+    rSig.rotation.z = Math.PI / 2;
+    rSig.position.set(tx + side * 0.055, spec.tailY - 0.02, tlZ - 0.028);
     rSig.rotation.y = tlRot;
     bodyPivot.add(rSig);
 
     if (style !== 'van') {
-      const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.044, 0.11, 12), matChrome);
+      const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.044, 0.11, 14), matChrome);
       exhaust.rotation.x = Math.PI / 2;
-      exhaust.position.set(side * 0.48, spec.rideH + 0.065, backZ - 0.01);
+      exhaust.position.set(side * 0.48, spec.rideH + 0.068, backZ - 0.006);
       bodyPivot.add(exhaust);
     }
   });
 
-  // Rear lower diffuser valence
-  const diffuser = new THREE.Mesh(new THREE.BoxGeometry(spec.halfW * 1.18, 0.11, 0.07), matTrim);
-  diffuser.position.set(0, spec.rideH + 0.06, backZ + 0.015);
+  const diffuser = new THREE.Mesh(geos.diffuser, matTrim);
+  diffuser.position.set(0, spec.rideH + 0.065, backZ + 0.024);
   bodyPivot.add(diffuser);
 
-  // Rear license plate (Kenyan yellow-amber plate or showroom plate)
   const rearPlateTex = getLicensePlateTexture(plateStr, true, isShowroom);
   const rearPlate = new THREE.Mesh(
-    new THREE.BoxGeometry(0.42, 0.096, 0.02),
+    new RoundedBoxGeometry(0.42, 0.096, 0.022, 2, 0.008),
     new THREE.MeshStandardMaterial({ map: rearPlateTex, roughness: 0.35, metalness: 0.1 })
   );
-  rearPlate.position.set(0, spec.tailY - 0.17, backZ - 0.012);
+  rearPlate.position.set(0, spec.tailY - 0.165, backZ - 0.012);
   rearPlate.rotation.y = Math.PI;
   bodyPivot.add(rearPlate);
 
@@ -1488,7 +1633,7 @@ export function makeCar(col: number, style: CarStyle = 'sedan', options?: CarBui
   const mirrorShellGeo = new THREE.SphereGeometry(0.068, 12, 10);
   [-1, 1].forEach((side) => {
     const mx = side * (spec.halfW - 0.05);
-    const stalk = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.034, 0.046), matTrim);
+    const stalk = new THREE.Mesh(geos.mirrorStalk, matTrim);
     stalk.position.set(mx + side * 0.02, spec.mirrorY - 0.015, spec.mirrorZ);
     stalk.rotation.z = side * 0.28;
     bodyPivot.add(stalk);
@@ -1505,7 +1650,7 @@ export function makeCar(col: number, style: CarStyle = 'sedan', options?: CarBui
     bodyPivot.add(mirrorFace);
 
     [0.14, -0.66].forEach((hz) => {
-      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.024, 0.15), matChrome);
+      const handle = new THREE.Mesh(geos.doorHandle, matChrome);
       handle.position.set(side * (spec.halfW - 0.008), spec.beltY - 0.10, hz);
       bodyPivot.add(handle);
     });
@@ -1649,21 +1794,10 @@ export function makeCar(col: number, style: CarStyle = 'sedan', options?: CarBui
     hubCap.position.x = wc.side * (spec.wheelW * 0.42);
     spinGrp.add(hubCap);
 
-    // 5 twin-spoke metallic Y-spokes on outward face (collinear with radial angle a)
-    const outX = wc.side * (spec.wheelW * 0.37);
-    const rimSpokeR = spec.wheelR * 0.59;
-    const twinLen = rimSpokeR * 0.68;
-    const rMid = rimSpokeR * 0.58;
-    for (let k = 0; k < 5; k++) {
-      const a0 = (k * Math.PI * 2) / 5;
-      [-0.12, 0.12].forEach((offsetA) => {
-        const a = a0 + offsetA;
-        const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.022, twinLen, 0.024), matAlloyRim);
-        spoke.position.set(outX, Math.cos(a) * rMid, Math.sin(a) * rMid);
-        spoke.rotation.x = a;
-        spinGrp.add(spoke);
-      });
-    }
+    // Sculpted 5-twin Y-spoke diamond-cut alloy star face (single draw call per wheel!)
+    const spokeStarMesh = new THREE.Mesh(geos.spokeStar, matAlloyRim);
+    spokeStarMesh.position.x = wc.side * (spec.wheelW * 0.36);
+    spinGrp.add(spokeStarMesh);
   }
 
   const rig: CarRig = {
