@@ -40,6 +40,18 @@ const INITIAL_HUD: HudSnapshot = {
   inspectedMonitor: null,
   selectedCharacter: null,
   audioEnabled: true,
+  driving: false,
+  driveSpeedKmh: 0,
+  driveGear: 'P',
+  driveCameraMode: 'chase',
+  driveHeadlights: true,
+  driveStreetLabel: 'DomainTechHub Parking Court',
+  driveTargetBuilding: 'bank',
+  driveTargetDistance: 69,
+  driveTargetBearingDeg: 0,
+  driveNearbyBuilding: 'hub',
+  driveNearbyName: 'DomainTechHub',
+  nearPlayerCarInWalk: false,
 };
 
 interface BoundaryState {
@@ -159,6 +171,16 @@ function AtriumApp() {
         onOpenCharacters={() => setStudioOpen(true)}
         onOpenSocialChannels={() => setSocialOpen(true)}
         onNotifyCompanyJob={(bId) => engineRef.current?.notifyCompanyJob(bId)}
+        onToggleDrive={(bId) => engineRef.current?.toggleDrive(bId)}
+        onStepOutOfCar={() => engineRef.current?.stepOutOfCar()}
+        onEnterCarFromWalk={() => engineRef.current?.enterCarFromWalk()}
+        onToggleDriveCamera={() => engineRef.current?.toggleDriveCamera()}
+        onToggleDriveHeadlights={() => engineRef.current?.toggleDriveHeadlights()}
+        onSetDriveTarget={(bId) => engineRef.current?.setDriveTarget(bId)}
+        onDriveTouch={(t, s, b) => engineRef.current?.setDriveTouchInput(t, s, b)}
+        onCarHorn={() => engineRef.current?.soundCarHorn()}
+        onForceRedrawMonitor={() => engineRef.current?.forceRedrawInspectedMonitor()}
+        onApplyLiveNairobi={(minutes, cond) => engineRef.current?.applyLiveNairobiSync(minutes, cond)}
       />
       <CharacterStudioModal isOpen={studioOpen} onClose={() => setStudioOpen(false)} />
       <SocialChannelsPanel

@@ -1274,10 +1274,10 @@ const PROFILES: Record<string, WorkstationProfile> = {
     browserSessions: [
       {
         tabTitle: 'DTH Building Directory & Room Availability',
-        url: 'https://intranet.domaintechhub.co.ke/lobby/directory',
+        url: 'https://en.wikipedia.org/wiki/Access_control',
         searchQuery: 'level 4 board room booking visitor parking bay 3',
         articleTitle: 'Live Floor Directory & Visitor Badge Policy',
-        articleDomain: 'intranet.domaintechhub.co.ke',
+        articleDomain: 'en.wikipedia.org',
         sections: [
           {
             heading: 'Today’s Scheduled Client Briefings',
@@ -1350,10 +1350,10 @@ const PROFILES: Record<string, WorkstationProfile> = {
     browserSessions: [
       {
         tabTitle: 'Meeting Pod & Escort Queue',
-        url: 'https://intranet.domaintechhub.co.ke/concierge/arrivals',
+        url: 'https://en.wikipedia.org/wiki/Concierge',
         searchQuery: 'savanna foods lobby arrival lift dispatch brian e-commerce',
         articleTitle: 'Concierge Dispatch & Lobby Arrival Protocol',
-        articleDomain: 'intranet.domaintechhub.co.ke',
+        articleDomain: 'en.wikipedia.org',
         sections: [
           {
             heading: 'Active Arrival Queue',
@@ -1719,10 +1719,10 @@ const PROFILES: Record<string, WorkstationProfile> = {
     browserSessions: [
       {
         tabTitle: 'Solar Microgrid & Facility Telemetry',
-        url: 'https://intranet.domaintechhub.co.ke/b2/power-telemetry',
+        url: 'https://en.wikipedia.org/wiki/Microgrid',
         searchQuery: 'domaintechhub solar pv inverter b2 battery autonomy load',
         articleTitle: 'Building Facility Autonomy: Roof PV + B2 Inverter Bank',
-        articleDomain: 'intranet.domaintechhub.co.ke',
+        articleDomain: 'en.wikipedia.org',
         sections: [
           {
             heading: 'Zero Grid Dependency During Peak Work Hours',
@@ -1938,10 +1938,10 @@ const PROFILES: Record<string, WorkstationProfile> = {
     browserSessions: [
       {
         tabTitle: 'NVR Camera Stream Health & Biometrics',
-        url: 'https://sec.domaintechhub.internal/nvr-health',
+        url: 'https://en.wikipedia.org/wiki/Closed-circuit_television',
         searchQuery: 'campus biometric turnstile access logs nairobi',
         articleTitle: 'Turnstile & Perimeter NVR Health Console',
-        articleDomain: 'sec.domaintechhub.internal',
+        articleDomain: 'en.wikipedia.org',
         sections: [
           {
             heading: 'Badge Gate Synchronization',
@@ -2013,10 +2013,10 @@ const PROFILES: Record<string, WorkstationProfile> = {
     browserSessions: [
       {
         tabTitle: 'East Africa Tech Compensation Benchmark',
-        url: 'https://people.domaintechhub.internal/comp-bands',
+        url: 'https://en.wikipedia.org/wiki/Human_resources',
         searchQuery: 'nairobi senior fullstack engineer compensation benchmark 2026',
         articleTitle: '2026 East Africa Engineering & Design Compensation Bands',
-        articleDomain: 'people.domaintechhub.internal',
+        articleDomain: 'en.wikipedia.org',
         sections: [
           {
             heading: 'Retention & Wellness Benefits',
@@ -2088,10 +2088,10 @@ const PROFILES: Record<string, WorkstationProfile> = {
     browserSessions: [
       {
         tabTitle: 'Nairobi–Kigali–Kampala Enterprise Pipeline',
-        url: 'https://strategy.domaintechhub.internal/eac-roadmap',
+        url: 'https://en.wikipedia.org/wiki/East_African_Community',
         searchQuery: 'east africa fintech enterprise saas tam expansion 2026',
         articleTitle: 'Regional Enterprise SaaS Expansion & Unit Economics',
-        articleDomain: 'strategy.domaintechhub.internal',
+        articleDomain: 'en.wikipedia.org',
         sections: [
           {
             heading: '2026 Strategic Pillars',
@@ -2163,10 +2163,10 @@ const PROFILES: Record<string, WorkstationProfile> = {
     browserSessions: [
       {
         tabTitle: 'B2 Battery BMS Cell Balance & Inverter Load',
-        url: 'https://scada.domaintechhub.internal/b2/power-battery',
+        url: 'https://en.wikipedia.org/wiki/Lithium_iron_phosphate_battery',
         searchQuery: 'lifepo4 rack cell balance voltage solar pv mppt inverter b2',
         articleTitle: 'B2 Microgrid: 18.4 kW Solar PV + 3-Row LiFePO4 Storage Diagnostics',
-        articleDomain: 'scada.domaintechhub.internal',
+        articleDomain: 'en.wikipedia.org',
         sections: [
           {
             heading: 'Battery Bank Health & Cell Balancing',

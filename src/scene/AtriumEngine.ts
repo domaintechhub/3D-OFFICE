@@ -79,6 +79,7 @@ export class AtriumEngine {
   private readonly monitorMeshMap = new Map<THREE.Object3D, MonitorPickTarget>();
   private readonly buildingPickMap = new Map<THREE.Object3D, BuildingId>();
   private readonly buildingPickList: Array<{ mesh: THREE.Object3D; buildingId: BuildingId }> = [];
+  private readonly playerCarPickSet = new Set<THREE.Object3D>();
   private downX = 0;
   private downY = 0;
   private rafId = 0;
@@ -316,15 +317,20 @@ export class AtriumEngine {
     this.proceduralFoliage = this.runProceduralFoliageScript(M);
     this.weather = new WeatherSystem(this.scene, this.arch.levelGroups);
 
-    // Build dynamic office simulation (staff, district NPCs, Zuri, vehicles, walk controls)
+    // Build dynamic office simulation (staff, district NPCs, Zuri, vehicles, walk & drive controls)
     this.sim = new AtriumSimulation(
       this.scene,
       M,
       this.arch.cabs,
       this.arch.officeChairs,
       this.arch.districtBuildings,
-      () => this.audio.playFootstep()
+      () => this.audio.playFootstep(),
+      () => this.audio.playCarHorn(),
+      (high) => this.audio.playRelayClick(high)
     );
+    for (const m of this.sim.getPlayerCarPickMeshes()) {
+      this.playerCarPickSet.add(m);
+    }
     this.unwireWalk = this.sim.wireWalk(this.renderer.domElement, this.camera, this.controls);
     this.initOverheadBadges();
 
@@ -890,7 +896,7 @@ export class AtriumEngine {
   }
 
   private handlePointerMove = (e: PointerEvent) => {
-    if (this.sim.walkOn) {
+    if (this.sim.walkOn || this.sim.isDriving()) {
       if (this.hoveredRoom) {
         this.hoveredRoom = null;
         this.emitHud();
@@ -922,13 +928,20 @@ export class AtriumEngine {
     const visibleBuildingMeshes = this.buildingPickList
       .filter((b) => b.buildingId !== this.activeBuilding)
       .map((b) => b.mesh);
-    const targets = [...visibleMonitorMeshes, ...visiblePicks.map((p) => p.mesh), ...visibleBuildingMeshes];
+    const visibleCarMeshes = cut === null ? this.sim.getPlayerCarPickMeshes() : [];
+    const targets = [
+      ...visibleMonitorMeshes,
+      ...visibleCarMeshes,
+      ...visiblePicks.map((p) => p.mesh),
+      ...visibleBuildingMeshes,
+    ];
     const hits = this.raycaster.intersectObjects(targets, false);
     const actorHit = this.pickActorUnderPointer();
 
     let nextHover: { title: string; sub: string; color: string; hint?: string } | null = null;
     const firstHit = hits[0];
     const firstMonMatch = firstHit ? this.monitorMeshMap.get(firstHit.object) : undefined;
+    const firstCarMatch = firstHit ? this.playerCarPickSet.has(firstHit.object) : false;
     const firstBuildingId = firstHit ? this.buildingPickMap.get(firstHit.object) : undefined;
 
     if (actorHit && (!firstMonMatch || actorHit.distance <= firstHit.distance + 0.15)) {
@@ -949,6 +962,13 @@ export class AtriumEngine {
           sub: `${firstMonMatch.zone} · ${ws.workerActivity}`,
           color: firstMonMatch.color,
           hint: 'Click computer to view live screen & activity',
+        };
+      } else if (firstCarMatch) {
+        nextHover = {
+          title: 'Executive Sedan · KDP 300D',
+          sub: 'Drivable district vehicle · Full GPS navigation to all 9 companies',
+          color: '#38bdf8',
+          hint: 'Click car to drive to any office',
         };
       } else {
         const match = visiblePicks.find((p) => p.mesh === hitObj);
@@ -988,7 +1008,7 @@ export class AtriumEngine {
   };
 
   private handleClick = (e: MouseEvent) => {
-    if (this.sim.walkOn) return;
+    if (this.sim.walkOn || this.sim.isDriving()) return;
     if (Math.hypot(e.clientX - this.downX, e.clientY - this.downY) > 6) return;
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointerNdc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -1011,11 +1031,18 @@ export class AtriumEngine {
     const visibleBuildingMeshes = this.buildingPickList
       .filter((b) => b.buildingId !== this.activeBuilding)
       .map((b) => b.mesh);
-    const targets = [...visibleMonitorMeshes, ...visiblePicks.map((p) => p.mesh), ...visibleBuildingMeshes];
+    const visibleCarMeshes = cut === null ? this.sim.getPlayerCarPickMeshes() : [];
+    const targets = [
+      ...visibleMonitorMeshes,
+      ...visibleCarMeshes,
+      ...visiblePicks.map((p) => p.mesh),
+      ...visibleBuildingMeshes,
+    ];
     const hits = this.raycaster.intersectObjects(targets, false);
     const actorHit = this.pickActorUnderPointer();
     const firstHit = hits[0];
     const firstMonMatch = firstHit ? this.monitorMeshMap.get(firstHit.object) : undefined;
+    const firstCarMatch = firstHit ? this.playerCarPickSet.has(firstHit.object) : false;
     const firstBuildingId = firstHit ? this.buildingPickMap.get(firstHit.object) : undefined;
 
     if (actorHit && (!firstMonMatch || actorHit.distance <= firstHit.distance + 0.15)) {
@@ -1028,6 +1055,10 @@ export class AtriumEngine {
     const hitObj = firstHit.object;
     if (firstMonMatch) {
       this.inspectMonitor(firstMonMatch);
+      return;
+    }
+    if (firstCarMatch) {
+      this.toggleDrive();
       return;
     }
 
@@ -1208,6 +1239,7 @@ export class AtriumEngine {
       const isActive =
         now - this.lastInteractionTs < 1400 ||
         this.sim.walkOn ||
+        this.sim.isDriving() ||
         this.sim.tourOn ||
         this.sim.isCameraFlying() ||
         this.cutawayAnimating;
@@ -1298,7 +1330,7 @@ export class AtriumEngine {
         this.selectionRing.visible = false;
       }
 
-      // Spatialized ambient office audio (HVAC hum, soft typing, distant chatter)
+      // Spatialized ambient office audio + drivable vehicle engine RPM / tire noise
       this._camRight.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
       this.audio.update(dt, this.camera.position, this._camRight, this.sim.getAmbientSources(), {
         walkOn: this.sim.walkOn,
@@ -1306,6 +1338,7 @@ export class AtriumEngine {
         simRate: this.sim.simRate,
         trafficHint: this.sim.getTrafficAudioHint(this.camera.position, this._camRight),
       });
+      this.audio.updateDriveEngine(this.sim.getDriveAudioState());
 
       // Animated office screens & wall TVs (only draws visible screens on active floors)
       const cut = this.getCutawayLevelIndex();
@@ -1520,6 +1553,7 @@ export class AtriumEngine {
   public selectBuilding(id: BuildingId) {
     this.markInteraction();
     if (this.sim.walkOn) this.sim.exitWalk(this.camera, this.controls);
+    if (this.sim.isDriving()) this.sim.exitDrive(this.camera, this.controls);
     if (this.sim.tourOn) this.sim.endTour();
     this.inspectedMonitor = null;
     this.selectedActor = null;
@@ -1537,6 +1571,7 @@ export class AtriumEngine {
   public selectLevel(key: string) {
     this.markInteraction();
     if (this.sim.walkOn) this.sim.exitWalk(this.camera, this.controls);
+    if (this.sim.isDriving()) this.sim.exitDrive(this.camera, this.controls);
     if (this.sim.tourOn) this.sim.endTour();
     this.inspectedMonitor = null;
     this.selectedActor = null;
@@ -1690,6 +1725,92 @@ export class AtriumEngine {
 
   public toggleAudio() {
     this.audio.toggle();
+    this.emitHud();
+  }
+
+  public toggleDrive(targetBuilding?: BuildingId | null) {
+    this.markInteraction();
+    this.audio.unlock();
+    if (this.sim.isDriving()) {
+      this.sim.exitDrive(this.camera, this.controls);
+      this.activeLevel = 'overview';
+    } else {
+      this.inspectedMonitor = null;
+      this.selectedActor = null;
+      this.followSelectedActor = false;
+      this.arch.basementGroup.visible = false;
+      this.arch.plazaGroup.visible = true;
+      this.activeLevel = 'overview';
+      this.sim.enterDrive(this.camera, this.controls, targetBuilding);
+    }
+    this.emitHud();
+  }
+
+  public stepOutOfCar() {
+    this.markInteraction();
+    const nearby = this.sim.stepOutOfCar(this.camera, this.controls);
+    this.activeBuilding = nearby;
+    this.activeLevel = 'walk';
+    this.emitHud();
+  }
+
+  public enterCarFromWalk() {
+    this.markInteraction();
+    this.audio.unlock();
+    this.sim.enterCarFromWalk(this.camera, this.controls);
+    this.activeLevel = 'overview';
+    this.emitHud();
+  }
+
+  public toggleDriveCamera() {
+    this.markInteraction();
+    this.sim.toggleDriveCamera();
+    this.emitHud();
+  }
+
+  public toggleDriveHeadlights() {
+    this.markInteraction();
+    this.sim.toggleDriveHeadlights();
+    this.emitHud();
+  }
+
+  public setDriveTarget(bId: BuildingId | null) {
+    this.markInteraction();
+    this.sim.setDriveTarget(bId);
+    this.emitHud();
+  }
+
+  public setDriveTouchInput(throttle: number, steer: number, brake: boolean) {
+    this.markInteraction();
+    this.sim.setDriveTouchInput(throttle, steer, brake);
+  }
+
+  public soundCarHorn() {
+    this.markInteraction();
+    this.audio.playCarHorn();
+  }
+
+  public forceRedrawInspectedMonitor() {
+    if (this.inspectedMonitor) {
+      this.inspectedMonitor.screenRef.next = 0;
+      renderWorkScreenFrame(this.inspectedMonitor.screenRef, this.elapsed);
+    }
+  }
+
+  public applyLiveNairobiSync(minutes: number, weatherMode: WeatherMode) {
+    this.markInteraction();
+    this.sim.setClock(minutes);
+    this.sim.setRate(1);
+    this.weather.setMode(weatherMode);
+    const wState = this.weather.update(
+      0.016,
+      this.elapsed,
+      this.sim.simMin,
+      this.activeLevel,
+      this.arch.roofShellGroup.visible
+    );
+    this.sim.setWeatherTimeMultiplier(this.weather.getTimeMultiplier());
+    this.updateTimeOfDayLighting(this.sim.simMin, wState);
     this.emitHud();
   }
 

@@ -19,6 +19,20 @@ const WS_H = WS_LOGICAL_H * WS_SCALE;
 const WS_MONO = 'ui-monospace,Menlo,Consolas,"Courier New",monospace';
 const WS_SANS = '"Plus Jakarta Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif';
 
+const liveBrowserOverrides = new Map<string, BrowserSession>();
+
+export function setLiveBrowserOverride(stationKey: string, session: BrowserSession | null) {
+  if (session) {
+    liveBrowserOverrides.set(stationKey, session);
+  } else {
+    liveBrowserOverrides.delete(stationKey);
+  }
+}
+
+export function getLiveBrowserOverride(stationKey: string): BrowserSession | null {
+  return liveBrowserOverrides.get(stationKey) ?? null;
+}
+
 const hr = (n: number) => Math.abs((Math.sin(n * 12.9898) * 43758.5453) % 1);
 const wsTyped = (s: string, t: number, cps: number) => s.slice(0, Math.max(0, Math.min(s.length, Math.floor(t * cps))));
 const wsEase = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : 1 - Math.pow(1 - x, 3));
@@ -666,9 +680,16 @@ export function drawWallTV(tv: WallTVRef, t: number) {
 }
 
 /* ---- Desk monitors ---- */
-function wsBrowser(g: CanvasRenderingContext2D, w: number, h: number, t: number, sessions: BrowserSession[]) {
-  const item = sessions[Math.floor(t / 12) % sessions.length];
-  const tt = t % 12;
+function wsBrowser(
+  g: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  t: number,
+  sessions: BrowserSession[],
+  liveOverride?: BrowserSession | null
+) {
+  const item = liveOverride ?? sessions[Math.floor(t / 12) % sessions.length];
+  const tt = liveOverride ? 6.0 : t % 12;
 
   // Browser chrome
   g.fillStyle = '#f3f6fa';
@@ -676,13 +697,18 @@ function wsBrowser(g: CanvasRenderingContext2D, w: number, h: number, t: number,
   g.fillStyle = '#dfe5ee';
   g.fillRect(0, 0, w, 20);
   g.fillStyle = '#ffffff';
-  rr(g, 6, 3, 170, 17, 5);
+  rr(g, 6, 3, 184, 17, 5);
   g.fill();
   g.fillStyle = '#1e293b';
   g.font = `600 8.5px ${WS_SANS}`;
   g.textBaseline = 'middle';
   g.textAlign = 'left';
   g.fillText(item.tabTitle.slice(0, 28), 12, 11.5);
+  if (liveOverride) {
+    g.fillStyle = '#15803d';
+    g.font = `700 7.5px ${WS_MONO}`;
+    g.fillText('LIVE WEB', 196, 11);
+  }
 
   if (tt < 4.5) {
     // Stage 1: Typing real search query + results appearing
@@ -1424,11 +1450,12 @@ export function createDeskScreenMat(reg: ScreenRegistry, d: RoomDef, k: number):
   const fn = (g: CanvasRenderingContext2D, w: number, h: number, t: number) => {
     g.save();
     g.setTransform(WS_SCALE, 0, 0, WS_SCALE, 0, 0);
-    if (mode === 'social') {
-      wsSocialChannels(g, w, h, t, acc, 'hub');
-    } else if (mode === 'browser') {
-      wsBrowser(g, w, h, t, profile.browserSessions);
+    const liveOverride = liveBrowserOverrides.get(d.t);
+    if (liveOverride || mode === 'browser') {
+      wsBrowser(g, w, h, t, profile.browserSessions, liveOverride);
       drawSocialDispatchHeaderChip(g, w, 'hub');
+    } else if (mode === 'social') {
+      wsSocialChannels(g, w, h, t, acc, 'hub');
     } else if (mode === 'dataEntry') {
       wsDataEntry(g, w, h, t, acc, profile.dataEntry);
       drawSocialDispatchHeaderChip(g, w, 'hub');
@@ -1447,6 +1474,7 @@ export function createDeskScreenMat(reg: ScreenRegistry, d: RoomDef, k: number):
     next: 0,
     off: (ROOMS.indexOf(d) + 1) * 2.9 + k * 4.3,
     lv: d.lv,
+    stationKey: d.t,
     fn,
   };
   d._ws[k] = s;
@@ -1493,11 +1521,12 @@ export function createExecScreen(reg: ScreenRegistry, key: string, k: number): W
   const fn = (g: CanvasRenderingContext2D, w: number, h: number, t: number) => {
     g.save();
     g.setTransform(WS_SCALE, 0, 0, WS_SCALE, 0, 0);
-    if (mode === 'social') {
-      wsSocialChannels(g, w, h, t, profile.projectWork.accent, buildingId);
-    } else if (mode === 'browser') {
-      wsBrowser(g, w, h, t, profile.browserSessions);
+    const liveOverride = liveBrowserOverrides.get(stationKey);
+    if (liveOverride || mode === 'browser') {
+      wsBrowser(g, w, h, t, profile.browserSessions, liveOverride);
       drawSocialDispatchHeaderChip(g, w, buildingId);
+    } else if (mode === 'social') {
+      wsSocialChannels(g, w, h, t, profile.projectWork.accent, buildingId);
     } else if (mode === 'dataEntry') {
       wsDataEntry(g, w, h, t, profile.projectWork.accent, profile.dataEntry);
       drawSocialDispatchHeaderChip(g, w, buildingId);
@@ -1525,6 +1554,7 @@ export function createExecScreen(reg: ScreenRegistry, key: string, k: number): W
             : key === 'secr' || key === 'strategy'
               ? 4
               : 5,
+    stationKey,
     fn,
   };
   reg.workScreens.push(s);

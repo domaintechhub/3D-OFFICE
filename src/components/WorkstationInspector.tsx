@@ -3,13 +3,14 @@ import {
   ArrowLeft,
   ArrowRight,
   BarChart3,
-  Bookmark,
   Briefcase,
   Check,
   Code2,
+  ExternalLink,
   FolderGit2,
   Globe,
   Layout,
+  Loader2,
   MessageSquare,
   Pause,
   Play,
@@ -20,10 +21,12 @@ import {
   ShieldCheck,
   Table2,
   Terminal,
+  Wifi,
   X,
 } from 'lucide-react';
 import type { InspectedMonitor } from '../scene/constants';
 import { DISTRICT_BUILDINGS, type BuildingId } from '../scene/districtData';
+import { setLiveBrowserOverride } from '../scene/screens';
 import {
   DISTRICT_SOCIAL_DIRECTORY,
   socialNetwork,
@@ -37,11 +40,65 @@ import {
   type WorkstationMode,
 } from '../scene/workstations';
 
+interface BrowsePageData {
+  ok: boolean;
+  url: string;
+  finalUrl: string;
+  domain: string;
+  status: number;
+  latencyMs: number;
+  contentType: string;
+  title: string;
+  description: string;
+  siteName: string;
+  headings: string[];
+  paragraphs: string[];
+  links: Array<{ text: string; url: string }>;
+  error?: string;
+}
+
+interface SearchResultItem {
+  title: string;
+  url: string;
+  domain: string;
+  snippet: string;
+  source: string;
+}
+
+interface SearchPageData {
+  ok: boolean;
+  query: string;
+  latencyMs: number;
+  instantAbstract: string;
+  instantSource: string;
+  instantUrl: string;
+  results: SearchResultItem[];
+  error?: string;
+}
+
+type BrowserHistoryEntry =
+  | { kind: 'browse'; data: BrowsePageData; inputLabel: string }
+  | { kind: 'search'; data: SearchPageData; inputLabel: string };
+
+const QUICK_REAL_BOOKMARKS: Array<{ label: string; url: string }> = [
+  { label: 'Wikipedia · Nairobi', url: 'https://en.wikipedia.org/wiki/Nairobi' },
+  { label: 'MDN Web Docs', url: 'https://developer.mozilla.org/en-US/docs/Web/API' },
+  { label: 'Hacker News', url: 'https://news.ycombinator.com/' },
+];
+
+function looksLikeUrl(raw: string): boolean {
+  const s = raw.trim();
+  if (!s || /\s/.test(s)) return false;
+  if (/^https?:\/\//i.test(s)) return true;
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+([/:?#]|$)/i.test(s);
+}
+
 interface WorkstationInspectorProps {
   monitor: InspectedMonitor;
   onClose: () => void;
   getInspectedScreenCanvas: () => HTMLCanvasElement | null;
   onNotifyCompanyJob?: (buildingId: BuildingId) => void;
+  onForceRedrawMonitor?: () => void;
 }
 
 export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
@@ -49,6 +106,7 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
   onClose,
   getInspectedScreenCanvas,
   onNotifyCompanyJob,
+  onForceRedrawMonitor,
 }) => {
   const profile = useMemo(() => getWorkstationProfile(monitor.stationKey), [monitor.stationKey]);
   const defaultMode = useMemo(
@@ -61,13 +119,16 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
   const [tick, setTick] = useState(0);
   const [, setSocialVer] = useState(0);
 
-  // Per-station persistent data-entry rows & custom browser queries
+  // Per-station persistent data-entry rows & real web browser navigation state
   const [rowsMap, setRowsMap] = useState<Record<string, Array<[string, string, string, string]>>>({});
   const [queueIdxMap, setQueueIdxMap] = useState<Record<string, number>>({});
   const [deliverablesMap, setDeliverablesMap] = useState<Record<string, boolean[]>>({});
   const [browserTabIdx, setBrowserTabIdx] = useState(0);
   const [searchInput, setSearchInput] = useState('');
-  const [customSession, setCustomSession] = useState<BrowserSession | null>(null);
+  const [liveHistory, setLiveHistory] = useState<BrowserHistoryEntry[]>([]);
+  const [historyIdx, setHistoryIdx] = useState(-1);
+  const [browseLoading, setBrowseLoading] = useState(false);
+  const [browseError, setBrowseError] = useState<string | null>(null);
   const [newRow, setNewRow] = useState<[string, string, string, string]>(['', '', '', '']);
   const [justSaved, setJustSaved] = useState(false);
 
@@ -80,21 +141,30 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
   const [monJobTitle, setMonJobTitle] = useState('');
 
   const screenMirrorRef = useRef<HTMLCanvasElement | null>(null);
+  const fetchAbortRef = useRef<AbortController | null>(null);
+  const autoFetchedStationRef = useRef<string>('');
 
   useEffect(() => socialNetwork.subscribe(() => setSocialVer((v) => v + 1)), []);
 
   // Reset browser & draft state when switching to a different monitor
   useEffect(() => {
+    fetchAbortRef.current?.abort();
     setActiveMode(defaultMode);
     setAutoPilot(true);
     setBrowserTabIdx(0);
-    setCustomSession(null);
+    setLiveHistory([]);
+    setHistoryIdx(-1);
+    setBrowseLoading(false);
+    setBrowseError(null);
     setSearchInput('');
     setNewRow(['', '', '', '']);
     setJustSaved(false);
     setMonTargetBuilding(monitor.buildingId === 'hub' ? 'bank' : 'hub');
     setMonJobTitle('');
+    autoFetchedStationRef.current = '';
   }, [monitor.id, monitor.buildingId, defaultMode]);
+
+  useEffect(() => () => fetchAbortRef.current?.abort(), []);
 
   // Initialize station rows & deliverables once per station id
   useEffect(() => {
@@ -160,16 +230,132 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
   const deliverablesDone =
     deliverablesMap[monitor.id] ?? profile.projectWork.deliverables.map((d) => d.done);
 
-  // Browser session resolution (auto-cycles research pages in autoPilot unless user selected/searched)
   const sessions = profile.browserSessions;
-  const autoBrowserIdx = Math.floor(tick / 110) % sessions.length;
-  const activeBrowserSession =
-    customSession ?? sessions[(autoPilot ? autoBrowserIdx : browserTabIdx) % sessions.length];
-  const browserPhaseTick = tick % 110;
-  const isTypingSearch = autoPilot && monitor.isOccupied && !customSession && browserPhaseTick < 32;
-  const typedQuery = isTypingSearch
-    ? activeBrowserSession.searchQuery.slice(0, Math.max(1, Math.floor(browserPhaseTick * 1.8)))
-    : activeBrowserSession.searchQuery;
+  const activeHistoryEntry =
+    historyIdx >= 0 && historyIdx < liveHistory.length ? liveHistory[historyIdx] : null;
+  const activeBrowserSession = sessions[browserTabIdx % sessions.length];
+
+  const syncLiveSessionTo3dMonitor = (session: BrowserSession) => {
+    setLiveBrowserOverride(monitor.stationKey, session);
+    onForceRedrawMonitor?.();
+  };
+
+  const pushHistory = (entry: BrowserHistoryEntry) => {
+    setLiveHistory((prev) => {
+      const head = prev.slice(0, historyIdx + 1);
+      const next = [...head, entry];
+      setHistoryIdx(next.length - 1);
+      return next;
+    });
+  };
+
+  const browseLiveUrl = async (rawUrl: string) => {
+    const normalized = /^https?:\/\//i.test(rawUrl.trim())
+      ? rawUrl.trim()
+      : `https://${rawUrl.trim()}`;
+    fetchAbortRef.current?.abort();
+    const ac = new AbortController();
+    fetchAbortRef.current = ac;
+    setBrowseLoading(true);
+    setBrowseError(null);
+    setAutoPilot(false);
+    setSearchInput(normalized);
+
+    try {
+      const resp = await fetch(`/api/browse?url=${encodeURIComponent(normalized)}`, {
+        signal: ac.signal,
+      });
+      const json = (await resp.json()) as BrowsePageData;
+      if (!resp.ok || !json.ok) {
+        setBrowseError(json.error || `HTTP ${resp.status} while loading ${normalized}`);
+        return;
+      }
+      pushHistory({ kind: 'browse', data: json, inputLabel: json.finalUrl });
+      setSearchInput(json.finalUrl);
+      syncLiveSessionTo3dMonitor({
+        tabTitle: json.title.slice(0, 28) || json.domain,
+        url: json.finalUrl,
+        searchQuery: json.finalUrl,
+        articleTitle: json.title || json.domain,
+        articleDomain: `${json.domain} · HTTP ${json.status} (${json.latencyMs}ms)`,
+        sections: [
+          {
+            heading: json.headings[0] || json.siteName || json.domain,
+            excerpt: json.description || json.paragraphs[0] || 'Loaded live page content.',
+            highlight: json.headings.slice(0, 3).join(' · ') || `${json.links.length} links extracted`,
+          },
+          ...json.paragraphs.slice(0, 2).map((p, i) => ({
+            heading: json.headings[i + 1] || `Section ${i + 2}`,
+            excerpt: p,
+            highlight: json.finalUrl,
+          })),
+        ],
+        researchNote: `Live page loaded (${json.latencyMs}ms) for ${monitor.zone}.`,
+      });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      setBrowseError(err instanceof Error ? err.message : 'Unable to reach live URL.');
+    } finally {
+      if (fetchAbortRef.current === ac) {
+        setBrowseLoading(false);
+      }
+    }
+  };
+
+  const searchLiveWeb = async (rawQuery: string) => {
+    const q = rawQuery.trim();
+    if (!q) return;
+    fetchAbortRef.current?.abort();
+    const ac = new AbortController();
+    fetchAbortRef.current = ac;
+    setBrowseLoading(true);
+    setBrowseError(null);
+    setAutoPilot(false);
+    setSearchInput(q);
+
+    try {
+      const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}`, {
+        signal: ac.signal,
+      });
+      const json = (await resp.json()) as SearchPageData;
+      if (!resp.ok || !json.ok) {
+        setBrowseError(json.error || `Web search failed (HTTP ${resp.status})`);
+        return;
+      }
+      pushHistory({ kind: 'search', data: json, inputLabel: q });
+      syncLiveSessionTo3dMonitor({
+        tabTitle: `Search: ${q.slice(0, 20)}`,
+        url: `search://${encodeURIComponent(q)}`,
+        searchQuery: q,
+        articleTitle: `${q} — Live Web Search (${json.results.length} results)`,
+        articleDomain: `DuckDuckGo & Wikipedia · ${json.latencyMs}ms`,
+        sections: json.results.slice(0, 3).map((r) => ({
+          heading: `${r.domain} · ${r.title}`,
+          excerpt: r.snippet || r.url,
+          highlight: r.url,
+        })),
+        researchNote: json.instantAbstract || `Live web search executed in ${json.latencyMs}ms.`,
+      });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      setBrowseError(err instanceof Error ? err.message : 'Web search request failed.');
+    } finally {
+      if (fetchAbortRef.current === ac) {
+        setBrowseLoading(false);
+      }
+    }
+  };
+
+  // Fetch starter URL live automatically when opening the Browser tab for the current monitor
+  useEffect(() => {
+    if (activeMode !== 'browser') return;
+    if (liveHistory.length > 0 || browseLoading) return;
+    const starterUrl = sessions[browserTabIdx % sessions.length]?.url;
+    if (!starterUrl || autoFetchedStationRef.current === `${monitor.id}:${starterUrl}`) return;
+    autoFetchedStationRef.current = `${monitor.id}:${starterUrl}`;
+    void browseLiveUrl(starterUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMode, monitor.id]);
 
   // Live typing calculation for Data Entry active draft row
   const draftCharsTotal = draftRecord.reduce((s, cell) => s + cell.length + 2, 0);
@@ -210,23 +396,11 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
     e.preventDefault();
     const q = searchInput.trim();
     if (!q) return;
-    setAutoPilot(false);
-    setCustomSession({
-      tabTitle: `Research: ${q.slice(0, 22)}`,
-      url: `https://research.domaintechhub.co.ke/search?q=${encodeURIComponent(q)}`,
-      searchQuery: q,
-      articleTitle: `${q} — DomainTechHub Engineering & Market Dossier`,
-      articleDomain: 'knowledge.domaintechhub.co.ke',
-      sections: [
-        {
-          heading: `Live Investigation for ${profile.projectTitle}`,
-          excerpt: `Cross-referencing "${q}" against ${profile.clientName} requirements, East Africa latency/compliance constraints, and internal production benchmarks.`,
-          highlight: `Action item logged for ${monitor.zone}: verify implementation against ${profile.projectWork.fileName}.`,
-        },
-        ...activeBrowserSession.sections.slice(0, 1),
-      ],
-      researchNote: `Custom lookup "${q}" attached to ${profile.projectTitle} workspace.`,
-    });
+    if (looksLikeUrl(q)) {
+      void browseLiveUrl(q);
+    } else {
+      void searchLiveWeb(q);
+    }
   };
 
   const handleAddRecord = (e: React.FormEvent) => {
@@ -376,68 +550,94 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
       <div className="flex-1 overflow-y-auto p-3 space-y-2.5 text-xs">
         {activeMode === 'browser' && (
           <div className="space-y-2.5">
-            {/* Open Browser Tabs */}
+            {/* Bookmark Tabs & Quick Live Web Links */}
             <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
               {sessions.map((s, idx) => {
-                const isActive = !customSession && (autoPilot ? autoBrowserIdx : browserTabIdx) === idx;
+                const isActive =
+                  activeHistoryEntry?.kind === 'browse' &&
+                  activeHistoryEntry.data.url === s.url;
                 return (
                   <button
                     key={s.tabTitle}
                     type="button"
                     onClick={() => {
-                      setCustomSession(null);
                       setBrowserTabIdx(idx);
-                      setAutoPilot(false);
+                      void browseLiveUrl(s.url);
                     }}
-                    className={`px-2 py-1 text-[11px] rounded border truncate max-w-[180px] cursor-pointer transition-colors ${
+                    title={s.url}
+                    className={`px-2 py-1 text-[11px] rounded border truncate max-w-[165px] cursor-pointer transition-colors ${
                       isActive
                         ? 'border-sky-400/50 bg-sky-500/15 text-white font-medium'
-                        : 'border-white/10 bg-white/5 text-slate-400 hover:text-white'
+                        : 'border-white/10 bg-white/5 text-slate-300 hover:text-white'
                     }`}
                   >
                     {s.tabTitle}
                   </button>
                 );
               })}
-              {customSession && (
-                <span className="px-2 py-1 text-[11px] rounded border border-emerald-400/50 bg-emerald-500/15 text-emerald-200 font-medium truncate max-w-[160px]">
-                  {customSession.tabTitle}
-                </span>
-              )}
+              {QUICK_REAL_BOOKMARKS.map((bm) => (
+                <button
+                  key={bm.url}
+                  type="button"
+                  onClick={() => void browseLiveUrl(bm.url)}
+                  title={bm.url}
+                  className="px-2 py-1 text-[10.5px] rounded border border-emerald-400/25 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                >
+                  {bm.label}
+                </button>
+              ))}
             </div>
 
-            {/* Interactive Address / Research Search Bar */}
+            {/* Real Address & Live Search Bar */}
             <form onSubmit={handleSearchSubmit} className="flex items-center gap-1.5">
-              <div className="flex items-center gap-1 text-slate-400">
+              <div className="flex items-center gap-0.5 text-slate-400">
                 <button
                   type="button"
+                  disabled={historyIdx <= 0}
                   onClick={() => {
-                    setCustomSession(null);
-                    setBrowserTabIdx((i) => (i - 1 + sessions.length) % sessions.length);
+                    if (historyIdx > 0) {
+                      const prevIdx = historyIdx - 1;
+                      setHistoryIdx(prevIdx);
+                      setBrowseError(null);
+                      setSearchInput(liveHistory[prevIdx].inputLabel);
+                    }
                   }}
-                  aria-label="Previous tab"
-                  className="p-1 hover:text-white rounded hover:bg-white/10 cursor-pointer"
+                  aria-label="Back"
+                  className="p-1 rounded hover:bg-white/10 hover:text-white disabled:opacity-35 cursor-pointer disabled:cursor-default"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
                 </button>
                 <button
                   type="button"
+                  disabled={historyIdx >= liveHistory.length - 1}
                   onClick={() => {
-                    setCustomSession(null);
-                    setBrowserTabIdx((i) => (i + 1) % sessions.length);
+                    if (historyIdx < liveHistory.length - 1) {
+                      const nextIdx = historyIdx + 1;
+                      setHistoryIdx(nextIdx);
+                      setBrowseError(null);
+                      setSearchInput(liveHistory[nextIdx].inputLabel);
+                    }
                   }}
-                  aria-label="Next tab"
-                  className="p-1 hover:text-white rounded hover:bg-white/10 cursor-pointer"
+                  aria-label="Forward"
+                  className="p-1 rounded hover:bg-white/10 hover:text-white disabled:opacity-35 cursor-pointer disabled:cursor-default"
                 >
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
                 <button
                   type="button"
-                  onClick={() => setAutoPilot(true)}
-                  aria-label="Sync with worker"
+                  onClick={() => {
+                    if (activeHistoryEntry?.kind === 'browse') {
+                      void browseLiveUrl(activeHistoryEntry.data.finalUrl);
+                    } else if (activeHistoryEntry?.kind === 'search') {
+                      void searchLiveWeb(activeHistoryEntry.data.query);
+                    } else {
+                      void browseLiveUrl(activeBrowserSession.url);
+                    }
+                  }}
+                  aria-label="Reload"
                   className="p-1 hover:text-white rounded hover:bg-white/10 cursor-pointer"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
+                  <RefreshCw className={`w-3.5 h-3.5 ${browseLoading ? 'animate-spin text-sky-400' : ''}`} />
                 </button>
               </div>
               <div className="flex-1 flex items-center gap-1.5 bg-[#080c12] border border-white/15 rounded px-2 py-1">
@@ -446,8 +646,8 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
                   type="text"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder={activeBrowserSession.url}
-                  className="w-full bg-transparent text-[11px] font-mono-tabular text-slate-100 placeholder:text-slate-400 focus:outline-none"
+                  placeholder="Enter https:// URL or search the live web…"
+                  className="w-full bg-transparent text-[11px] font-mono-tabular text-slate-100 placeholder:text-slate-500 focus:outline-none"
                 />
               </div>
               <button
@@ -458,56 +658,178 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
               </button>
             </form>
 
-            {/* Browser Page Viewport */}
+            {/* Live HTTP Error Banner */}
+            {browseError && (
+              <div className="rounded border border-rose-400/40 bg-rose-500/12 px-2.5 py-2 text-[11px] text-rose-200 space-y-1.5">
+                <div className="font-semibold">Unable to fetch remote site directly</div>
+                <div className="text-rose-200/90 break-words">{browseError}</div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const q = searchInput.trim() || activeBrowserSession.searchQuery;
+                      void searchLiveWeb(q.replace(/^https?:\/\//i, ''));
+                    }}
+                    className="px-2 py-0.5 rounded bg-white/12 hover:bg-white/20 text-white text-[10.5px] font-medium cursor-pointer"
+                  >
+                    Search Web Instead
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void browseLiveUrl('https://en.wikipedia.org/wiki/Nairobi')}
+                    className="px-2 py-0.5 rounded bg-sky-500/25 hover:bg-sky-500/35 text-sky-100 text-[10.5px] font-medium cursor-pointer"
+                  >
+                    Open Wikipedia
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Live Browser Viewport */}
             <div className="rounded border border-white/12 bg-[#f8fafc] text-slate-900 p-3 space-y-2.5">
-              {isTypingSearch ? (
-                <div className="space-y-2">
-                  <div className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">
-                    Searching web documentation…
+              {browseLoading ? (
+                <div className="flex items-center gap-2 py-6 justify-center text-slate-600 text-xs font-medium">
+                  <Loader2 className="w-4 h-4 animate-spin text-sky-600" />
+                  <span>Fetching live response from server…</span>
+                </div>
+              ) : activeHistoryEntry?.kind === 'search' ? (
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between gap-2 text-[10px] font-mono-tabular text-slate-500">
+                    <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold">
+                      <Wifi className="w-3 h-3" /> LIVE SEARCH · “{activeHistoryEntry.data.query}”
+                    </span>
+                    <span>{activeHistoryEntry.data.latencyMs}ms</span>
                   </div>
-                  <div className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-900 shadow-xs">
-                    {typedQuery}
-                    <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-sky-600 align-middle" />
-                  </div>
-                  <div className="pt-1 space-y-1.5 opacity-80">
-                    <div className="text-[11px] text-emerald-700 font-mono-tabular">
-                      {activeBrowserSession.articleDomain}
+                  {activeHistoryEntry.data.instantAbstract && (
+                    <div className="rounded border border-sky-200 bg-sky-50 p-2 text-[11px] text-slate-800 space-y-1">
+                      <div className="font-semibold text-sky-900">
+                        Instant Summary ({activeHistoryEntry.data.instantSource})
+                      </div>
+                      <p className="leading-relaxed">{activeHistoryEntry.data.instantAbstract}</p>
+                      {activeHistoryEntry.data.instantUrl && (
+                        <button
+                          type="button"
+                          onClick={() => void browseLiveUrl(activeHistoryEntry.data.instantUrl)}
+                          className="inline-flex items-center gap-1 text-[10.5px] font-medium text-sky-700 hover:underline cursor-pointer"
+                        >
+                          <span>Open source article</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </button>
+                      )}
                     </div>
-                    <div className="text-xs font-semibold text-blue-700">
-                      {activeBrowserSession.articleTitle}
-                    </div>
+                  )}
+                  <div className="space-y-2">
+                    {activeHistoryEntry.data.results.length === 0 ? (
+                      <div className="text-[11px] text-slate-500 py-2">No live results returned for that query.</div>
+                    ) : (
+                      activeHistoryEntry.data.results.map((r) => (
+                        <div key={r.url} className="pt-1.5 border-t border-slate-200 first:border-t-0 first:pt-0">
+                          <div className="flex items-center justify-between gap-2 text-[10px] font-mono-tabular text-emerald-700">
+                            <span className="truncate">{r.domain}</span>
+                            <span className="shrink-0 text-slate-400">{r.source}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void browseLiveUrl(r.url)}
+                            className="text-left text-[12px] font-semibold text-blue-700 hover:underline cursor-pointer"
+                          >
+                            {r.title}
+                          </button>
+                          {r.snippet && (
+                            <p className="mt-0.5 text-[11px] text-slate-600 leading-snug">{r.snippet}</p>
+                          )}
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
-              ) : (
-                <div className="space-y-2.5">
+              ) : activeHistoryEntry?.kind === 'browse' ? (
+                <div className="space-y-2">
                   <div>
                     <div className="flex items-center justify-between gap-2 text-[10px] font-mono-tabular text-emerald-700">
-                      <span className="truncate">{activeBrowserSession.articleDomain}</span>
-                      <span className="shrink-0 flex items-center gap-1 text-slate-500">
-                        <Bookmark className="w-3 h-3 text-amber-500" /> Saved to Research
+                      <span className="inline-flex items-center gap-1 truncate">
+                        <Wifi className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{activeHistoryEntry.data.domain}</span>
+                      </span>
+                      <span className="shrink-0 text-slate-500">
+                        HTTP {activeHistoryEntry.data.status} · {activeHistoryEntry.data.latencyMs}ms
                       </span>
                     </div>
                     <h3 className="mt-0.5 text-[13px] font-bold text-slate-900 leading-snug">
-                      {activeBrowserSession.articleTitle}
+                      {activeHistoryEntry.data.title}
                     </h3>
+                    {activeHistoryEntry.data.description && (
+                      <p className="mt-1 text-[11px] text-slate-600 leading-relaxed">
+                        {activeHistoryEntry.data.description}
+                      </p>
+                    )}
                   </div>
 
-                  {activeBrowserSession.sections.map((sec) => (
-                    <div key={sec.heading} className="space-y-1 pt-1 border-t border-slate-200">
-                      <div className="text-[11px] font-semibold text-slate-800">{sec.heading}</div>
-                      <p className="text-[11px] leading-relaxed text-slate-600">{sec.excerpt}</p>
-                      <div className="rounded bg-emerald-50 border-l-2 border-emerald-500 px-2.5 py-1.5 text-[10.5px] font-mono-tabular text-emerald-950">
-                        {sec.highlight}
+                  {activeHistoryEntry.data.headings.length > 0 && (
+                    <div className="rounded bg-slate-100 border border-slate-200 px-2.5 py-1.5">
+                      <div className="text-[9.5px] uppercase tracking-wider font-semibold text-slate-500">
+                        Page Headings
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {activeHistoryEntry.data.headings.slice(0, 6).map((h, i) => (
+                          <span
+                            key={`${i}-${h.slice(0, 14)}`}
+                            className="px-1.5 py-0.5 rounded bg-white border border-slate-200 text-[10px] text-slate-700"
+                          >
+                            {h}
+                          </span>
+                        ))}
                       </div>
                     </div>
-                  ))}
+                  )}
+
+                  {activeHistoryEntry.data.paragraphs.length > 0 && (
+                    <div className="space-y-1.5 pt-1 border-t border-slate-200">
+                      {activeHistoryEntry.data.paragraphs.slice(0, 5).map((p, idx) => (
+                        <p key={idx} className="text-[11px] leading-relaxed text-slate-700">
+                          {p}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  {activeHistoryEntry.data.links.length > 0 && (
+                    <div className="pt-1.5 border-t border-slate-200 space-y-1">
+                      <div className="text-[9.5px] uppercase tracking-wider font-semibold text-slate-500">
+                        Navigable Page Links
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {activeHistoryEntry.data.links.slice(0, 8).map((lnk) => (
+                          <button
+                            key={lnk.url}
+                            type="button"
+                            onClick={() => void browseLiveUrl(lnk.url)}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-sky-200 bg-sky-50 hover:bg-sky-100 text-[10px] font-medium text-blue-700 cursor-pointer"
+                          >
+                            <span className="truncate max-w-[160px]">{lnk.text}</span>
+                            <ExternalLink className="w-2.5 h-2.5 shrink-0" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2 text-[11px] text-slate-600 py-2">
+                  <div className="font-semibold text-slate-900">Ready to browse the live web</div>
+                  <p>
+                    Click <span className="font-mono-tabular font-semibold">{activeBrowserSession.tabTitle}</span> above
+                    or enter any URL / search query.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void browseLiveUrl(activeBrowserSession.url)}
+                    className="px-2.5 py-1 rounded bg-sky-600 text-white text-[11px] font-medium hover:bg-sky-500 cursor-pointer"
+                  >
+                    Load {activeBrowserSession.articleDomain}
+                  </button>
                 </div>
               )}
-            </div>
-
-            <div className="rounded border border-emerald-500/25 bg-emerald-500/8 px-2.5 py-2 text-[11px] text-emerald-200">
-              <span className="font-semibold text-emerald-400">Research Note: </span>
-              {activeBrowserSession.researchNote}
             </div>
           </div>
         )}

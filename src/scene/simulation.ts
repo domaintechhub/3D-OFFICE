@@ -252,6 +252,14 @@ export class AtriumSimulation {
   private readonly LOT: CompanyBay[] = [];
   private readonly PLOCK: Array<{ x: number; z: number; r: number }> = [];
 
+  // Player-drivable vehicle & GPS destination beacon
+  private playerCarGroup!: THREE.Group;
+  private playerCarRig!: CarRig;
+  private readonly playerCarPickMeshes: THREE.Object3D[] = [];
+  private readonly driveTargetBeacon = new THREE.Group();
+  private driveBeaconOuterMat!: THREE.MeshBasicMaterial;
+  private driveBeaconInnerMat!: THREE.MeshBasicMaterial;
+
   public readonly guideActor: PersonActor;
   public readonly guideMarker: THREE.Group;
   public readonly guideMeshes: THREE.Mesh[];
@@ -299,6 +307,31 @@ export class AtriumSimulation {
   private savedCamPos = new THREE.Vector3(0, 20, 64);
   private savedCamTgt = new THREE.Vector3(0, 12.2, 4);
   private readonly onFootstep?: () => void;
+  private readonly onCarHorn?: () => void;
+  private readonly onRelayClick?: (high: boolean) => void;
+
+  // Player Drive Mode state
+  public driveOn = false;
+  private drivePos = new THREE.Vector3(-22.0, -0.604, 34.5);
+  private driveYaw = Math.PI;
+  private driveVel = 0;
+  private driveSteer = 0;
+  private drivePitch = 0;
+  private driveRoll = 0;
+  private driveBrakeGlow = 0;
+  private driveCamMode: 'chase' | 'hood' = 'chase';
+  private driveHeadlights = true;
+  private driveTargetBuilding: BuildingId | null = 'bank';
+  private driveSignalDir: -1 | 0 | 1 = 0;
+  private driveOrbitYawOffset = 0;
+  private driveOrbitPitch = 0.24;
+  private driveDrag = false;
+  private driveLX = 0;
+  private driveLY = 0;
+  private driveTouch = { throttle: 0, steer: 0, brake: false };
+  private readonly driveCamDesiredPos = new THREE.Vector3();
+  private readonly driveCamDesiredTgt = new THREE.Vector3();
+
   private readonly ambientSources: AmbientSource[] = [];
   private cutawayMinY: number | null = null;
   private cutawayMaxY: number | null = null;
@@ -328,12 +361,16 @@ export class AtriumSimulation {
     cabs: Record<number, LiftCabState>,
     officeChairs: OfficeChairHandle[],
     districtBuildings: Map<BuildingId, DistrictBuildingHandle>,
-    onFootstep?: () => void
+    onFootstep?: () => void,
+    onCarHorn?: () => void,
+    onRelayClick?: (high: boolean) => void
   ) {
     this.scene = scene;
     this.P_LIB = createHumanPalette(M);
     this.cabs = cabs;
     this.onFootstep = onFootstep;
+    this.onCarHorn = onCarHorn;
+    this.onRelayClick = onRelayClick;
 
     clearTrackedChairs();
     const byFloor = new Map<number, TrackedChairCollider[]>();
@@ -1970,6 +2007,47 @@ export class AtriumSimulation {
         logistics: cfg.logistics,
       });
     });
+
+    // Spawn Player Drivable Car (executive obsidian-navy sedan at vacant Hub west bay (-22, 34.5))
+    this.playerCarGroup = makeCar(0x142848, 'sedan', { plateText: 'KDP 300D' });
+    this.playerCarRig = this.playerCarGroup.userData.carRig as CarRig;
+    this.drivePos.set(-22.0, -0.604, 34.5);
+    this.driveYaw = Math.PI;
+    this.playerCarGroup.position.copy(this.drivePos);
+    this.playerCarGroup.rotation.y = this.driveYaw;
+    this.trafficGroup.add(this.playerCarGroup);
+    this.playerCarRig.bodyPivot.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh) {
+        this.playerCarPickMeshes.push(o);
+      }
+    });
+
+    // GPS Destination Beacon Rings (shown only while Drive Mode is active with a target company)
+    this.driveBeaconOuterMat = new THREE.MeshBasicMaterial({
+      color: 0x6fe3a1,
+      transparent: true,
+      opacity: 0.78,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    this.driveBeaconInnerMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.52,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const outerRingGeo = new THREE.RingGeometry(2.15, 2.55, 48);
+    outerRingGeo.rotateX(-Math.PI / 2);
+    const innerRingGeo = new THREE.RingGeometry(1.05, 1.32, 48);
+    innerRingGeo.rotateX(-Math.PI / 2);
+    const outerRing = new THREE.Mesh(outerRingGeo, this.driveBeaconOuterMat);
+    const innerRing = new THREE.Mesh(innerRingGeo, this.driveBeaconInnerMat);
+    innerRing.position.y = 0.015;
+    this.driveTargetBeacon.add(outerRing, innerRing);
+    this.driveTargetBeacon.position.set(-89, -0.57, 18.0);
+    this.driveTargetBeacon.visible = false;
+    this.scene.add(this.driveTargetBeacon);
   }
 
   private buildTourStops(): TourStop[] {
@@ -3632,7 +3710,15 @@ export class AtriumSimulation {
       }
     }
 
-    // 2. Yield to player in Walk Mode or pedestrians crossing the street
+    // 2. Yield to player vehicle if near/in lane ahead
+    if (this.playerCarGroup && Math.abs(this.drivePos.z - v.lane) < 2.6) {
+      const carAhead = (this.drivePos.x - v.x) * v.dir;
+      if (carAhead > 0.5 && carAhead < 17.5) {
+        desiredSpd = Math.min(desiredSpd, carAhead < 6.2 ? 0 : v.cruiseSpd * ((carAhead - 6.2) / 11.3));
+      }
+    }
+
+    // 3. Yield to player in Walk Mode or pedestrians crossing the street
     if (this.walkOn && Math.abs(this.walkPos.z - v.lane) < 2.6) {
       const pedAhead = (this.walkPos.x - v.x) * v.dir;
       if (pedAhead > 1.5 && pedAhead < 14.0) {
@@ -4586,10 +4672,250 @@ export class AtriumSimulation {
     this.onFootstep?.();
   }
 
+  private getDriveBeaconCoord(bId: BuildingId): { x: number; z: number } {
+    switch (bId) {
+      case 'bank':
+        return { x: -89.0, z: 18.0 };
+      case 'restaurant':
+        return { x: -57.0, z: 18.0 };
+      case 'dealership':
+        return { x: 57.0, z: 18.0 };
+      case 'crypto':
+        return { x: 90.0, z: 18.0 };
+      case 'medical':
+        return { x: 0.0, z: -15.0 };
+      case 'travel':
+        return { x: -48.0, z: 77.2 };
+      case 'tourism':
+        return { x: 0.0, z: 77.2 };
+      case 'logistics':
+        return { x: 52.0, z: 77.2 };
+      default:
+        return { x: 0.0, z: 29.75 };
+    }
+  }
+
+  private getNearbyDriveCompany(): BuildingId | null {
+    let best: BuildingId | null = null;
+    let bestD = Infinity;
+    for (const b of DISTRICT_BUILDINGS) {
+      const pt = this.getDriveBeaconCoord(b.id);
+      const d = Math.hypot(this.drivePos.x - pt.x, this.drivePos.z - pt.z);
+      if (d < 16.5 && d < bestD) {
+        bestD = d;
+        best = b.id;
+      }
+    }
+    return best;
+  }
+
+  private getDriveStreetLabel(): string {
+    const x = this.drivePos.x;
+    const z = this.drivePos.z;
+    if (z >= 59.0 && z <= 73.5) {
+      return z < 66.0 ? 'Main Boulevard · Westbound' : 'Main Boulevard · Eastbound';
+    }
+    if (z >= -20.0 && z <= -9.5 && Math.abs(x) <= 42) {
+      return 'Medical Ring Road · Clinic North';
+    }
+    if (Math.abs(x - -73.5) < 5.5 && z >= 12 && z <= 66) {
+      return 'West Commercial Avenue';
+    }
+    if (Math.abs(x - 73.5) < 5.5 && z >= 12 && z <= 66) {
+      return 'East Commercial Avenue';
+    }
+    if (Math.abs(x - -36.5) < 5.0 && z >= -18 && z <= 66) {
+      return 'Hub West Inner Drive';
+    }
+    if (Math.abs(x - 36.5) < 5.0 && z >= -18 && z <= 66) {
+      return 'Hub East Inner Drive';
+    }
+    if (z >= 22 && z <= 38 && Math.abs(x) <= 34) {
+      return 'DomainTechHub Parking Court';
+    }
+    if (z >= 12 && z <= 23 && x < -40) {
+      return x < -73 ? 'Meridian Reserve Bank Forecourt' : 'Saffron & Ember Forecourt';
+    }
+    if (z >= 12 && z <= 23 && x > 40) {
+      return x < 73 ? 'Apex Motors Forecourt' : 'KryptoNexus Exchange Forecourt';
+    }
+    if (z >= 73.5 && x >= 70) {
+      return 'East Freight & Cargo Yard';
+    }
+    if (z >= 73.5) {
+      if (x < -24) return 'Horizon Travel Forecourt';
+      if (x > 24) return 'SwiftPort Logistics Forecourt';
+      return 'Savannah Peaks Forecourt';
+    }
+    return 'Nairobi Innovation District Road';
+  }
+
+  public isNearPlayerCarInWalk(): boolean {
+    if (!this.walkOn || this.walkFloor !== 0 || !this.playerCarGroup) return false;
+    return Math.hypot(this.walkPos.x - this.drivePos.x, this.walkPos.z - this.drivePos.z) < 4.5;
+  }
+
+  public getPlayerCarPickMeshes(): THREE.Object3D[] {
+    return this.playerCarPickMeshes;
+  }
+
+  public isDriving(): boolean {
+    return this.driveOn;
+  }
+
+  public getDriveAudioState(): {
+    driving: boolean;
+    speedAbs: number;
+    throttleAbs: number;
+    gear: 'P' | 'R' | 'N' | 'D';
+  } {
+    const fwdKey = (this.walkKeys.KeyW || this.walkKeys.ArrowUp ? 1 : 0) - (this.walkKeys.KeyS || this.walkKeys.ArrowDown ? 1 : 0);
+    const thr = Math.min(1, Math.abs(fwdKey + this.driveTouch.throttle));
+    const gear: 'P' | 'R' | 'N' | 'D' =
+      Math.abs(this.driveVel) < 0.15
+        ? thr < 0.05
+          ? 'P'
+          : 'N'
+        : this.driveVel >= 0
+          ? 'D'
+          : 'R';
+    return { driving: this.driveOn, speedAbs: Math.abs(this.driveVel), throttleAbs: thr, gear };
+  }
+
+  public setDriveTarget(bId: BuildingId | null) {
+    this.driveTargetBuilding = bId;
+    if (this.driveTargetBeacon) {
+      if (!bId || !this.driveOn) {
+        this.driveTargetBeacon.visible = false;
+      } else {
+        const pt = this.getDriveBeaconCoord(bId);
+        this.driveTargetBeacon.position.set(pt.x, -0.57, pt.z);
+        this.driveBeaconOuterMat.color.set(DISTRICT_BUILDING_MAP[bId].accent);
+        this.driveTargetBeacon.visible = true;
+      }
+    }
+  }
+
+  public setDriveTouchInput(throttle: number, steer: number, brake: boolean) {
+    this.driveTouch.throttle = Math.max(-1, Math.min(1, throttle));
+    this.driveTouch.steer = Math.max(-1, Math.min(1, steer));
+    this.driveTouch.brake = brake;
+  }
+
+  public toggleDriveCamera(): 'chase' | 'hood' {
+    this.driveCamMode = this.driveCamMode === 'chase' ? 'hood' : 'chase';
+    this.driveOrbitYawOffset = 0;
+    this.onRelayClick?.(true);
+    return this.driveCamMode;
+  }
+
+  public toggleDriveHeadlights(): boolean {
+    this.driveHeadlights = !this.driveHeadlights;
+    this.onRelayClick?.(this.driveHeadlights);
+    return this.driveHeadlights;
+  }
+
+  public enterDrive(camera: THREE.Camera, controls: OrbitControls, targetBuilding?: BuildingId | null) {
+    if (this.tourOn) this.endTour();
+    if (this.walkOn) {
+      this.walkOn = false;
+      this.walkLocked = false;
+      this.walkKeys = {};
+      if (document.pointerLockElement) {
+        document.exitPointerLock();
+      }
+    } else {
+      this.savedCamPos.copy(camera.position);
+      this.savedCamTgt.copy(controls.target);
+    }
+    this.cameraFlight.active = false;
+    controls.enabled = false;
+    this.driveOn = true;
+    this.driveOrbitYawOffset = 0;
+    this.driveOrbitPitch = 0.24;
+    if (targetBuilding !== undefined) {
+      this.setDriveTarget(targetBuilding);
+    } else if (this.driveTargetBuilding) {
+      this.setDriveTarget(this.driveTargetBuilding);
+    }
+    // Snap initial chase camera smoothly behind car
+    const fx = Math.sin(this.driveYaw);
+    const fz = Math.cos(this.driveYaw);
+    camera.position.set(this.drivePos.x - fx * 7.6, this.drivePos.y + 3.1, this.drivePos.z - fz * 7.6);
+    camera.lookAt(this.drivePos.x + fx * 3.5, this.drivePos.y + 1.05, this.drivePos.z + fz * 3.5);
+    this.onRelayClick?.(true);
+  }
+
+  public exitDrive(camera?: THREE.Camera, controls?: OrbitControls) {
+    if (!this.driveOn) return;
+    this.driveOn = false;
+    this.driveDrag = false;
+    this.driveVel = 0;
+    this.walkKeys = {};
+    this.driveTouch = { throttle: 0, steer: 0, brake: false };
+    this.driveTargetBeacon.visible = false;
+    if (camera && controls) {
+      controls.enabled = true;
+      this.flyTo(this.savedCamPos.clone(), this.savedCamTgt.clone());
+    }
+    this.onRelayClick?.(false);
+  }
+
+  public stepOutOfCar(camera: THREE.Camera, controls: OrbitControls): BuildingId {
+    this.driveOn = false;
+    this.driveDrag = false;
+    this.driveVel = 0;
+    this.walkKeys = {};
+    this.driveTouch = { throttle: 0, steer: 0, brake: false };
+    this.driveTargetBeacon.visible = false;
+
+    const nearby = this.getNearbyDriveCompany() || 'hub';
+    // Step out beside driver's door (left side relative to car nose) and face toward entrance
+    const leftX = -Math.cos(this.driveYaw);
+    const leftZ = Math.sin(this.driveYaw);
+    const exitPos = resolveObstaclePosition(0, this.drivePos.x + leftX * 1.95, this.drivePos.z + leftZ * 1.95, {
+      radius: 0.42,
+      districtWalk: true,
+    });
+
+    controls.enabled = false;
+    this.walkOn = true;
+    this.walkFloor = 0;
+    this.walkBuildingId = nearby;
+    const groundY = this.groundElevationAt(0, exitPos.x, exitPos.z, nearby);
+    this.walkPos.set(exitPos.x, groundY + 1.65, exitPos.z);
+
+    // Orient camera toward nearby building entrance door
+    const spec = DISTRICT_BUILDING_MAP[nearby];
+    const toDoorX = spec.doorX - exitPos.x;
+    const toDoorZ = spec.doorZ - exitPos.z;
+    this.walkYaw = Math.atan2(-toDoorX, -toDoorZ);
+    this.walkPitch = 0.02;
+    this.walkStep = 0;
+    this.onRelayClick?.(false);
+    camera.position.copy(this.walkPos);
+    camera.rotation.order = 'YXZ';
+    camera.rotation.y = this.walkYaw;
+    camera.rotation.x = this.walkPitch;
+    camera.rotation.z = 0;
+    return nearby;
+  }
+
+  public enterCarFromWalk(camera: THREE.Camera, controls: OrbitControls) {
+    if (!this.isNearPlayerCarInWalk()) return;
+    this.enterDrive(camera, controls);
+  }
+
   public enterWalk(camera: THREE.Camera, controls: OrbitControls, buildingId: BuildingId = 'hub') {
     if (this.tourOn) this.endTour();
-    this.savedCamPos.copy(camera.position);
-    this.savedCamTgt.copy(controls.target);
+    if (this.driveOn) {
+      this.driveOn = false;
+      this.driveVel = 0;
+      this.driveTargetBeacon.visible = false;
+    } else {
+      this.savedCamPos.copy(camera.position);
+      this.savedCamTgt.copy(controls.target);
+    }
     controls.enabled = false;
     this.walkOn = true;
     this.walkBuildingId = buildingId;
@@ -4647,10 +4973,33 @@ export class AtriumSimulation {
 
   public wireWalk(dom: HTMLElement, camera: THREE.Camera, controls: OrbitControls): () => void {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
+        return;
+      }
+      if (this.driveOn) {
+        this.walkKeys[e.code] = true;
+        if (e.code === 'Space') e.preventDefault();
+        if (e.code === 'KeyV') {
+          this.toggleDriveCamera();
+        } else if (e.code === 'KeyL') {
+          this.toggleDriveHeadlights();
+        } else if (e.code === 'KeyB') {
+          this.onCarHorn?.();
+        } else if (e.code === 'KeyF') {
+          this.stepOutOfCar(camera, controls);
+        } else if (e.code === 'Escape') {
+          this.exitDrive(camera, controls);
+        }
+        return;
+      }
       if (!this.walkOn) return;
       this.walkKeys[e.code] = true;
       const maxLv = DISTRICT_BUILDING_MAP[this.walkBuildingId].floors - 1;
       if (e.code === 'Escape') this.exitWalk(camera, controls);
+      if (e.code === 'KeyG' && this.isNearPlayerCarInWalk()) {
+        this.enterCarFromWalk(camera, controls);
+        return;
+      }
       if (e.code.startsWith('Digit')) {
         const d = parseInt(e.code.slice(5), 10);
         if (d >= 0 && d <= maxLv) this.setWalkFloor(d);
@@ -4662,6 +5011,12 @@ export class AtriumSimulation {
       this.walkKeys[e.code] = false;
     };
     const onMouseDown = (e: MouseEvent) => {
+      if (this.driveOn && e.button === 0) {
+        this.driveDrag = true;
+        this.driveLX = e.clientX;
+        this.driveLY = e.clientY;
+        return;
+      }
       if (!this.walkOn) return;
       if (e.button === 0) {
         this.walkDrag = true;
@@ -4678,8 +5033,18 @@ export class AtriumSimulation {
     };
     const onMouseUp = () => {
       this.walkDrag = false;
+      this.driveDrag = false;
     };
     const onMouseMove = (e: MouseEvent) => {
+      if (this.driveOn && this.driveDrag) {
+        const dx = e.clientX - this.driveLX;
+        const dy = e.clientY - this.driveLY;
+        this.driveLX = e.clientX;
+        this.driveLY = e.clientY;
+        this.driveOrbitYawOffset -= dx * 0.0055;
+        this.driveOrbitPitch = Math.max(0.08, Math.min(0.75, this.driveOrbitPitch + dy * 0.004));
+        return;
+      }
       if (!this.walkOn) return;
       if (document.pointerLockElement === dom) {
         this.walkYaw -= e.movementX * 0.0024;
@@ -4763,6 +5128,18 @@ export class AtriumSimulation {
           slot.cz = v.g.position.z;
           slot.cos = Math.cos(ry);
           slot.sin = Math.sin(ry);
+          count++;
+        }
+        if (this.playerCarGroup && this.playerCarGroup.visible) {
+          let slot = this._walkVehicles[count];
+          if (!slot) {
+            slot = { cx: 0, cz: 0, hx: 0.98, hz: 2.25, cos: 1, sin: 0 };
+            this._walkVehicles.push(slot);
+          }
+          slot.cx = this.drivePos.x;
+          slot.cz = this.drivePos.z;
+          slot.cos = Math.cos(this.driveYaw);
+          slot.sin = Math.sin(this.driveYaw);
           count++;
         }
         this._walkVehicles.length = count;
@@ -4995,16 +5372,19 @@ export class AtriumSimulation {
       updatePersonKinematics(P, dt, t, glance);
     }
 
-    // Vehicle traffic
+    // Vehicle traffic & player vehicle simulation
     this.updateTraffic(dt, this.simMin, t);
+    this.updatePlayerCar(dt, this.simMin, t, camera);
 
     // Zuri Guided Tour
     this.guideStep(dt, t, camera, controls);
     this.applyActorCutaway(this.guideActor);
 
-    // Camera flight interpolation
+    // Camera control arbitration
     if (this.walkOn) {
       this.updateWalk(dt, camera);
+    } else if (this.driveOn) {
+      this.updateDriveCamera(dt, camera);
     } else if (this.tourCam.on) {
       const k = 1 - Math.exp(-dt * 2.8);
       camera.position.lerp(this.tourCam.pos, k);
@@ -5029,6 +5409,270 @@ export class AtriumSimulation {
       controls.update();
       this.pushCameraOutsideCharacters(camera.position);
     }
+  }
+
+  private resolveCarCollision(nx: number, nz: number, yaw: number): { x: number; z: number; hit: boolean } {
+    let x = Math.max(-112, Math.min(112, nx));
+    let z = Math.max(-19.2, Math.min(100, nz));
+    let hit = x !== nx || z !== nz;
+
+    const fx = Math.sin(yaw);
+    const fz = Math.cos(yaw);
+    const carRadius = 1.04;
+    const capsuleOffsets = [-1.12, 1.12];
+
+    const pushOutBox = (minX: number, maxX: number, minZ: number, maxZ: number) => {
+      for (const off of capsuleOffsets) {
+        const px = x + fx * off;
+        const pz = z + fz * off;
+        const cx = Math.max(minX, Math.min(maxX, px));
+        const cz = Math.max(minZ, Math.min(maxZ, pz));
+        const dx = px - cx;
+        const dz = pz - cz;
+        const dSq = dx * dx + dz * dz;
+        if (dSq < carRadius * carRadius) {
+          hit = true;
+          const d = Math.sqrt(dSq);
+          if (d > 0.001) {
+            const push = carRadius - d;
+            x += (dx / d) * push;
+            z += (dz / d) * push;
+          } else {
+            // Inside AABB: push along nearest edge
+            const dl = Math.abs(px - minX);
+            const dr = Math.abs(maxX - px);
+            const dtEdge = Math.abs(pz - minZ);
+            const dbEdge = Math.abs(maxZ - pz);
+            const m = Math.min(dl, dr, dtEdge, dbEdge);
+            if (m === dl) x -= dl + carRadius;
+            else if (m === dr) x += dr + carRadius;
+            else if (m === dtEdge) z -= dtEdge + carRadius;
+            else z += dbEdge + carRadius;
+          }
+        }
+      }
+    };
+
+    const pushOutCircle = (cx: number, cz: number, r: number) => {
+      const minD = carRadius + r;
+      for (const off of capsuleOffsets) {
+        const px = x + fx * off;
+        const pz = z + fz * off;
+        const dx = px - cx;
+        const dz = pz - cz;
+        const d = Math.hypot(dx, dz);
+        if (d < minD) {
+          hit = true;
+          if (d > 0.001) {
+            const push = minD - d;
+            x += (dx / d) * push;
+            z += (dz / d) * push;
+          } else {
+            z += minD;
+          }
+        }
+      }
+    };
+
+    // 1. Hub building podium & approach planting beds
+    pushOutBox(-30.5, 30.5, -1.5, 12.2);
+    pushOutBox(-15.2, -10.8, 17.8, 22.2);
+    pushOutBox(10.8, 15.2, 17.8, 22.2);
+    pushOutBox(-15.2, -10.8, 37.8, 42.2);
+    pushOutBox(10.8, 15.2, 37.8, 42.2);
+
+    // 2. Surrounding 8 District company building footprints (with steps margin)
+    for (const b of DISTRICT_BUILDINGS) {
+      if (b.id === 'hub') continue;
+      pushOutBox(
+        b.cx - b.w * 0.5 - 0.6,
+        b.cx + b.w * 0.5 + 0.6,
+        b.cz - b.d * 0.5 - 0.6,
+        b.cz + b.d * 0.5 + 0.6
+      );
+    }
+
+    // 3. Dynamic & parked AI traffic vehicles
+    for (let i = 0; i < this.TRAF.length; i++) {
+      const tv = this.TRAF[i];
+      if (!tv.g.visible) continue;
+      const vx = tv.g.position.x;
+      const vz = tv.g.position.z;
+      if (Math.abs(vx - x) > 6.5 || Math.abs(vz - z) > 6.5) continue;
+      const vs = Math.sin(tv.g.rotation.y);
+      const vc = Math.cos(tv.g.rotation.y);
+      pushOutCircle(vx + vs * 1.1, vz + vc * 1.1, 1.0);
+      pushOutCircle(vx - vs * 1.1, vz - vc * 1.1, 1.0);
+    }
+
+    return { x, z, hit };
+  }
+
+  private updatePlayerCar(dt: number, m: number, elapsed: number, _camera: THREE.Camera) {
+    if (!this.playerCarGroup) return;
+
+    let throttle = 0;
+    let steerIn = 0;
+    let handbrake = false;
+
+    if (this.driveOn) {
+      if (this.walkKeys.KeyW || this.walkKeys.ArrowUp) throttle += 1;
+      if (this.walkKeys.KeyS || this.walkKeys.ArrowDown) throttle -= 1;
+      if (this.walkKeys.KeyA || this.walkKeys.ArrowLeft) steerIn += 1;
+      if (this.walkKeys.KeyD || this.walkKeys.ArrowRight) steerIn -= 1;
+      throttle = Math.max(-1, Math.min(1, throttle + this.driveTouch.throttle));
+      steerIn = Math.max(-1, Math.min(1, steerIn + this.driveTouch.steer));
+      handbrake = Boolean(this.walkKeys.Space || this.driveTouch.brake);
+    }
+
+    const prevVel = this.driveVel;
+    const prevYaw = this.driveYaw;
+
+    // Max forward speed 19.5 m/s (~70 km/h), reverse -7.2 m/s (~26 km/h)
+    const maxFwd = 19.5;
+    const maxRev = -7.2;
+    let targetBrake = 0;
+
+    if (handbrake) {
+      const decel = 16.5 * dt;
+      if (Math.abs(this.driveVel) <= decel) this.driveVel = 0;
+      else this.driveVel -= Math.sign(this.driveVel) * decel;
+      targetBrake = 1.0;
+    } else if (throttle > 0.05) {
+      if (this.driveVel < -0.4) {
+        // Braking from reverse
+        this.driveVel = Math.min(0, this.driveVel + 15.0 * dt);
+        targetBrake = 0.85;
+      } else {
+        this.driveVel = Math.min(maxFwd, this.driveVel + throttle * 7.8 * dt);
+      }
+    } else if (throttle < -0.05) {
+      if (this.driveVel > 0.4) {
+        // Service brakes while rolling forward
+        this.driveVel = Math.max(0, this.driveVel + throttle * 14.5 * dt);
+        targetBrake = 0.95;
+      } else {
+        this.driveVel = Math.max(maxRev, this.driveVel + throttle * 5.2 * dt);
+      }
+    } else {
+      // Natural aerodynamic & rolling resistance coasting
+      const coast = 3.2 * dt;
+      if (Math.abs(this.driveVel) <= coast) this.driveVel = 0;
+      else this.driveVel -= Math.sign(this.driveVel) * coast;
+    }
+
+    // Speed-sensitive Ackermann front wheel steer
+    const spdNorm = Math.min(1, Math.abs(this.driveVel) / 16);
+    const maxSteer = 0.56 - spdNorm * 0.24;
+    const targetSteer = steerIn * maxSteer;
+    const steerRate = Math.abs(steerIn) > 0.05 ? 7.5 : 10.5;
+    this.driveSteer += (targetSteer - this.driveSteer) * Math.min(1, dt * steerRate);
+
+    if (Math.abs(this.driveVel) > 0.04) {
+      const wheelbase = 2.76;
+      const dYaw = (this.driveVel / wheelbase) * Math.tan(this.driveSteer) * dt;
+      this.driveYaw += dYaw;
+      const nx = this.drivePos.x + Math.sin(this.driveYaw) * this.driveVel * dt;
+      const nz = this.drivePos.z + Math.cos(this.driveYaw) * this.driveVel * dt;
+      const col = this.resolveCarCollision(nx, nz, this.driveYaw);
+      this.drivePos.x = col.x;
+      this.drivePos.z = col.z;
+      if (col.hit) {
+        this.driveVel *= 0.35;
+        targetBrake = Math.max(targetBrake, 0.7);
+      }
+    }
+
+    // Elevation transition (-0.62 Main Boulevard vs -0.604 Side Streets & Lots)
+    const onBoulevard = this.drivePos.z >= 59.5 && this.drivePos.z <= 73.5;
+    const groundY = onBoulevard ? -0.62 : -0.604;
+    this.drivePos.y += (groundY - this.drivePos.y) * Math.min(1, dt * 12);
+    this.playerCarGroup.position.copy(this.drivePos);
+    this.playerCarGroup.rotation.y = this.driveYaw;
+
+    // Suspension pitch, body roll & lights
+    const accel = (this.driveVel - prevVel) / Math.max(0.001, dt);
+    const yawRate = (this.driveYaw - prevYaw) / Math.max(0.001, dt);
+    const targetPitch =
+      accel < -0.35 ? Math.min(0.036, -accel * 0.0052) : accel > 0.35 ? -Math.min(0.024, accel * 0.004) : 0;
+    const targetRoll = Math.max(-0.052, Math.min(0.052, yawRate * this.driveVel * 0.0042));
+    this.drivePitch += (targetPitch - this.drivePitch) * Math.min(1, dt * 9);
+    this.driveRoll += (targetRoll - this.driveRoll) * Math.min(1, dt * 9);
+    this.driveBrakeGlow += (targetBrake - this.driveBrakeGlow) * Math.min(1, dt * 14);
+    this.driveSignalDir = steerIn > 0.3 ? -1 : steerIn < -0.3 ? 1 : 0;
+
+    const roadHeave =
+      Math.abs(this.driveVel) > 0.6
+        ? Math.sin(elapsed * (5.2 + Math.abs(this.driveVel) * 0.52)) * 0.004 * Math.min(1, Math.abs(this.driveVel) / 4)
+        : 0;
+    const nightFactor = this.driveOn && this.driveHeadlights ? Math.max(0.45, this.getTrafficNightFactor(m)) : this.getTrafficNightFactor(m);
+
+    updateCarVisualState(this.playerCarRig, {
+      speed: this.driveVel,
+      dt,
+      elapsed,
+      steerAngle: this.driveSteer,
+      pitch: this.drivePitch,
+      roll: this.driveRoll,
+      heave: roadHeave,
+      brakeIntensity: this.driveOn ? Math.max(this.driveBrakeGlow, Math.abs(this.driveVel) < 0.2 ? 0.3 : 0) : 0,
+      nightFactor: this.driveOn ? (this.driveHeadlights ? nightFactor : 0) : nightFactor,
+      engineOn: this.driveOn,
+      signalDir: this.driveOn ? this.driveSignalDir : 0,
+    });
+
+    // Pulse GPS target ring when driving
+    if (this.driveOn && this.driveTargetBuilding) {
+      this.driveTargetBeacon.visible = true;
+      const pulse = 1 + Math.sin(elapsed * 4.2) * 0.08;
+      this.driveTargetBeacon.scale.set(pulse, 1, pulse);
+    } else {
+      this.driveTargetBeacon.visible = false;
+    }
+  }
+
+  private updateDriveCamera(dt: number, camera: THREE.Camera) {
+    const fx = Math.sin(this.driveYaw);
+    const fz = Math.cos(this.driveYaw);
+    if (this.driveCamMode === 'hood') {
+      // Driver windshield / bonnet perspective
+      this.driveCamDesiredPos.set(
+        this.drivePos.x + fx * 0.42 - Math.cos(this.driveYaw) * 0.28,
+        this.drivePos.y + 1.24,
+        this.drivePos.z + fz * 0.42 + Math.sin(this.driveYaw) * 0.28
+      );
+      const lookYaw = this.driveYaw + this.driveOrbitYawOffset;
+      const lx = Math.sin(lookYaw);
+      const lz = Math.cos(lookYaw);
+      this.driveCamDesiredTgt.set(
+        this.driveCamDesiredPos.x + lx * 16.0,
+        this.driveCamDesiredPos.y - 0.32,
+        this.driveCamDesiredPos.z + lz * 16.0
+      );
+      camera.position.copy(this.driveCamDesiredPos);
+      camera.lookAt(this.driveCamDesiredTgt);
+      return;
+    }
+
+    // Damped 3rd-person Chase Camera with manual drag orbit look
+    const chaseYaw = this.driveYaw + this.driveOrbitYawOffset;
+    const cx = Math.sin(chaseYaw);
+    const cz = Math.cos(chaseYaw);
+    const dist = 7.4 + Math.min(2.2, Math.abs(this.driveVel) * 0.11);
+    const height = 2.1 + Math.sin(this.driveOrbitPitch) * 4.2;
+    this.driveCamDesiredPos.set(
+      this.drivePos.x - cx * dist,
+      this.drivePos.y + height,
+      this.drivePos.z - cz * dist
+    );
+    this.driveCamDesiredTgt.set(
+      this.drivePos.x + fx * 3.2,
+      this.drivePos.y + 1.1,
+      this.drivePos.z + fz * 3.2
+    );
+    const k = 1 - Math.exp(-dt * 8.5);
+    camera.position.lerp(this.driveCamDesiredPos, k);
+    camera.lookAt(this.driveCamDesiredTgt);
   }
 
   private pushCameraOutsideCharacters(camPos: THREE.Vector3) {
@@ -5551,6 +6195,21 @@ export class AtriumSimulation {
 
     const bSpec = DISTRICT_BUILDING_MAP[activeBuilding];
     const stop = this.STOPS[this.tourI] || this.STOPS[0];
+
+    let driveTargetDistance = 0;
+    let driveTargetBearingDeg = 0;
+    if (this.driveTargetBuilding) {
+      const tgt = this.getDriveBeaconCoord(this.driveTargetBuilding);
+      const dx = tgt.x - this.drivePos.x;
+      const dz = tgt.z - this.drivePos.z;
+      driveTargetDistance = Math.round(Math.hypot(dx, dz));
+      const dotFwd = dx * Math.sin(this.driveYaw) + dz * Math.cos(this.driveYaw);
+      const dotRight = dx * -Math.cos(this.driveYaw) + dz * Math.sin(this.driveYaw);
+      driveTargetBearingDeg = Math.round((Math.atan2(dotRight, dotFwd) * 180) / Math.PI);
+    }
+    const nearbyBld = this.getNearbyDriveCompany();
+    const audioSt = this.getDriveAudioState();
+
     return {
       simMinutes: this.simMin,
       simRate: this.simRate,
@@ -5586,6 +6245,18 @@ export class AtriumSimulation {
       inspectedMonitor,
       selectedCharacter,
       audioEnabled,
+      driving: this.driveOn,
+      driveSpeedKmh: Math.round(Math.abs(this.driveVel) * 3.6),
+      driveGear: audioSt.gear,
+      driveCameraMode: this.driveCamMode,
+      driveHeadlights: this.driveHeadlights,
+      driveStreetLabel: this.getDriveStreetLabel(),
+      driveTargetBuilding: this.driveTargetBuilding,
+      driveTargetDistance,
+      driveTargetBearingDeg,
+      driveNearbyBuilding: nearbyBld,
+      driveNearbyName: nearbyBld ? DISTRICT_BUILDING_MAP[nearbyBld].shortName : null,
+      nearPlayerCarInWalk: this.isNearPlayerCarInWalk(),
     };
   }
 

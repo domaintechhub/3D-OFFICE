@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Brain,
   Building2,
+  Car,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -11,17 +12,23 @@ import {
   CloudRain,
   Compass,
   Crosshair,
+  DoorOpen,
   Eye,
   Footprints,
+  Lightbulb,
+  Megaphone,
   MessageSquare,
+  Navigation,
   Pause,
   Play,
+  Radio,
   Send,
   Smartphone,
   Snowflake,
   Sparkles,
   Sun,
   Users,
+  Video,
   Volume2,
   VolumeX,
   X,
@@ -66,6 +73,16 @@ interface HudOverlayProps {
   onOpenCharacters: () => void;
   onOpenSocialChannels: () => void;
   onNotifyCompanyJob: (buildingId: BuildingId) => void;
+  onToggleDrive: (targetBuilding?: BuildingId | null) => void;
+  onStepOutOfCar: () => void;
+  onEnterCarFromWalk: () => void;
+  onToggleDriveCamera: () => void;
+  onToggleDriveHeadlights: () => void;
+  onSetDriveTarget: (bId: BuildingId | null) => void;
+  onDriveTouch: (throttle: number, steer: number, brake: boolean) => void;
+  onCarHorn: () => void;
+  onForceRedrawMonitor: () => void;
+  onApplyLiveNairobi: (minutes: number, cond: WeatherMode) => void;
 }
 
 function getFloorButtons(buildingId: BuildingId, totalFloors: number): Array<{ key: string; label: string }> {
@@ -148,6 +165,16 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
   onOpenCharacters,
   onOpenSocialChannels,
   onNotifyCompanyJob,
+  onToggleDrive,
+  onStepOutOfCar,
+  onEnterCarFromWalk,
+  onToggleDriveCamera,
+  onToggleDriveHeadlights,
+  onSetDriveTarget,
+  onDriveTouch,
+  onCarHorn,
+  onForceRedrawMonitor,
+  onApplyLiveNairobi,
 }) => {
   const [dockOpen, setDockOpen] = useState(true);
   const [, setSocialVer] = useState(0);
@@ -155,9 +182,13 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
   const [phonePlatform, setPhonePlatform] = useState<SocialPlatformId>('swiftchat');
   const [phoneJobText, setPhoneJobText] = useState('');
   const [phoneSentNote, setPhoneSentNote] = useState<string | null>(null);
+  const [liveNairobiTemp, setLiveNairobiTemp] = useState<string | null>(null);
+  const [nairobiLoading, setNairobiLoading] = useState(false);
+  const [nairobiError, setNairobiError] = useState<string | null>(null);
   const joyRef = useRef<HTMLDivElement | null>(null);
   const [joyKnob, setJoyKnob] = useState({ x: 0, y: 0 });
   const joyActive = useRef(false);
+  const driveTouchState = useRef({ throttle: 0, steer: 0, brake: false });
 
   useEffect(() => socialNetwork.subscribe(() => setSocialVer((v) => v + 1)), []);
 
@@ -173,16 +204,48 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code === 'KeyH' && !hud.walking && !(e.target instanceof HTMLInputElement)) {
+      const isTextTarget =
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement;
+      if (e.code === 'KeyH' && !hud.walking && !hud.driving && !isTextTarget) {
         setDockOpen((v) => !v);
-      } else if (e.code === 'Escape' && !hud.walking) {
+      } else if (e.code === 'Escape' && !hud.walking && !hud.driving) {
         if (hud.inspectedMonitor) onCloseMonitor();
         if (hud.selectedCharacter) onCloseCharacter();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [hud.walking, hud.inspectedMonitor, hud.selectedCharacter, onCloseMonitor, onCloseCharacter]);
+  }, [hud.walking, hud.driving, hud.inspectedMonitor, hud.selectedCharacter, onCloseMonitor, onCloseCharacter]);
+
+  const syncLiveNairobi = async () => {
+    if (nairobiLoading) return;
+    setNairobiLoading(true);
+    setNairobiError(null);
+    try {
+      const res = await fetch('/api/nairobi-live');
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      const cond = (data.condition || 'clear') as WeatherMode;
+      onApplyLiveNairobi(Number(data.minutesOfDay) || 12 * 60, cond);
+      const tempPart = typeof data.temperatureC === 'number' ? `${data.temperatureC}°C` : '';
+      const sumPart = typeof data.summary === 'string' ? data.summary : '';
+      setLiveNairobiTemp([tempPart, sumPart].filter(Boolean).join(' · ') || 'EAT Live');
+    } catch (err) {
+      setNairobiError(err instanceof Error ? err.message : 'Live Nairobi sync failed');
+    } finally {
+      setNairobiLoading(false);
+    }
+  };
+
+  const setDriveControl = (patch: Partial<{ throttle: number; steer: number; brake: boolean }>) => {
+    const next = { ...driveTouchState.current, ...patch };
+    driveTouchState.current = next;
+    onDriveTouch(next.throttle, next.steer, next.brake);
+  };
 
   const updateJoystick = (clientX: number, clientY: number) => {
     const el = joyRef.current;
@@ -235,7 +298,12 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
             <span className="inline-flex items-center gap-1 text-slate-200">
               <WeatherIcon condition={hud.activeWeather} />
               <span>{hud.weatherLabel}</span>
-              {hud.weatherMode === 'auto' && <span className="text-slate-400">(Auto)</span>}
+              {liveNairobiTemp && (
+                <span className="font-mono-tabular text-emerald-300">({liveNairobiTemp})</span>
+              )}
+              {!liveNairobiTemp && hud.weatherMode === 'auto' && (
+                <span className="text-slate-400">(Auto)</span>
+              )}
               {hud.weatherTimeFactor < 0.99 && (
                 <span className="font-mono-tabular text-sky-300">{hud.weatherTimeFactor.toFixed(2)}×</span>
               )}
@@ -246,7 +314,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          {!hud.walking && (
+          {!hud.walking && !hud.driving && (
             <>
               <button
                 type="button"
@@ -285,7 +353,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
       </div>
 
       {/* Hovered Bay / Character / Monitor Card */}
-      {hud.hoveredRoom && !hud.walking && !hud.tourActive && (
+      {hud.hoveredRoom && !hud.walking && !hud.driving && !hud.tourActive && (
         <div className="pointer-events-none fixed top-[88px] left-3 sm:left-4 w-[min(80vw,285px)] border border-white/15 bg-[#0d121a]/94 px-3 py-2.5 rounded-md shadow-xl">
           <div className="flex items-center gap-2">
             <span
@@ -308,7 +376,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
       )}
 
       {/* Autonomous Character Mind & Thought Inspector */}
-      {hud.selectedCharacter && !hud.walking && (
+      {hud.selectedCharacter && !hud.walking && !hud.driving && (
         <div className="pointer-events-auto fixed top-16 right-3 sm:right-4 w-[min(86vw,308px)] max-h-[calc(100vh-11.2rem)] overflow-y-auto border border-white/15 bg-[#0d121a]/95 px-3.5 py-3 rounded-md shadow-2xl">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
@@ -541,17 +609,18 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
       )}
 
       {/* Live Interactive Computer OS & Real Project / Research / Data Entry Inspector */}
-      {hud.inspectedMonitor && !hud.walking && (
+      {hud.inspectedMonitor && !hud.walking && !hud.driving && (
         <WorkstationInspector
           monitor={hud.inspectedMonitor}
           onClose={onCloseMonitor}
           getInspectedScreenCanvas={getInspectedScreenCanvas}
           onNotifyCompanyJob={onNotifyCompanyJob}
+          onForceRedrawMonitor={onForceRedrawMonitor}
         />
       )}
 
       {/* Active Floor Cutaway Activity Card */}
-      {hud.floorActivity && !hud.walking && !hud.tourActive && !hud.hoveredRoom && (
+      {hud.floorActivity && !hud.walking && !hud.driving && !hud.tourActive && !hud.hoveredRoom && (
         <div
           className={`pointer-events-auto fixed top-[88px] left-3 sm:left-4 w-[min(80vw,268px)] max-h-[calc(100vh-12.5rem)] overflow-y-auto border border-white/15 bg-[#0d121a]/94 px-3 py-2.5 rounded-md shadow-xl ${
             hud.selectedCharacter || hud.inspectedMonitor ? 'hidden lg:block' : ''
@@ -721,6 +790,16 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                     {lv === 0 ? 'G' : `L${lv}`}
                   </button>
                 ))}
+                {hud.nearPlayerCarInWalk && (
+                  <button
+                    type="button"
+                    onClick={onEnterCarFromWalk}
+                    className="ml-1 flex items-center gap-1 border border-emerald-400/60 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 px-2.5 py-1 text-xs font-semibold rounded cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    <Car className="w-3.5 h-3.5" />
+                    <span>Get In Car [G]</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={onToggleWalk}
@@ -731,7 +810,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
               </div>
             </div>
             <p className="mt-1.5 text-[11px] text-slate-400 font-mono-tabular">
-              WASD move across plaza & into open doors · Shift run · 0–{Math.max(0, hud.buildingFloors - 1)} or R/F floor · Esc exit
+              WASD move across plaza & into open doors · Shift run · 0–{Math.max(0, hud.buildingFloors - 1)} or R/F floor{hud.nearPlayerCarInWalk ? ' · G enter car' : ''} · Esc exit
             </p>
           </div>
 
@@ -758,8 +837,194 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
         </>
       )}
 
+      {/* Drivable Vehicle Instrument Cluster & GPS HUD */}
+      {hud.driving && (
+        <>
+          <div className="pointer-events-auto fixed bottom-3 left-1/2 -translate-x-1/2 w-[min(96vw,860px)] border border-white/15 bg-[#0d121a]/94 px-3.5 py-3 rounded-md shadow-2xl">
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              {/* Speedometer, Gear, Street & GPS Distance */}
+              <div className="flex items-center gap-3">
+                <div className="flex items-baseline gap-1.5 border border-white/12 bg-[#070b12] px-2.5 py-1.5 rounded">
+                  <span className="font-mono-tabular text-2xl font-bold text-white leading-none">
+                    {hud.driveSpeedKmh}
+                  </span>
+                  <span className="text-[10px] uppercase tracking-wider text-slate-400">km/h</span>
+                </div>
+                <div className="flex items-center gap-1 border border-white/12 bg-[#070b12] px-2 py-1.5 rounded font-mono-tabular text-xs font-bold">
+                  {(['P', 'R', 'N', 'D'] as const).map((g) => (
+                    <span
+                      key={g}
+                      className={`px-1 rounded ${
+                        hud.driveGear === g
+                          ? g === 'D'
+                            ? 'bg-emerald-500 text-slate-950'
+                            : g === 'R'
+                              ? 'bg-amber-400 text-slate-950'
+                              : 'bg-sky-400 text-slate-950'
+                          : 'text-slate-600'
+                      }`}
+                    >
+                      {g}
+                    </span>
+                  ))}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-white">
+                    <Car className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                    <span className="truncate">{hud.driveStreetLabel}</span>
+                  </div>
+                  {hud.driveTargetBuilding && (
+                    <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-300 font-mono-tabular">
+                      <Navigation
+                        className="w-3 h-3 text-emerald-400 shrink-0 transition-transform duration-150"
+                        style={{ transform: `rotate(${hud.driveTargetBearingDeg}deg)` }}
+                      />
+                      <span>
+                        GPS: {DISTRICT_BUILDINGS.find((b) => b.id === hud.driveTargetBuilding)?.shortName} ·{' '}
+                        {hud.driveTargetDistance}m
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Controls */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={onToggleDriveCamera}
+                  className="flex items-center gap-1 border border-white/15 bg-white/6 hover:bg-white/14 px-2 py-1.5 text-[11px] font-medium text-slate-200 rounded transition-colors cursor-pointer"
+                >
+                  <Video className="w-3.5 h-3.5 text-sky-300" />
+                  <span>{hud.driveCameraMode === 'hood' ? 'Hood' : 'Chase'} [V]</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onToggleDriveHeadlights}
+                  className={`flex items-center gap-1 border px-2 py-1.5 text-[11px] font-medium rounded transition-colors cursor-pointer ${
+                    hud.driveHeadlights
+                      ? 'border-amber-400/50 bg-amber-400/15 text-amber-200'
+                      : 'border-white/15 bg-white/6 text-slate-300'
+                  }`}
+                >
+                  <Lightbulb className="w-3.5 h-3.5" />
+                  <span>Lights [L]</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onCarHorn}
+                  className="flex items-center gap-1 border border-white/15 bg-white/6 hover:bg-white/14 px-2 py-1.5 text-[11px] font-medium text-slate-200 rounded transition-colors cursor-pointer"
+                >
+                  <Megaphone className="w-3.5 h-3.5 text-slate-300" />
+                  <span>Horn [B]</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onStepOutOfCar}
+                  className={`flex items-center gap-1 border px-2.5 py-1.5 text-[11px] font-semibold rounded transition-colors cursor-pointer ${
+                    hud.driveNearbyBuilding
+                      ? 'border-emerald-400 bg-emerald-500 text-slate-950 hover:bg-emerald-400'
+                      : 'border-emerald-400/45 bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30'
+                  }`}
+                >
+                  <DoorOpen className="w-3.5 h-3.5" />
+                  <span>
+                    {hud.driveNearbyName ? `Step Out at ${hud.driveNearbyName} [F]` : 'Park & Step Out [F]'}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onToggleDrive()}
+                  className="border border-rose-500/40 bg-rose-500/15 hover:bg-rose-500/25 text-rose-200 px-2 py-1.5 text-[11px] font-medium rounded cursor-pointer"
+                >
+                  Exit [Esc]
+                </button>
+              </div>
+            </div>
+
+            {/* GPS Destination Bar */}
+            <div className="mt-2 pt-2 border-t border-white/10 flex items-center gap-1 overflow-x-auto no-scrollbar">
+              <span className="text-[10px] uppercase tracking-wider text-slate-400 mr-1 shrink-0">
+                GPS Target
+              </span>
+              {DISTRICT_BUILDINGS.map((b) => {
+                const active = hud.driveTargetBuilding === b.id;
+                return (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => onSetDriveTarget(active ? null : b.id)}
+                    className={`flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium rounded border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                      active
+                        ? 'bg-emerald-500/20 border-emerald-400 text-white font-semibold'
+                        : 'bg-white/4 border-white/10 text-slate-300 hover:bg-white/10 hover:text-white'
+                    }`}
+                  >
+                    <span
+                      className="inline-block h-2 w-2 rounded-xs shrink-0"
+                      style={{ backgroundColor: b.accent }}
+                    />
+                    <span>{b.shortName}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="mt-1.5 text-[10.5px] text-slate-400 font-mono-tabular">
+              W/Up accelerate · S/Down brake & reverse · A/D steer · Space handbrake · Drag viewport to look · F park & walk into office
+            </p>
+          </div>
+
+          {/* Mobile Touch Driving Pedals & Steering */}
+          <div className="pointer-events-auto sm:hidden fixed bottom-36 left-3 flex items-center gap-2 touch-none">
+            <button
+              type="button"
+              onPointerDown={() => setDriveControl({ steer: -1 })}
+              onPointerUp={() => setDriveControl({ steer: 0 })}
+              onPointerLeave={() => setDriveControl({ steer: 0 })}
+              onPointerCancel={() => setDriveControl({ steer: 0 })}
+              className="h-12 w-12 rounded border border-white/20 bg-[#0d121a]/90 text-sm font-bold text-white active:bg-sky-500 active:text-slate-950"
+            >
+              ◀
+            </button>
+            <button
+              type="button"
+              onPointerDown={() => setDriveControl({ steer: 1 })}
+              onPointerUp={() => setDriveControl({ steer: 0 })}
+              onPointerLeave={() => setDriveControl({ steer: 0 })}
+              onPointerCancel={() => setDriveControl({ steer: 0 })}
+              className="h-12 w-12 rounded border border-white/20 bg-[#0d121a]/90 text-sm font-bold text-white active:bg-sky-500 active:text-slate-950"
+            >
+              ▶
+            </button>
+          </div>
+          <div className="pointer-events-auto sm:hidden fixed bottom-36 right-3 flex items-center gap-2 touch-none">
+            <button
+              type="button"
+              onPointerDown={() => setDriveControl({ throttle: -1, brake: true })}
+              onPointerUp={() => setDriveControl({ throttle: 0, brake: false })}
+              onPointerLeave={() => setDriveControl({ throttle: 0, brake: false })}
+              onPointerCancel={() => setDriveControl({ throttle: 0, brake: false })}
+              className="h-12 px-3 rounded border border-rose-400/40 bg-[#0d121a]/90 text-xs font-semibold text-rose-200 active:bg-rose-500 active:text-slate-950"
+            >
+              Rev/Brk
+            </button>
+            <button
+              type="button"
+              onPointerDown={() => setDriveControl({ throttle: 1, brake: false })}
+              onPointerUp={() => setDriveControl({ throttle: 0 })}
+              onPointerLeave={() => setDriveControl({ throttle: 0 })}
+              onPointerCancel={() => setDriveControl({ throttle: 0 })}
+              className="h-12 px-3.5 rounded border border-emerald-400/40 bg-[#0d121a]/90 text-xs font-semibold text-emerald-200 active:bg-emerald-500 active:text-slate-950"
+            >
+              Gas
+            </button>
+          </div>
+        </>
+      )}
+
       {/* Collapsible Bottom Control Dock */}
-      {!hud.walking && dockOpen && (
+      {!hud.walking && !hud.driving && dockOpen && (
         <div className="pointer-events-auto fixed bottom-3 left-1/2 -translate-x-1/2 w-[min(96vw,1080px)] border border-white/12 bg-[#0d121a]/92 px-3 py-2.5 rounded-md shadow-2xl">
           {/* Building Switcher Row */}
           <div className="pb-2 mb-2 border-b border-white/10 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
@@ -839,6 +1104,16 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
 
               <button
                 type="button"
+                onClick={() => onToggleDrive(hud.activeBuilding === 'hub' ? 'bank' : hud.activeBuilding)}
+                title="Drive executive sedan to any company in the district"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded border border-sky-400/40 bg-sky-500/15 text-sky-200 hover:bg-sky-500/25 hover:text-white transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <Car className="w-3.5 h-3.5 text-sky-400" />
+                <span>Drive Car</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={onToggleStaff}
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                   hud.staffVisible
@@ -892,7 +1167,11 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                 <button
                   key={w.mode}
                   type="button"
-                  onClick={() => onSetWeatherMode(w.mode)}
+                  onClick={() => {
+                    setLiveNairobiTemp(null);
+                    setNairobiError(null);
+                    onSetWeatherMode(w.mode);
+                  }}
                   className={`px-2 py-1 text-[11px] rounded transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                     hud.weatherMode === w.mode
                       ? 'bg-indigo-400 text-slate-950 font-semibold'
@@ -902,6 +1181,22 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                   {w.label}
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={syncLiveNairobi}
+                disabled={nairobiLoading}
+                title={nairobiError ? `Sync error: ${nairobiError}` : 'Sync real Africa/Nairobi time & live weather'}
+                className={`ml-1 flex items-center gap-1 px-2 py-1 text-[11px] rounded border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  nairobiError
+                    ? 'border-rose-400/50 bg-rose-500/15 text-rose-200'
+                    : liveNairobiTemp
+                      ? 'border-emerald-400 bg-emerald-500/20 text-emerald-200 font-semibold'
+                      : 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20'
+                }`}
+              >
+                <Radio className="w-3 h-3" />
+                <span>{nairobiLoading ? 'Syncing…' : 'Live Nairobi'}</span>
+              </button>
             </div>
 
             <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
@@ -910,7 +1205,10 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                 <button
                   key={p.label}
                   type="button"
-                  onClick={() => onJumpToTime(p.minutes)}
+                  onClick={() => {
+                    setLiveNairobiTemp(null);
+                    onJumpToTime(p.minutes);
+                  }}
                   className="px-2 py-1 text-[11px] rounded bg-white/5 text-slate-300 hover:bg-white/12 hover:text-white transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 >
                   {p.label}

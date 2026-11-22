@@ -29,6 +29,7 @@ export interface WorkScreenRef {
   next: number;
   off: number;
   lv?: number;
+  stationKey?: string;
   fn: (g: CanvasRenderingContext2D, w: number, h: number, t: number) => void;
 }
 
@@ -130,6 +131,18 @@ export interface HudSnapshot {
   inspectedMonitor: InspectedMonitor | null;
   selectedCharacter: SelectedCharacterSnapshot | null;
   audioEnabled: boolean;
+  driving: boolean;
+  driveSpeedKmh: number;
+  driveGear: 'P' | 'R' | 'N' | 'D';
+  driveCameraMode: 'chase' | 'hood';
+  driveHeadlights: boolean;
+  driveStreetLabel: string;
+  driveTargetBuilding: BuildingId | null;
+  driveTargetDistance: number;
+  driveTargetBearingDeg: number;
+  driveNearbyBuilding: BuildingId | null;
+  driveNearbyName: string | null;
+  nearPlayerCarInWalk: boolean;
 }
 
 export const BW = 10;

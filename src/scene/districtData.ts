@@ -322,11 +322,11 @@ export const DISTRICT_WORKSTATIONS: Record<string, WorkstationProfile> = {
     primaryMode: 'dataEntry',
     browserSessions: [
       {
-        tabTitle: 'Kenya Highland Coffee & Produce Sourcing',
-        url: 'https://kitchen.savannabistro.co.ke/suppliers',
-        searchQuery: 'nyeri aa espresso roast profile organic farms nairobi',
+        tabTitle: 'Nairobi Culinary & Coffee — Wikipedia',
+        url: 'https://en.wikipedia.org/wiki/Kenyan_cuisine',
+        searchQuery: 'Kenyan coffee Nyeri AA specialty roast',
         articleTitle: 'Seasonal Highland Harvest & Farm-to-Table Cold Chain',
-        articleDomain: 'kitchen.savannabistro.co.ke',
+        articleDomain: 'en.wikipedia.org',
         sections: [
           {
             heading: 'Morning Farm Delivery',
@@ -394,11 +394,11 @@ export const DISTRICT_WORKSTATIONS: Record<string, WorkstationProfile> = {
     primaryMode: 'project',
     browserSessions: [
       {
-        tabTitle: '2026 Hybrid & EV Fleet Specs',
-        url: 'https://portal.apexmotors.co.ke/models/flagship-ev',
-        searchQuery: 'awd hybrid suv torque range warranty specifications kenya',
+        tabTitle: 'Electric Vehicle Architecture — Wikipedia',
+        url: 'https://en.wikipedia.org/wiki/Electric_vehicle',
+        searchQuery: 'electric vehicle battery range awd specs',
         articleTitle: 'Apex Flagship AWD Hybrid & Zero-Emission Fleet Benchmarks',
-        articleDomain: 'portal.apexmotors.co.ke',
+        articleDomain: 'en.wikipedia.org',
         sections: [
           {
             heading: 'Showroom Turntable Highlight',
@@ -467,11 +467,11 @@ export const DISTRICT_WORKSTATIONS: Record<string, WorkstationProfile> = {
     primaryMode: 'dataEntry',
     browserSessions: [
       {
-        tabTitle: 'Central Bank FX & Interbank Rates',
-        url: 'https://treasury.nairobitrust.co.ke/fx-desk',
-        searchQuery: 'cbk interbank rate kes usd eur gbp settlement liquidity',
+        tabTitle: 'Real-Time Gross Settlement & Banking',
+        url: 'https://en.wikipedia.org/wiki/Real-time_gross_settlement',
+        searchQuery: 'real time gross settlement banking kenya',
         articleTitle: 'East Africa Interbank FX & RTGS Settlement Window',
-        articleDomain: 'treasury.nairobitrust.co.ke',
+        articleDomain: 'en.wikipedia.org',
         sections: [
           {
             heading: 'Live Currency Desk',
@@ -539,11 +539,11 @@ export const DISTRICT_WORKSTATIONS: Record<string, WorkstationProfile> = {
     primaryMode: 'project',
     browserSessions: [
       {
-        tabTitle: 'Validator Consensus & Cold Custody Monitor',
-        url: 'https://ops.bitvault.exchange/validators',
-        searchQuery: 'multi-sig hardware security module ethereum solana validator finality',
+        tabTitle: 'Blockchain Consensus & Validators',
+        url: 'https://en.wikipedia.org/wiki/Proof_of_stake',
+        searchQuery: 'blockchain validator consensus finality custody',
         articleTitle: 'Multi-Sig MPC Cold Custody & High-Frequency Matching Engine',
-        articleDomain: 'ops.bitvault.exchange',
+        articleDomain: 'en.wikipedia.org',
         sections: [
           {
             heading: 'Sub-Millisecond Order Matching',
@@ -613,11 +613,11 @@ export const DISTRICT_WORKSTATIONS: Record<string, WorkstationProfile> = {
     primaryMode: 'dataEntry',
     browserSessions: [
       {
-        tabTitle: 'JKIA Flight Schedules & Visa Advisory',
-        url: 'https://gds.skylinetravel.co.ke/departures',
-        searchQuery: 'nbo jkia departures london dubai johannesburg kigali visa status',
+        tabTitle: 'Jomo Kenyatta International Airport (NBO)',
+        url: 'https://en.wikipedia.org/wiki/Jomo_Kenyatta_International_Airport',
+        searchQuery: 'Jomo Kenyatta International Airport NBO routes',
         articleTitle: 'Live JKIA International Departures & Corporate Fare Classes',
-        articleDomain: 'gds.skylinetravel.co.ke',
+        articleDomain: 'en.wikipedia.org',
         sections: [
           {
             heading: 'Peak International Corridors',
@@ -684,11 +684,11 @@ export const DISTRICT_WORKSTATIONS: Record<string, WorkstationProfile> = {
     primaryMode: 'browser',
     browserSessions: [
       {
-        tabTitle: 'Maasai Mara & Mt. Kenya Trail Conditions',
-        url: 'https://dispatch.kenyasafari.co.ke/parks-2026',
-        searchQuery: 'maasai mara amboseli conservancy lodge availability safari 4x4',
+        tabTitle: 'Maasai Mara National Reserve — Wikipedia',
+        url: 'https://en.wikipedia.org/wiki/Maasai_Mara',
+        searchQuery: 'Maasai Mara wildlife migration Kenya safari',
         articleTitle: 'National Park Wildlife Corridors & 4x4 Expedition Dispatch',
-        articleDomain: 'dispatch.kenyasafari.co.ke',
+        articleDomain: 'en.wikipedia.org',
         sections: [
           {
             heading: 'Conservancy Field Telemetry',
@@ -757,11 +757,11 @@ export const DISTRICT_WORKSTATIONS: Record<string, WorkstationProfile> = {
     primaryMode: 'dataEntry',
     browserSessions: [
       {
-        tabTitle: 'Clinical Diagnostics & Cold-Chain Pharmacy',
-        url: 'https://ehr.vitalcare.co.ke/clinical-ops',
-        searchQuery: 'automated hematology lab panel cold chain pharmacy storage 2-8c',
+        tabTitle: 'Electronic Health Record — Wikipedia',
+        url: 'https://en.wikipedia.org/wiki/Electronic_health_record',
+        searchQuery: 'electronic health record clinical diagnostics cold chain',
         articleTitle: '24-Hour Clinical Triage & Automated Dispensary Protocols',
-        articleDomain: 'ehr.vitalcare.co.ke',
+        articleDomain: 'en.wikipedia.org',
         sections: [
           {
             heading: 'Pharmacy & Lab Turnaround',
@@ -829,11 +829,11 @@ export const DISTRICT_WORKSTATIONS: Record<string, WorkstationProfile> = {
     primaryMode: 'dataEntry',
     browserSessions: [
       {
-        tabTitle: 'East Africa Freight Corridor & Dock Schedule',
-        url: 'https://ops.swiftport.co.ke/dispatch',
-        searchQuery: 'nairobi mombasa freight corridor cargo van route telemetry customs',
+        tabTitle: 'Freight Transport & Supply Chain — Wikipedia',
+        url: 'https://en.wikipedia.org/wiki/Freight_transport',
+        searchQuery: 'Nairobi Mombasa standard gauge freight logistics',
         articleTitle: 'Automated Parcel Sortation & Express Fleet Routing',
-        articleDomain: 'ops.swiftport.co.ke',
+        articleDomain: 'en.wikipedia.org',
         sections: [
           {
             heading: 'Live Loading Dock Utilization',

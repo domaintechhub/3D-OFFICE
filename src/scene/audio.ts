@@ -30,6 +30,14 @@ export class AmbientAudioManager {
   private trafficFilter: BiquadFilterNode | null = null;
   private trafficPanner: StereoPannerNode | null = null;
 
+  // Player-drivable car engine & road tire noise
+  private driveGain: GainNode | null = null;
+  private driveOscA: OscillatorNode | null = null;
+  private driveOscB: OscillatorNode | null = null;
+  private driveFilter: BiquadFilterNode | null = null;
+  private driveTireGain: GainNode | null = null;
+  private driveTireFilter: BiquadFilterNode | null = null;
+
   private enabled = true;
   private unlocked = false;
   private disposed = false;
@@ -101,6 +109,7 @@ export class AmbientAudioManager {
       this.buildHvacLayer(ctx, master);
       this.buildChatterLayer(ctx, master);
       this.buildTrafficLayer(ctx, master);
+      this.buildDriveLayer(ctx, master);
 
       this.unlocked = ctx.state === 'running';
     } catch {
@@ -314,6 +323,154 @@ export class AmbientAudioManager {
     this.trafficFilter = filter;
   }
 
+  private buildDriveLayer(ctx: AudioContext, dest: AudioNode) {
+    const driveGain = ctx.createGain();
+    driveGain.gain.value = 0;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 260;
+    filter.Q.value = 1.4;
+
+    const oscA = ctx.createOscillator();
+    oscA.type = 'sawtooth';
+    oscA.frequency.value = 54;
+    const gA = ctx.createGain();
+    gA.gain.value = 0.55;
+
+    const oscB = ctx.createOscillator();
+    oscB.type = 'triangle';
+    oscB.frequency.value = 108;
+    const gB = ctx.createGain();
+    gB.gain.value = 0.42;
+
+    oscA.connect(gA);
+    oscB.connect(gB);
+    gA.connect(filter);
+    gB.connect(filter);
+    filter.connect(driveGain);
+    driveGain.connect(dest);
+
+    oscA.start();
+    oscB.start();
+
+    // Tire-on-asphalt rolling rumble
+    const tireBuf = this.createLoopingBrownNoise(ctx, 2.5, 0.08);
+    const tireSrc = ctx.createBufferSource();
+    tireSrc.buffer = tireBuf;
+    tireSrc.loop = true;
+    const tireFilter = ctx.createBiquadFilter();
+    tireFilter.type = 'bandpass';
+    tireFilter.frequency.value = 220;
+    tireFilter.Q.value = 0.9;
+    const tireGain = ctx.createGain();
+    tireGain.gain.value = 0;
+    tireSrc.connect(tireFilter);
+    tireFilter.connect(tireGain);
+    tireGain.connect(dest);
+    tireSrc.start();
+
+    this.driveGain = driveGain;
+    this.driveOscA = oscA;
+    this.driveOscB = oscB;
+    this.driveFilter = filter;
+    this.driveTireGain = tireGain;
+    this.driveTireFilter = tireFilter;
+  }
+
+  /**
+   * Update continuous engine RPM & tire rolling noise when player is driving.
+   */
+  public updateDriveEngine(opts: {
+    driving: boolean;
+    speedAbs: number;
+    throttleAbs: number;
+    gear: 'P' | 'R' | 'N' | 'D';
+  }) {
+    if (!this.ctx || this.disposed) return;
+    const now = this.ctx.currentTime;
+    const active = opts.driving && this.enabled && this.ctx.state === 'running';
+    if (!active) {
+      this.driveGain?.gain.setTargetAtTime(0, now, 0.08);
+      this.driveTireGain?.gain.setTargetAtTime(0, now, 0.08);
+      return;
+    }
+    const speedRatio = Math.min(1, opts.speedAbs / 22);
+    // Simulate subtle automatic gearshift cadence
+    const gearMod = (speedRatio * 3.1) % 1;
+    const rpmNorm = Math.min(1, 0.14 + speedRatio * 0.52 + gearMod * 0.16 + opts.throttleAbs * 0.24);
+    const fBase = 48 + rpmNorm * 112;
+    this.driveOscA?.frequency.setTargetAtTime(fBase, now, 0.07);
+    this.driveOscB?.frequency.setTargetAtTime(fBase * 2.0, now, 0.07);
+    this.driveFilter?.frequency.setTargetAtTime(190 + rpmNorm * 520, now, 0.08);
+    this.driveGain?.gain.setTargetAtTime(0.022 + rpmNorm * 0.036, now, 0.09);
+
+    const tireLevel = speedRatio > 0.02 ? 0.012 + speedRatio * 0.055 : 0;
+    this.driveTireFilter?.frequency.setTargetAtTime(160 + speedRatio * 420, now, 0.08);
+    this.driveTireGain?.gain.setTargetAtTime(tireLevel, now, 0.08);
+  }
+
+  /**
+   * Play realistic dual-tone automotive horn.
+   */
+  public playCarHorn() {
+    this.unlock();
+    if (!this.enabled || !this.ctx || this.ctx.state !== 'running') return;
+    try {
+      const ctx = this.ctx;
+      const now = ctx.currentTime;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 1450;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(0.085, now + 0.025);
+      gain.gain.setValueAtTime(0.08, now + 0.22);
+      gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.34);
+
+      const osc1 = ctx.createOscillator();
+      osc1.type = 'sawtooth';
+      osc1.frequency.setValueAtTime(392, now);
+      const osc2 = ctx.createOscillator();
+      osc2.type = 'sawtooth';
+      osc2.frequency.setValueAtTime(493.88, now);
+
+      osc1.connect(filter);
+      osc2.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.masterGain || ctx.destination);
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 0.36);
+      osc2.stop(now + 0.36);
+    } catch {
+      // Ignore audio failure
+    }
+  }
+
+  /**
+   * Subtle relay click for turn signals / ignition toggles.
+   */
+  public playRelayClick(high = true) {
+    if (!this.enabled || !this.ctx || this.ctx.state !== 'running') return;
+    try {
+      const ctx = this.ctx;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(high ? 920 : 680, now);
+      gain.gain.setValueAtTime(0.022, now);
+      gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.025);
+      osc.connect(gain);
+      gain.connect(this.masterGain || ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.03);
+    } catch {
+      // Ignore
+    }
+  }
+
   /**
    * Synthesize a soft footstep sound for first-person walkthrough mode.
    */
@@ -464,5 +621,11 @@ export class AmbientAudioManager {
     this.trafficGain = null;
     this.trafficFilter = null;
     this.trafficPanner = null;
+    this.driveGain = null;
+    this.driveOscA = null;
+    this.driveOscB = null;
+    this.driveFilter = null;
+    this.driveTireGain = null;
+    this.driveTireFilter = null;
   }
 }
