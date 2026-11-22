@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Component, type ErrorInfo, type ReactNode, useEffect, useRef, useState } from 'react';
 import { CharacterStudioModal } from './components/CharacterStudioModal';
 import { HudOverlay } from './components/HudOverlay';
 import { AtriumEngine } from './scene/AtriumEngine';
@@ -41,7 +41,44 @@ const INITIAL_HUD: HudSnapshot = {
   audioEnabled: true,
 };
 
-export default function App() {
+interface BoundaryState {
+  errorMessage: string | null;
+}
+
+class ViewportErrorBoundary extends Component<{ children: ReactNode }, BoundaryState> {
+  state: BoundaryState = { errorMessage: null };
+
+  static getDerivedStateFromError(error: Error): BoundaryState {
+    return { errorMessage: error?.message || 'Unexpected viewport error.' };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('ViewportErrorBoundary caught error:', error, info);
+  }
+
+  render() {
+    if (this.state.errorMessage) {
+      return (
+        <div className="w-full h-full flex items-center justify-center bg-[#0b1322] text-slate-200 p-6">
+          <div className="max-w-md border border-white/15 bg-slate-900 p-6 rounded-md shadow-2xl">
+            <h1 className="text-lg font-semibold text-white">3D Viewport Recovery</h1>
+            <p className="mt-2 text-sm text-slate-400">{this.state.errorMessage}</p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="mt-4 px-4 py-2 text-sm font-medium bg-emerald-500 text-slate-950 rounded hover:bg-emerald-400 transition-colors"
+            >
+              Reload 3D Viewport
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function AtriumApp() {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<AtriumEngine | null>(null);
   const [hud, setHud] = useState<HudSnapshot>(INITIAL_HUD);
@@ -53,9 +90,15 @@ export default function App() {
     if (!el) return;
 
     try {
-      const engine = new AtriumEngine(el, (snapshot) => {
-        setHud(snapshot);
-      });
+      const engine = new AtriumEngine(
+        el,
+        (snapshot) => {
+          setHud(snapshot);
+        },
+        (fatalMsg) => {
+          setWebglError(fatalMsg);
+        }
+      );
       engineRef.current = engine;
 
       return () => {
@@ -69,10 +112,17 @@ export default function App() {
 
   if (webglError) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-slate-950 text-slate-200 p-6">
-        <div className="max-w-md border border-white/15 bg-slate-900 p-6 rounded-md">
+      <div className="w-full h-full flex items-center justify-center bg-[#0b1322] text-slate-200 p-6">
+        <div className="max-w-md border border-white/15 bg-slate-900 p-6 rounded-md shadow-2xl">
           <h1 className="text-lg font-semibold text-white">3D Viewport Unavailable</h1>
           <p className="mt-2 text-sm text-slate-400">{webglError}</p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 text-sm font-medium bg-emerald-500 text-slate-950 rounded hover:bg-emerald-400 transition-colors"
+          >
+            Reload 3D Viewport
+          </button>
         </div>
       </div>
     );
@@ -108,5 +158,13 @@ export default function App() {
       />
       <CharacterStudioModal isOpen={studioOpen} onClose={() => setStudioOpen(false)} />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ViewportErrorBoundary>
+      <AtriumApp />
+    </ViewportErrorBoundary>
   );
 }

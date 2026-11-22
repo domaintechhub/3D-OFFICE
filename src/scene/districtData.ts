@@ -200,7 +200,7 @@ export const DISTRICT_BUILDINGS: DistrictBuildingSpec[] = [
     doorZ: -20.0,
     doorSide: 'south',
     description: 'Illuminated pharmacy dispensary, patient drop-off ring road, diagnostic imaging labs and 24-hour wellness care.',
-    overviewCam: { p: [0, 18, 10], t: [0, 5.5, -26] },
+    overviewCam: { p: [36, 17.5, -2.5], t: [0, 7.5, -26] },
   },
   {
     id: 'logistics',

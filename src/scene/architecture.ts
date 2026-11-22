@@ -44,6 +44,16 @@ import {
   tree,
 } from './props';
 import {
+  buildPlanterTrough,
+  buildTropicalPalm,
+  buildVinePergolaCanopy,
+  getArchitecturalMaterials,
+  getRoundedPerimeterWallGeo,
+  getRoundedRibbonGeo,
+  getRoundedSlabGeo,
+  getSlopedRoofBladeGeo,
+} from './architecturalForms';
+import {
   createBoardScreenMat,
   createCustomBoardScreen,
   createDeskScreenMat,
@@ -338,6 +348,8 @@ export function buildSceneArchitecture(
   const roofShellGroup = new THREE.Group();
   scene.add(roofShellGroup);
 
+  const archMats = getArchitecturalMaterials(M);
+
   const backWallMat = new THREE.MeshStandardMaterial({
     map: M.textures.concreteTex,
     normalMap: M.textures.concreteNormal,
@@ -348,7 +360,6 @@ export function buildSceneArchitecture(
     metalness: 0.04,
   });
 
-  const gapDark = new THREE.MeshStandardMaterial({ color: 0x454950, roughness: 0.9, envMapIntensity: 0.1 });
   // Stairwell core cutout footprint: x in [20.1, 24.4], z in [1.0, 8.4]
   const SW_X0 = 20.1;
   const SW_X1 = 24.4;
@@ -375,21 +386,50 @@ export function buildSceneArchitecture(
 
   for (let s = 0; s < FLOORS; s++) {
     const lg = levelGroups[s];
-    boxAt(lg, WIDTH + 1, LH[s], 0.4, 0, LV[s] + LH[s] / 2, -0.35, backWallMat, false, false);
+    boxAt(lg, WIDTH + 0.4, LH[s], 0.4, 0, LV[s] + LH[s] / 2, -0.35, backWallMat, false, false);
     if (s === 0) {
       boxAt(lg, WIDTH, 0.4, DEPTH + 0.4, 0, LV[s] - 0.2, DEPTH / 2, M.slab, false, true, 0.04);
     } else {
       addCutoutSlab(lg, LV[s] - 0.2, 0.04);
     }
-    boxAt(lg, WIDTH, 0.46, 0.32, 0, LV[s] - 0.1, DEPTH + 0.12, M.fascia, true, false, 0.05);
-    boxAt(lg, WIDTH, 0.14, 0.05, 0, LV[s] - 0.4, DEPTH + 0.3, gapDark, false, false);
   }
-  boxAt(levelGroups[0], WIDTH, 0.64, DEPTH + 0.4, 0, -0.32, DEPTH / 2, M.concrete, false, true, 0.05);
-  boxAt(roofShellGroup, WIDTH + 1, 0.9, 0.4, 0, ROOF + 0.45, -0.35, backWallMat, false, false);
-  addCutoutSlab(roofShellGroup, ROOF - 0.2, 0.05);
-  boxAt(roofShellGroup, WIDTH, 0.7, 0.4, 0, ROOF - 0.2, DEPTH + 0.14, M.white, true, false, 0.06);
+  // Rounded-corner sculpted plinth podium base
+  const basePodium = new THREE.Mesh(
+    getRoundedSlabGeo(WIDTH + 2.4, DEPTH + 1.8, 2.8, 0.64, 0.08),
+    archMats.bullnoseConcrete
+  );
+  basePodium.position.set(0, -0.32, DEPTH / 2 + 0.15);
+  basePodium.receiveShadow = true;
+  levelGroups[0].add(basePodium);
 
-  // Side curtain walls with anodized mullions & low-iron architectural glazing (split per level for cutaway)
+  // Rooftop base structural slab + sweeping curved bullnose wraparound crown (Reference Image 2)
+  boxAt(roofShellGroup, WIDTH + 0.4, 0.72, 0.4, 0, ROOF + 0.36, -0.35, backWallMat, false, false);
+  addCutoutSlab(roofShellGroup, ROOF - 0.2, 0.05);
+  const roofCrownRibbon = new THREE.Mesh(
+    getRoundedRibbonGeo(WIDTH + 3.8, DEPTH + 3.6, 3.6, 1.8, 1.6, 0.52, 0.1),
+    archMats.bullnoseConcrete
+  );
+  roofCrownRibbon.position.set(0, ROOF - 0.08, DEPTH / 2 + 0.45);
+  roofCrownRibbon.castShadow = true;
+  roofCrownRibbon.receiveShadow = true;
+  roofShellGroup.add(roofCrownRibbon);
+
+  const roofCrownSoffit = new THREE.Mesh(
+    getRoundedRibbonGeo(WIDTH + 3.4, DEPTH + 3.2, 3.4, 1.5, 1.35, 0.08, 0.02),
+    archMats.timberSoffit
+  );
+  roofCrownSoffit.position.set(0, ROOF - 0.36, DEPTH / 2 + 0.45);
+  roofShellGroup.add(roofCrownSoffit);
+
+  // Curved frameless glass rooftop terrace balustrade (clear of east/west lift towers)
+  const roofGlassRail = new THREE.Mesh(
+    getRoundedPerimeterWallGeo(WIDTH + 3.1, DEPTH + 2.9, 3.2, 1.04, 0.03),
+    M.glass
+  );
+  roofGlassRail.position.set(0, ROOF + 0.18, DEPTH / 2 + 0.45);
+  roofShellGroup.add(roofGlassRail);
+
+  // Side architectural curves: natural ashlar stone corner piers + vertical warm timber fins + glazing
   const sideWinMat = new THREE.MeshStandardMaterial({
     color: 0x3b4d56,
     roughness: 0.2,
@@ -400,14 +440,27 @@ export function buildSceneArchitecture(
     const lg = levelGroups[s];
     [-1, 1].forEach((sd) => {
       const x = sd * (WIDTH / 2) - sd * 0.12;
-      boxAt(lg, 0.26, LH[s], 1.2, x, LV[s] + LH[s] / 2, -0.1, M.concrete, true, true, 0.04);
+      // Natural ashlar stone feature pier at rear corner (Reference Image 4)
+      const stonePier = new THREE.Mesh(
+        getRoundedSlabGeo(0.75, 1.65, 0.22, LH[s], 0.04),
+        archMats.ashlarStone
+      );
+      stonePier.position.set(x + sd * 0.1, LV[s] + LH[s] / 2, 0.35);
+      stonePier.castShadow = true;
+      stonePier.receiveShadow = true;
+      lg.add(stonePier);
+
       boxAt(lg, 0.09, LH[s] - 0.35, 0.5, x, LV[s] + LH[s] / 2, DEPTH - 0.4, sideWinMat, false, false);
-      boxAt(lg, 0.15, 0.06, 0.58, x, LV[s] + LH[s] * 0.52, DEPTH - 0.4, M.dark, false, false, 0.01);
-      boxAt(lg, 0.15, 0.06, 0.58, x, LV[s] + 0.19, DEPTH - 0.4, M.dark, false, false, 0.01);
+
+      // Vertical fluted cedar timber fin screen along the side flank (Reference Image 2 & 4)
+      for (let f = 0; f < 8; f++) {
+        const fz = 1.6 + f * 1.05;
+        boxAt(lg, 0.14, LH[s] - 0.24, 0.1, x + sd * 0.22, LV[s] + LH[s] / 2, fz, archMats.timberFin, true, false, 0.02);
+      }
     });
   }
 
-  // Structural columns with shadow-gap plinth collars & capital reveals across 6 bays (-30..+30)
+  // Round cylindrical architectural columns with bronze shadow collars across 6 bays (-30..+30)
   for (let s = 0; s < FLOORS; s++) {
     const lg = levelGroups[s];
     for (let i = 0; i <= 6; i++) {
@@ -418,28 +471,50 @@ export function buildSceneArchitecture(
       boxAt(lg, 0.285, 0.06, 0.52, x, LV[s] + 0.03, 0.25, M.dark, false, false, 0.01);
       boxAt(lg, 0.285, 0.05, 0.52, x, LV[s] + ch - 0.025, 0.25, M.dark, false, false, 0.01);
 
-      boxAt(lg, 0.28, ch, 0.28, x, LV[s] + ch / 2, DEPTH - 0.5, M.white, true, false, 0.05);
-      boxAt(lg, 0.305, 0.06, 0.305, x, LV[s] + 0.03, DEPTH - 0.5, M.dark, false, false, 0.01);
-      boxAt(lg, 0.305, 0.05, 0.305, x, LV[s] + ch - 0.025, DEPTH - 0.5, M.dark, false, false, 0.01);
+      // Cylindrical pilotis column on front bay line
+      cylAt(lg, 0.17, 0.17, ch, x, LV[s] + ch / 2, DEPTH - 0.5, archMats.stuccoWhite, true, false, 16);
+      cylAt(lg, 0.19, 0.19, 0.07, x, LV[s] + 0.035, DEPTH - 0.5, archMats.bronzeMullion, false, false, 16);
+      cylAt(lg, 0.19, 0.19, 0.06, x, LV[s] + ch - 0.03, DEPTH - 0.5, archMats.bronzeMullion, false, false, 16);
     }
   }
 
-  // Upper floor low-iron glass balustrades with base shoe channels, spider clamps & stainless handrails
-  const bw = WIDTH - 5.2;
-  for (let s = 1; s < FLOORS; s++) {
-    const lg = levelGroups[s];
-    const h = 1.04;
-    boxAt(lg, bw, 0.065, 0.07, 0, LV[s] + 0.032, DEPTH - 0.35, M.dark, false, true, 0.01);
-    const gMesh = new THREE.Mesh(new THREE.BoxGeometry(bw, h - 0.06, 0.024), M.glass);
-    gMesh.position.set(0, LV[s] + 0.06 + (h - 0.06) / 2, DEPTH - 0.35);
-    lg.add(gMesh);
-    boxAt(lg, bw, 0.042, 0.068, 0, LV[s] + h, DEPTH - 0.35, M.metal, false, false, 0.018);
-    for (let i = 0; i <= 12; i++) {
-      const x = -bw / 2 + 0.6 + (i * (bw - 1.2)) / 12;
-      cylAt(lg, 0.018, 0.018, h, x, LV[s] + h / 2, DEPTH - 0.35, M.metal, false, false, 10);
-      boxAt(lg, 0.055, 0.055, 0.048, x, LV[s] + 0.22, DEPTH - 0.35, M.chrome, false, false, 0.008);
-      boxAt(lg, 0.055, 0.055, 0.048, x, LV[s] + 0.84, DEPTH - 0.35, M.chrome, false, false, 0.008);
-    }
+  // Ground Floor stone entrance piers + Vine-Draped Timber Porte-Cochère Pergola + Tropical Palms (Image 1 & 4)
+  {
+    const g0 = levelGroups[0];
+    [-10.2, 10.2].forEach((px) => {
+      const pier = new THREE.Mesh(
+        getRoundedSlabGeo(1.05, 1.35, 0.2, LV[1] - 0.2, 0.04),
+        archMats.ashlarStone
+      );
+      pier.position.set(px, (LV[1] - 0.2) * 0.5, DEPTH + 0.25);
+      pier.castShadow = true;
+      pier.receiveShadow = true;
+      g0.add(pier);
+    });
+
+    // Dramatic angled cantilevered entrance canopy blade above reception doors (Image 1 & 3)
+    const entryBlade = new THREE.Mesh(
+      getSlopedRoofBladeGeo(22.0, 5.2, 0.14, 0.44, 0.72, 0.96, 0.05),
+      archMats.stuccoWhite
+    );
+    entryBlade.position.set(0, 4.18, DEPTH + 2.1);
+    entryBlade.castShadow = true;
+    g0.add(entryBlade);
+
+    const entrySoffit = new THREE.Mesh(
+      getSlopedRoofBladeGeo(21.4, 4.8, 0.08, 0.16, 0.65, 0.73, 0.02),
+      archMats.timberSoffit
+    );
+    entrySoffit.position.set(0, 4.16, DEPTH + 2.05);
+    g0.add(entrySoffit);
+
+    // Timber pergola flanking entrance wings with trailing vines (Reference Image 4)
+    buildVinePergolaCanopy(g0, -18.5, 0, DEPTH + 1.5, 12.0, 3.2, 3.6, [-4.8, 0, 4.8], 41, archMats);
+    buildVinePergolaCanopy(g0, 18.5, 0, DEPTH + 1.5, 12.0, 3.2, 3.6, [-4.8, 0, 4.8], 73, archMats);
+
+    // Sculptural tropical palms framing the curved corners
+    buildTropicalPalm(g0, -32.2, -0.58, 12.6, 5.2, 11, M, archMats);
+    buildTropicalPalm(g0, 32.2, -0.58, 12.6, 5.4, 29, M, archMats);
   }
 
   // Ceiling warm linear cove strips (split around stairwell opening on upper floors)
@@ -452,70 +527,60 @@ export function buildSceneArchitecture(
     boxAt(cg, 4.4, 0.05, 0.12, 27.1, y, 7.2, M.ledWarm, false, false);
   }
 
-  // Recessed balconies with rounded timber louvers & lush botanical planters across all 6 bays
-  const timberMat = new THREE.MeshStandardMaterial({
-    map: M.textures.woodTex,
-    normalMap: M.textures.woodNormal,
-    normalScale: new THREE.Vector2(0.45, 0.45),
-    color: 0xc2a07a,
-    roughness: 0.65,
-    metalness: 0.02,
-    envMapIntensity: 0.26,
-  });
-  const planterMat = new THREE.MeshStandardMaterial({ color: 0x675e53, roughness: 0.88, metalness: 0.03 });
-  const balconyLeafMat = new THREE.MeshStandardMaterial({
-    map: leafTex('broad'),
-    color: 0x458838,
-    transparent: true,
-    alphaTest: 0.42,
-    side: THREE.DoubleSide,
-    roughness: 0.8,
-  });
-  const leafCardGeo = new THREE.PlaneGeometry(0.54, 0.44);
+  // Sweeping Rounded-Corner Wraparound Bullnose Balconies + Timber Soffits + Curved Glass + Lush Planters (Image 2 & 4)
+  const timberMat = archMats.timberFin;
+  const planterMat = archMats.planterBox;
 
   for (let s = 1; s < FLOORS; s++) {
     const lg = levelGroups[s];
-    const cg = levelCeilings[s];
     const y = LV[s];
+
+    // Continuous sweeping curved-corner wraparound bullnose slab (outer 63.6m x 14.0m, r=3.3m, inner cutout clears interior & lift shafts)
+    const wrapRibbon = new THREE.Mesh(
+      getRoundedRibbonGeo(WIDTH + 3.6, DEPTH + 3.0, 3.3, 1.65, 1.45, 0.44, 0.09),
+      archMats.bullnoseConcrete
+    );
+    wrapRibbon.position.set(0, y - 0.14, DEPTH / 2 + 0.55);
+    wrapRibbon.castShadow = true;
+    wrapRibbon.receiveShadow = true;
+    lg.add(wrapRibbon);
+
+    // Warm cedar timber soffit lining the underside of every curved balcony overhang
+    const wrapSoffit = new THREE.Mesh(
+      getRoundedRibbonGeo(WIDTH + 3.2, DEPTH + 2.6, 3.1, 1.45, 1.25, 0.07, 0.02),
+      archMats.timberSoffit
+    );
+    wrapSoffit.position.set(0, y - 0.38, DEPTH / 2 + 0.55);
+    lg.add(wrapSoffit);
+
+    // Continuous curved-corner low-iron glass balustrade & brushed stainless/bronze top rail
+    const curvedGlassRail = new THREE.Mesh(
+      getRoundedPerimeterWallGeo(WIDTH + 2.95, DEPTH + 2.35, 2.95, 1.0, 0.032),
+      M.glass
+    );
+    curvedGlassRail.position.set(0, y + 0.08, DEPTH / 2 + 0.55);
+    lg.add(curvedGlassRail);
+
+    const curvedHandrail = new THREE.Mesh(
+      getRoundedRibbonGeo(WIDTH + 3.04, DEPTH + 2.44, 3.0, 0.09, 0.09, 0.055, 0.015),
+      archMats.bronzeMullion
+    );
+    curvedHandrail.position.set(0, y + 1.09, DEPTH / 2 + 0.55);
+    lg.add(curvedHandrail);
+
+    // Vertical timber privacy fins & cascading greenery planters along alternating curved bays
     for (let i = 0; i < 6; i++) {
       const bx = -WIDTH / 2 + BW / 2 + i * BW;
-      const bd = 1.55;
-      const zf = DEPTH + 0.06;
-      const zb = zf - bd;
-      boxAt(lg, BW - 1.0, 0.22, bd, bx, y + 0.11, (zf + zb) / 2, M.slab, true, true, 0.04);
-      boxAt(cg, BW - 1.0, 0.16, bd, bx, y + ceilHeight(s) - 0.16, (zf + zb) / 2, M.slab, false, true, 0.03);
-
-      boxAt(lg, BW - 1.0, 0.06, 0.068, bx, y + 0.25, zf - 0.06, M.dark, false, false, 0.01);
-      const bal = new THREE.Mesh(new THREE.BoxGeometry(BW - 1.0, 0.92, 0.024), M.glass);
-      bal.position.set(bx, y + 0.72, zf - 0.06);
-      lg.add(bal);
-      boxAt(lg, BW - 1.0, 0.046, 0.072, bx, y + 1.18, zf - 0.06, M.metal, false, false, 0.018);
-      for (let k = 0; k <= 6; k++) {
-        cylAt(
-          lg,
-          0.018,
-          0.018,
-          0.96,
-          bx - (BW - 1.0) / 2 + 0.08 + (k * (BW - 1.16)) / 6,
-          y + 0.7,
-          zf - 0.06,
-          M.metal,
-          false,
-          false,
-          8
-        );
-      }
-
       const screenX = bx + (BW - 1.0) / 2 - 0.08;
-      for (let k = 0; k < 9; k++) {
+      for (let k = 0; k < 7; k++) {
         boxAt(
           lg,
-          0.08,
-          ceilHeight(s) - 0.55,
+          0.075,
+          ceilHeight(s) - 0.48,
           0.16,
-          screenX - 0.32 + k * 0.08,
-          y + (ceilHeight(s) - 0.55) / 2 + 0.2,
-          zb + 0.35,
+          screenX - 0.25 + k * 0.085,
+          y + (ceilHeight(s) - 0.48) / 2 + 0.16,
+          DEPTH + 0.15,
           timberMat,
           true,
           false,
@@ -523,68 +588,121 @@ export function buildSceneArchitecture(
         );
       }
 
-      boxAt(lg, 1.55, 0.36, 0.46, bx - 1.9, y + 0.4, zf - 0.42, planterMat, true, true, 0.05);
-      for (let k = 0; k < 7; k++) {
-        const cm = new THREE.Mesh(leafCardGeo, balconyLeafMat);
-        cm.position.set(bx - 2.48 + k * 0.19, y + 0.68 + (k % 2) * 0.06, zf - 0.42 + ((k % 3) - 1) * 0.07);
-        cm.rotation.set(-0.52, (s + i + k) * 0.9, (k % 2 ? 1 : -1) * 0.35);
-        lg.add(cm);
+      if ((s + i) % 2 === 0) {
+        buildPlanterTrough(lg, bx - 1.6, y + 0.08, DEPTH + 1.55, 2.6, 0, s * 19 + i, archMats);
       }
     }
   }
 
-  // Roof parapets, louvered plant screen, pergola, glazed stairwell bulkhead & planter beds
-  boxAt(roofShellGroup, WIDTH + 0.4, 0.9, 0.34, 0, ROOF + 0.42, DEPTH + 0.05, M.white, true, true, 0.06);
-  boxAt(roofShellGroup, 0.34, 0.9, DEPTH + 0.4, -WIDTH / 2 - 0.05, ROOF + 0.42, DEPTH / 2, M.white, true, true, 0.06);
-  boxAt(roofShellGroup, 0.34, 0.9, DEPTH + 0.4, WIDTH / 2 + 0.05, ROOF + 0.42, DEPTH / 2, M.white, true, true, 0.06);
-
-  for (let x = -WIDTH / 2 + 2; x < WIDTH / 2 - 1; x += 0.42) {
-    boxAt(roofShellGroup, 0.18, 1.7, 0.14, x, ROOF + 1.05, DEPTH - 1.4, timberMat, true, false, 0.02);
-  }
-  [-16, 0].forEach((px) => {
-    const pg = new THREE.Group();
-    pg.position.set(px, ROOF + 0.1, 5.4);
-    roofShellGroup.add(pg);
-    const pw = 13;
-    const pd = 5.4;
-    for (let c = 0; c < 5; c++) {
-      boxAt(pg, 0.18, 3.2, 0.18, -pw / 2 + 1 + (c * (pw - 2)) / 4, 1.6, -pd / 2 + 0.5, M.pvFrame, false, false, 0.03);
-      boxAt(pg, 0.18, 3.2, 0.18, -pw / 2 + 1 + (c * (pw - 2)) / 4, 1.6, pd / 2 - 0.5, M.pvFrame, false, false, 0.03);
-    }
-    for (let s2 = 0; s2 < 16; s2++) {
-      const sz = -pd / 2 + 0.5 + (s2 * (pd - 1)) / 15;
-      boxAt(pg, pw, 0.12, 0.34, 0, 3.25, sz, M.pvFrame, false, false, 0.025);
-    }
-    boxAt(pg, pw, 0.22, 0.22, 0, 3.42, -pd / 2 + 0.5, M.pvFrame, false, false, 0.03);
-    boxAt(pg, pw, 0.22, 0.22, 0, 3.42, pd / 2 - 0.5, M.pvFrame, false, false, 0.03);
-  });
-
-  // Glazed rooftop stairwell bulkhead pavilion over x in [20.0, 24.5], z in [0.9, 8.5]
+  // Rooftop Sanctuary: Sloped Cantilevered Blade Canopy + Clerestory Louvres + Infinity Pool + Rounded Pavilion + Palms
+  // 1. Sweeping sloped cantilevered blade roof over Center-East wing (x = -9.5..+18.5, clear of stairwell crown) like Reference Image 3
   {
-    const bh = 2.75;
-    boxAt(roofShellGroup, 4.6, 0.18, 7.8, 22.25, ROOF + bh, 4.7, M.dark, true, true, 0.04);
-    boxAt(roofShellGroup, 4.4, 0.06, 7.6, 22.25, ROOF + bh + 0.08, 4.7, M.roofDeck, false, true);
-    boxAt(roofShellGroup, 0.12, bh, 7.6, 20.0, ROOF + bh / 2, 4.7, M.dark, true, false, 0.02);
-    boxAt(roofShellGroup, 0.12, bh, 7.6, 24.5, ROOF + bh / 2, 4.7, M.dark, true, false, 0.02);
-    boxAt(roofShellGroup, 4.5, bh, 0.12, 22.25, ROOF + bh / 2, 0.9, M.dark, true, false, 0.02);
-    boxAt(roofShellGroup, 0.05, bh - 0.1, 7.4, 20.02, ROOF + bh / 2, 4.7, M.glass, false, false);
-    boxAt(roofShellGroup, 0.05, bh - 0.1, 7.4, 24.48, ROOF + bh / 2, 4.7, M.glass, false, false);
-    boxAt(roofShellGroup, 2.2, bh, 0.08, 21.15, ROOF + bh / 2, 8.45, M.glass, false, false);
-    boxAt(roofShellGroup, 0.08, bh, 0.12, 22.25, ROOF + bh / 2, 8.45, M.dark, false, false);
+    const canopyW = 28.0;
+    const canopyCx = 4.5;
+    const bladeGeo = getSlopedRoofBladeGeo(canopyW, 13.6, 2.45, 2.86, 4.15, 4.55, 0.06);
+    const bladeMesh = new THREE.Mesh(bladeGeo, archMats.stuccoWhite);
+    bladeMesh.position.set(canopyCx, ROOF, DEPTH / 2 + 0.5);
+    bladeMesh.castShadow = true;
+    bladeMesh.receiveShadow = true;
+    roofShellGroup.add(bladeMesh);
+
+    // Warm cedar timber soffit underneath the sloped blade roof
+    const bladeSoffitGeo = getSlopedRoofBladeGeo(canopyW - 0.6, 12.8, 2.38, 2.46, 4.08, 4.16, 0.02);
+    const bladeSoffit = new THREE.Mesh(bladeSoffitGeo, archMats.timberSoffit);
+    bladeSoffit.position.set(canopyCx, ROOF, DEPTH / 2 + 0.45);
+    roofShellGroup.add(bladeSoffit);
+
+    // Vertical dark timber/bronze architectural louvre clerestory screen beneath the sloped front eave (Image 3)
+    for (let lx = canopyCx - canopyW * 0.46; lx <= canopyCx + canopyW * 0.46; lx += 0.46) {
+      boxAt(roofShellGroup, 0.09, 1.55, 0.22, lx, ROOF + 3.25, DEPTH + 0.9, archMats.bronzeMullion, true, false, 0.015);
+    }
+    // Slender round structural columns supporting the cantilevered blade roof
+    [-8.2, 0.2, 8.8, 17.2].forEach((cx) => {
+      cylAt(roofShellGroup, 0.14, 0.14, 4.15, cx, ROOF + 2.07, DEPTH + 0.75, archMats.stuccoWhite, true, false, 16);
+      cylAt(roofShellGroup, 0.14, 0.14, 2.55, cx, ROOF + 1.27, 0.5, archMats.stuccoWhite, true, false, 16);
+    });
   }
 
-  [
-    [-25, 8.4],
-    [-15, 8.4],
-    [15, 8.4],
-    [-25, 2.2],
-    [-15, 2.2],
-    [15, 2.2],
-  ].forEach((p, i) => {
-    boxAt(roofShellGroup, 2.6, 0.5, 1.0, p[0], ROOF + 0.25, p[1], planterMat, true, true, 0.06);
-    for (let k = 0; k < 3; k++) {
-      plant(roofShellGroup, p[0] - 0.75 + k * 0.75, ROOF + 0.45, p[1], 0.65, i * 11 + k, M);
+  // 2. Rooftop Infinity Edge Lap Pool & Tropical Palm Garden on West Terrace (Reference Image 2)
+  {
+    const poolCx = -19.5;
+    const poolCz = 6.8;
+    const poolW = 14.5;
+    const poolD = 5.4;
+    // Pool surround deck & stone coping
+    const poolDeck = new THREE.Mesh(
+      getRoundedSlabGeo(poolW + 1.6, poolD + 1.4, 1.2, 0.46, 0.06),
+      archMats.bullnoseConcrete
+    );
+    poolDeck.position.set(poolCx, ROOF + 0.23, poolCz);
+    poolDeck.receiveShadow = true;
+    roofShellGroup.add(poolDeck);
+
+    // Shimmering turquoise pool water
+    const waterMesh = new THREE.Mesh(
+      getRoundedSlabGeo(poolW, poolD, 0.85, 0.22, 0.02),
+      archMats.poolWater
+    );
+    waterMesh.position.set(poolCx, ROOF + 0.4, poolCz);
+    roofShellGroup.add(waterMesh);
+
+    // Glass infinity weir along south rim
+    const weir = new THREE.Mesh(new THREE.BoxGeometry(poolW - 0.6, 0.34, 0.06), M.glass);
+    weir.position.set(poolCx, ROOF + 0.44, poolCz + poolD * 0.5);
+    roofShellGroup.add(weir);
+  }
+
+  // 3. Rounded Fluted Timber & Glass Stairwell Pavilion over x in [20.0, 24.5], z in [0.9, 8.5] (Image 2 crown!)
+  {
+    const bh = 2.85;
+    const pavRoof = new THREE.Mesh(
+      getRoundedSlabGeo(5.6, 8.6, 1.8, 0.28, 0.06),
+      archMats.bullnoseConcrete
+    );
+    pavRoof.position.set(22.25, ROOF + bh + 0.06, 4.7);
+    pavRoof.castShadow = true;
+    roofShellGroup.add(pavRoof);
+
+    const pavSoffit = new THREE.Mesh(
+      getRoundedSlabGeo(5.2, 8.2, 1.6, 0.08, 0.02),
+      archMats.timberSoffit
+    );
+    pavSoffit.position.set(22.25, ROOF + bh - 0.08, 4.7);
+    roofShellGroup.add(pavSoffit);
+
+    const pavGlass = new THREE.Mesh(
+      getRoundedPerimeterWallGeo(4.5, 7.5, 1.35, bh - 0.1, 0.04),
+      M.glass
+    );
+    pavGlass.position.set(22.25, ROOF + 0.04, 4.7);
+    roofShellGroup.add(pavGlass);
+
+    // Fluted vertical timber fins wrapping the curved stair pavilion
+    for (let f = 0; f < 10; f++) {
+      const fz = 1.4 + f * 0.72;
+      boxAt(roofShellGroup, 0.1, bh - 0.1, 0.1, 19.95, ROOF + bh / 2, fz, archMats.timberFin, true, false, 0.02);
+      boxAt(roofShellGroup, 0.1, bh - 0.1, 0.1, 24.55, ROOF + bh / 2, fz, archMats.timberFin, true, false, 0.02);
     }
+  }
+
+  // 4. Lush Rooftop Tropical Palms & Cascading Edge Planter Beds (Reference Image 2)
+  [
+    [-28.5, 9.8, 3.8],
+    [-26.2, 2.2, 4.2],
+    [-11.2, 9.8, 3.6],
+    [17.8, 10.2, 3.9],
+    [27.2, 9.8, 3.7],
+  ].forEach(([px, pz, ph], idx) => {
+    buildTropicalPalm(roofShellGroup, px, ROOF + 0.04, pz, ph, 100 + idx * 17, M, archMats);
+  });
+  [
+    [-25.5, 11.4, 5.2],
+    [-16.0, 11.4, 5.2],
+    [-5.0, 11.4, 5.6],
+    [6.0, 11.4, 5.6],
+    [16.0, 11.4, 5.2],
+  ].forEach(([px, pz, len], idx) => {
+    buildPlanterTrough(roofShellGroup, px, ROOF + 0.18, pz, len, 0, 200 + idx * 13, archMats);
   });
 
   /* =========================================================
@@ -2834,34 +2952,35 @@ export function buildSceneArchitecture(
   addRoofDeck(4.5, 1.8, 22.25, 9.4);
   addRoofDeck(4.5, 0.2, 22.25, 0.8);
 
+  // Solar PV arrays cleanly pitched atop the East-Center sloped blade canopy (clear of West pool & stairwell pavilion)
   const MW = 1.52;
   const MD = 1.02;
   const MX = MW + 0.07;
-  const pvBanks = [
-    { cx: -15.5, cols: 13 },
-    { cx: 9.8, cols: 9 },
-  ];
-  [2.1, 3.75, 5.4, 7.05].forEach((z) => {
-    pvBanks.forEach(({ cx, cols }) => {
-      const grp = new THREE.Group();
-      grp.position.set(cx, ROOF + 0.36, z);
-      grp.rotation.x = -0.3;
-      roofGroup.add(grp);
-      for (let c = 0; c < cols; c++) {
-        const x = (-(cols - 1) * MX) / 2 + c * MX;
-        boxAt(grp, MW, 0.045, MD, x, 0, 0, M.pv, false, false);
-        boxAt(grp, MW + 0.05, 0.02, MD + 0.05, x, -0.037, 0, M.pvFrame, false, false);
-      }
-      boxAt(grp, cols * MX, 0.06, 0.07, 0, -0.09, 0.44, M.pvFrame, false, false, 0.015);
-      boxAt(grp, cols * MX, 0.06, 0.07, 0, -0.09, -0.44, M.pvFrame, false, false, 0.015);
-      for (let c = 0; c < cols; c += 2) {
-        const lx = cx + (-(cols - 1) * MX) / 2 + c * MX;
-        [-0.42, 0.42].forEach((dz) => cylAt(roofGroup, 0.036, 0.04, 0.4, lx, ROOF + 0.19, z + dz, M.pvFrame, false, false, 8));
-      }
-    });
+  const bladeSlope = Math.atan((4.55 - 2.86) / 13.6);
+  const bladeTopAtZ = (wz: number) => ROOF + 2.86 + ((wz + 0.8) / 13.6) * (4.55 - 2.86);
+  const pvCols = 13;
+  const pvCx = 4.5;
+  [2.6, 5.8, 9.0].forEach((z) => {
+    const surfaceY = bladeTopAtZ(z);
+    const grp = new THREE.Group();
+    grp.position.set(pvCx, surfaceY + 0.16, z);
+    grp.rotation.x = -bladeSlope;
+    roofGroup.add(grp);
+    for (let c = 0; c < pvCols; c++) {
+      const x = (-(pvCols - 1) * MX) / 2 + c * MX;
+      boxAt(grp, MW, 0.045, MD, x, 0, 0, M.pv, false, false);
+      boxAt(grp, MW + 0.05, 0.02, MD + 0.05, x, -0.037, 0, M.pvFrame, false, false);
+    }
+    boxAt(grp, pvCols * MX, 0.06, 0.07, 0, -0.09, 0.44, M.pvFrame, false, false, 0.015);
+    boxAt(grp, pvCols * MX, 0.06, 0.07, 0, -0.09, -0.44, M.pvFrame, false, false, 0.015);
+    for (let c = 0; c < pvCols; c += 2) {
+      const lx = pvCx + (-(pvCols - 1) * MX) / 2 + c * MX;
+      [-0.36, 0.36].forEach((dz) =>
+        cylAt(roofGroup, 0.035, 0.04, 0.2, lx, bladeTopAtZ(z + dz) + 0.08, z + dz, M.pvFrame, false, false, 8)
+      );
+    }
   });
 
-  boxAt(roofGroup, 1.55, 0.03, 9.2, 0, ROOF + 0.02, 5.2, new THREE.MeshStandardMaterial({ color: 0xa9adb0, roughness: 0.9 }), false, true);
   boxAt(roofGroup, 1.5, 0.07, 0.32, 17.6, ROOF + 0.46, 1.5, M.tray, false, false);
   boxAt(roofGroup, 0.9, 1.1, 0.6, 18.8, ROOF + 0.56, 1.35, M.cabinet, true, false, 0.04);
   boxAt(roofGroup, 0.6, 0.09, 0.02, 18.8, ROOF + 0.9, 1.66, M.warn, false, false);
@@ -2873,23 +2992,26 @@ export function buildSceneArchitecture(
   ]);
   roofGroup.add(new THREE.Mesh(new THREE.TubeGeometry(roofCondCurve, 8, 0.075, 10, false), M.conduit));
 
-  // Cylindrical shrouded HVAC chillers (West Roof Wing)
+  // Cylindrical shrouded HVAC chillers (tucked cleanly at NW roof corner behind cedar louver screen)
   [
-    [-28.3, 4.6],
-    [-28.3, 7.6],
+    [-28.7, 2.3],
+    [-28.7, 4.3],
   ].forEach((p) => {
-    boxAt(roofGroup, 1.1, 0.9, 1.3, p[0], ROOF + 0.47, p[1], M.cabinet, true, true, 0.06);
-    cylAt(roofGroup, 0.44, 0.46, 0.12, p[0], ROOF + 0.95, p[1], M.dark, false, false, 20);
+    boxAt(roofGroup, 1.05, 0.85, 1.25, p[0], ROOF + 0.45, p[1], M.cabinet, true, true, 0.06);
+    cylAt(roofGroup, 0.42, 0.44, 0.12, p[0], ROOF + 0.91, p[1], M.dark, false, false, 20);
     const fanGrp = new THREE.Group();
-    fanGrp.position.set(p[0], ROOF + 0.97, p[1]);
+    fanGrp.position.set(p[0], ROOF + 0.93, p[1]);
     for (let b = 0; b < 4; b++) {
-      const blade = new THREE.Mesh(getRoundedBox(0.68, 0.015, 0.11, 0.006, 2), M.metal);
+      const blade = new THREE.Mesh(getRoundedBox(0.64, 0.015, 0.11, 0.006, 2), M.metal);
       blade.rotation.y = (b * Math.PI) / 4;
       fanGrp.add(blade);
     }
     roofGroup.add(fanGrp);
     roofFans.push(fanGrp);
   });
+  for (let lz = 1.4; lz <= 5.2; lz += 0.38) {
+    boxAt(roofGroup, 0.08, 1.15, 0.14, -27.9, ROOF + 0.6, lz, archMats.timberFin, true, false, 0.015);
+  }
 
   // Back wall cylindrical PV riser conduit
   const riserGroup = new THREE.Group();

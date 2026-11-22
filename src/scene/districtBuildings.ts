@@ -2,6 +2,19 @@ import * as THREE from 'three';
 import type { BuildingId, DistrictBuildingSpec } from './districtData';
 import { DISTRICT_BUILDINGS } from './districtData';
 import type { MonitorPickTarget, OfficeChairHandle } from './architecture';
+import {
+  buildPlanterTrough,
+  buildTropicalPalm,
+  buildVinePergolaCanopy,
+  getArchitecturalMaterials,
+  getAsymmetricShedRoofGeo,
+  getGableClerestoryGeo,
+  getRoundedPerimeterWallGeo,
+  getRoundedRibbonGeo,
+  getRoundedSlabGeo,
+  getSlopedRoofBladeGeo,
+  type ArchitecturalMaterials,
+} from './architecturalForms';
 import type { MaterialLibrary } from './materials';
 import {
   armchair,
@@ -9,7 +22,6 @@ import {
   ceilingLinearLight,
   contact,
   cylAt,
-  getRoundedBox,
   makeCar,
   monitor,
   officeChair,
@@ -185,6 +197,15 @@ function makeAtmKiosk(
   parent.add(g);
 }
 
+type DistrictArchStyle = 'tower' | 'blade' | 'stone_pergola' | 'shed_seam';
+
+function getBuildingArchStyle(id: BuildingId): DistrictArchStyle {
+  if (id === 'bank' || id === 'crypto') return 'tower';
+  if (id === 'medical' || id === 'travel') return 'blade';
+  if (id === 'restaurant' || id === 'tourism') return 'stone_pergola';
+  return 'shed_seam';
+}
+
 function buildPerimeterWalls(
   parent: THREE.Group,
   spec: DistrictBuildingSpec,
@@ -192,6 +213,8 @@ function buildPerimeterWalls(
   glassMat: THREE.Material,
   wallMat: THREE.Material,
   frameMat: THREE.Material,
+  archMats: ArchitecturalMaterials,
+  style: DistrictArchStyle,
   doorOpen: boolean,
   picks: THREE.Object3D[]
 ) {
@@ -201,29 +224,56 @@ function buildPerimeterWalls(
   const hw = spec.w * 0.5;
   const hd = spec.d * 0.5;
   const isGround = lv === 0;
+  const dirZ = spec.doorSide === 'south' ? 1 : -1;
 
-  // Back wall (opposite doorSide): solid masonry piers + upper clear glass band
   const backZ = spec.doorSide === 'south' ? spec.cz - hd + WALL_THICK * 0.5 : spec.cz + hd - WALL_THICK * 0.5;
   const frontZ = spec.doorSide === 'south' ? spec.cz + hd - WALL_THICK * 0.5 : spec.cz - hd + WALL_THICK * 0.5;
 
   // Back wall solid base + transom glazing for clear architectural framing
-  const backLower = boxAt(parent, spec.w, hWall * 0.62, WALL_THICK, spec.cx, yFloor + SLAB_THICK * 0.5 + hWall * 0.31, backZ, wallMat, true, true, 0.03);
-  const backGlass = boxAt(parent, spec.w - 0.8, hWall * 0.36, 0.06, spec.cx, yFloor + SLAB_THICK * 0.5 + hWall * 0.81, backZ, glassMat, false, false);
+  const backLower = boxAt(parent, spec.w - 0.8, hWall * 0.54, WALL_THICK, spec.cx, yFloor + SLAB_THICK * 0.5 + hWall * 0.27, backZ, wallMat, true, true, 0.03);
+  const backGlass = boxAt(parent, spec.w - 1.2, hWall * 0.44, 0.06, spec.cx, yFloor + SLAB_THICK * 0.5 + hWall * 0.77, backZ, glassMat, false, false);
   picks.push(backLower, backGlass);
 
-  // Side walls: corner piers + expansive full-height glass panes so interiors remain visible
+  // Side walls: sleek rounded cylindrical columns or ashlar stone feature piers + full-height glazing
   [-1, 1].forEach((side) => {
     const wx = spec.cx + side * (hw - WALL_THICK * 0.5);
-    const gl = boxAt(parent, 0.07, hWall - 0.18, spec.d - 1.6, wx, yMid, spec.cz, glassMat, false, false);
-    boxAt(parent, WALL_THICK, 0.28, spec.d, wx, yFloor + SLAB_THICK * 0.5 + 0.14, spec.cz, wallMat, false, true);
-    boxAt(parent, WALL_THICK, 0.16, spec.d, wx, yFloor + spec.floorH - 0.2, spec.cz, frameMat, false, false);
+    const gl = boxAt(parent, 0.06, hWall - 0.18, spec.d - 1.8, wx, yMid, spec.cz, glassMat, false, false);
+    boxAt(parent, WALL_THICK * 0.75, 0.22, spec.d - 1.4, wx, yFloor + SLAB_THICK * 0.5 + 0.11, spec.cz, wallMat, false, true);
+    boxAt(parent, WALL_THICK * 0.75, 0.14, spec.d - 1.4, wx, yFloor + spec.floorH - 0.18, spec.cz, frameMat, false, false);
     picks.push(gl);
-    // Corner columns
-    const colS = boxAt(parent, 0.42, hWall, 0.42, wx, yMid, frontZ, frameMat, true, true, 0.03);
-    const colB = boxAt(parent, 0.42, hWall, 0.42, wx, yMid, backZ, frameMat, true, true, 0.03);
-    picks.push(colS, colB);
-    // Mid mullion
-    boxAt(parent, 0.18, hWall, 0.18, wx, yMid, spec.cz, frameMat, false, false);
+
+    if (style === 'stone_pergola') {
+      // Natural Ashlar Stone architectural corner piers (Reference Image 4)
+      const pierF = boxAt(parent, 0.72, hWall, 0.72, wx - side * 0.12, yMid, frontZ - dirZ * 0.12, archMats.ashlarStone, true, true, 0.04);
+      const pierB = boxAt(parent, 0.72, hWall, 0.72, wx - side * 0.12, yMid, backZ + dirZ * 0.12, archMats.ashlarStone, true, true, 0.04);
+      picks.push(pierF, pierB);
+      // Warm vertical timber privacy fin accents along flank wall
+      for (let k = -2; k <= 2; k++) {
+        boxAt(parent, 0.08, hWall - 0.14, 0.16, wx + side * 0.14, yMid, spec.cz + k * 0.36, archMats.timberFin, true, false, 0.01);
+      }
+    } else {
+      // Sculpted cylindrical pilotis corner columns (avoiding boxy square corners)
+      const colMat = style === 'tower' || style === 'blade' ? archMats.stuccoWhite : frameMat;
+      const colS = cylAt(parent, 0.24, 0.24, hWall, wx - side * 0.15, yMid, frontZ - dirZ * 0.15, colMat, true, true, 16);
+      const colB = cylAt(parent, 0.24, 0.24, hWall, wx - side * 0.15, yMid, backZ + dirZ * 0.15, colMat, true, true, 16);
+      picks.push(colS, colB);
+      // Mid-flank timber fin or bronze mullion screen
+      for (let k = -1; k <= 1; k++) {
+        boxAt(
+          parent,
+          0.08,
+          hWall - 0.14,
+          0.14,
+          wx + side * 0.06,
+          yMid,
+          spec.cz + k * 0.42,
+          style === 'tower' ? archMats.timberFin : archMats.bronzeMullion,
+          false,
+          false,
+          0.01
+        );
+      }
+    }
   });
 
   // Front facade facing street/plaza: doorway opening at (doorX - DOOR_HALF_W .. doorX + DOOR_HALF_W) on Ground floor
@@ -233,37 +283,36 @@ function buildPerimeterWalls(
     if (leftSpan > 0.3) {
       const lw = leftSpan;
       const lx = spec.cx - hw + lw * 0.5;
-      const lg = boxAt(parent, lw - 0.3, hWall - 0.24, 0.07, lx, yMid, frontZ, glassMat, false, false);
-      boxAt(parent, lw, 0.22, WALL_THICK, lx, yFloor + SLAB_THICK * 0.5 + 0.11, frontZ, wallMat, false, true);
-      boxAt(parent, lw, 0.16, WALL_THICK, lx, yFloor + spec.floorH - 0.2, frontZ, frameMat, false, false);
+      const lg = boxAt(parent, lw - 0.5, hWall - 0.24, 0.06, lx, yMid, frontZ, glassMat, false, false);
+      boxAt(parent, lw - 0.4, 0.18, WALL_THICK * 0.75, lx, yFloor + SLAB_THICK * 0.5 + 0.09, frontZ, wallMat, false, true);
+      boxAt(parent, lw - 0.4, 0.14, WALL_THICK * 0.75, lx, yFloor + spec.floorH - 0.18, frontZ, frameMat, false, false);
       picks.push(lg);
     }
     if (rightSpan > 0.3) {
       const rw = rightSpan;
       const rx = spec.doorX + DOOR_HALF_W + rw * 0.5;
-      const rg = boxAt(parent, rw - 0.3, hWall - 0.24, 0.07, rx, yMid, frontZ, glassMat, false, false);
-      boxAt(parent, rw, 0.22, WALL_THICK, rx, yFloor + SLAB_THICK * 0.5 + 0.11, frontZ, wallMat, false, true);
-      boxAt(parent, rw, 0.16, WALL_THICK, rx, yFloor + spec.floorH - 0.2, frontZ, frameMat, false, false);
+      const rg = boxAt(parent, rw - 0.5, hWall - 0.24, 0.06, rx, yMid, frontZ, glassMat, false, false);
+      boxAt(parent, rw - 0.4, 0.18, WALL_THICK * 0.75, rx, yFloor + SLAB_THICK * 0.5 + 0.09, frontZ, wallMat, false, true);
+      boxAt(parent, rw - 0.4, 0.14, WALL_THICK * 0.75, rx, yFloor + spec.floorH - 0.18, frontZ, frameMat, false, false);
       picks.push(rg);
     }
     // Door jambs, transom above 2.5m & propped-open glazed doors
     const transH = Math.max(0.45, hWall - 2.55);
-    boxAt(parent, DOOR_HALF_W * 2, transH, 0.08, spec.doorX, yFloor + SLAB_THICK * 0.5 + 2.55 + transH * 0.5, frontZ, glassMat, false, false);
-    boxAt(parent, DOOR_HALF_W * 2 + 0.28, 0.16, 0.28, spec.doorX, yFloor + SLAB_THICK * 0.5 + 2.55, frontZ, frameMat, false, false);
+    boxAt(parent, DOOR_HALF_W * 2, transH, 0.06, spec.doorX, yFloor + SLAB_THICK * 0.5 + 2.55 + transH * 0.5, frontZ, glassMat, false, false);
+    boxAt(parent, DOOR_HALF_W * 2 + 0.28, 0.14, 0.24, spec.doorX, yFloor + SLAB_THICK * 0.5 + 2.55, frontZ, archMats.bronzeMullion, false, false);
     [-1, 1].forEach((s) => {
-      boxAt(parent, 0.14, hWall, 0.28, spec.doorX + s * (DOOR_HALF_W + 0.05), yMid, frontZ, frameMat, true, false);
+      boxAt(parent, 0.12, hWall, 0.24, spec.doorX + s * (DOOR_HALF_W + 0.05), yMid, frontZ, archMats.bronzeMullion, true, false);
       // Open double door leaves swung outward slightly
-      const dirZ = spec.doorSide === 'south' ? 1 : -1;
-      boxAt(parent, 0.06, 2.38, 1.15, spec.doorX + s * DOOR_HALF_W, yFloor + SLAB_THICK * 0.5 + 1.19, frontZ + dirZ * 0.58, glassMat, false, false);
+      boxAt(parent, 0.05, 2.38, 1.15, spec.doorX + s * DOOR_HALF_W, yFloor + SLAB_THICK * 0.5 + 1.19, frontZ + dirZ * 0.58, glassMat, false, false);
     });
   } else {
-    const fg = boxAt(parent, spec.w - 0.8, hWall - 0.26, 0.07, spec.cx, yMid, frontZ, glassMat, false, false);
-    boxAt(parent, spec.w, 0.32, WALL_THICK, spec.cx, yFloor + SLAB_THICK * 0.5 + 0.16, frontZ, wallMat, false, true);
-    boxAt(parent, spec.w, 0.18, WALL_THICK, spec.cx, yFloor + spec.floorH - 0.2, frontZ, frameMat, false, false);
+    const fg = boxAt(parent, spec.w - 1.2, hWall - 0.24, 0.06, spec.cx, yMid, frontZ, glassMat, false, false);
+    boxAt(parent, spec.w - 0.9, 0.22, WALL_THICK * 0.75, spec.cx, yFloor + SLAB_THICK * 0.5 + 0.11, frontZ, wallMat, false, true);
+    boxAt(parent, spec.w - 0.9, 0.14, WALL_THICK * 0.75, spec.cx, yFloor + spec.floorH - 0.18, frontZ, frameMat, false, false);
     picks.push(fg);
     // Vertical architectural mullions across front glazing
     for (let mx = spec.cx - hw + 4; mx < spec.cx + hw - 2; mx += 4.5) {
-      boxAt(parent, 0.14, hWall, 0.18, mx, yMid, frontZ, frameMat, false, false);
+      boxAt(parent, 0.11, hWall, 0.14, mx, yMid, frontZ, archMats.bronzeMullion, false, false);
     }
   }
 }
@@ -274,6 +323,7 @@ export function buildDistrictBuildings(
   screenReg: ScreenRegistry
 ): Map<BuildingId, DistrictBuildingHandle> {
   const handles = new Map<BuildingId, DistrictBuildingHandle>();
+  const archMats = getArchitecturalMaterials(M);
 
   const std = (o: THREE.MeshStandardMaterialParameters) =>
     new THREE.MeshStandardMaterial({ roughness: 0.72, metalness: 0.08, envMapIntensity: 0.45, ...o });
@@ -431,7 +481,11 @@ export function buildDistrictBuildings(
       });
     };
 
-    // Build all floors (0 .. spec.floors - 1)
+    const style = getBuildingArchStyle(spec.id);
+    const dirZ = spec.doorSide === 'south' ? 1 : -1;
+    const rotFacingDoor = spec.doorSide === 'south' ? 0 : Math.PI;
+
+    // Build all floors (0 .. spec.floors - 1) with sculpted rounded slabs, cedar soffits & wraparound balconies
     for (let lv = 0; lv < spec.floors; lv++) {
       const lg = new THREE.Group();
       const cg = new THREE.Group();
@@ -444,19 +498,172 @@ export function buildDistrictBuildings(
       const floorSurfaceY = yFloor + SLAB_THICK * 0.5;
       const ceilY = yFloor + spec.floorH - 0.14;
 
-      // Floor slab
-      const slab = boxAt(lg, spec.w, SLAB_THICK, spec.d, spec.cx, yFloor, spec.cz, slabFloorMat, false, true, 0.03);
-      pickMeshes.push(slab);
+      // Sculpted rounded-corner floor slab (bullnose overhang on upper levels)
+      if (lv === 0) {
+        const slab = new THREE.Mesh(
+          getRoundedSlabGeo(spec.w + 0.4, spec.d + 0.4, 2.2, SLAB_THICK, 0.05),
+          slabFloorMat
+        );
+        slab.position.set(spec.cx, yFloor, spec.cz);
+        slab.receiveShadow = true;
+        lg.add(slab);
+        pickMeshes.push(slab);
+      } else if (style === 'tower') {
+        // Sweeping rounded-corner wraparound bullnose balcony slab (Reference Image 2)
+        const slab = new THREE.Mesh(
+          getRoundedSlabGeo(spec.w + 2.4, spec.d + 2.4, 3.0, 0.34, 0.08),
+          archMats.bullnoseConcrete
+        );
+        slab.position.set(spec.cx, yFloor - 0.03, spec.cz);
+        slab.castShadow = true;
+        slab.receiveShadow = true;
+        lg.add(slab);
+        pickMeshes.push(slab);
+
+        // Warm cedar soffit ring underneath balcony overhang
+        const soffit = new THREE.Mesh(
+          getRoundedRibbonGeo(spec.w + 2.15, spec.d + 2.15, 2.85, 1.15, 1.15, 0.06, 0.015),
+          archMats.timberSoffit
+        );
+        soffit.position.set(spec.cx, yFloor - 0.21, spec.cz);
+        lg.add(soffit);
+
+        // Curved-corner glass balustrade & bronze top rail
+        const balGlass = new THREE.Mesh(
+          getRoundedPerimeterWallGeo(spec.w + 2.0, spec.d + 2.0, 2.75, 0.92, 0.03),
+          buildingGlass
+        );
+        balGlass.position.set(spec.cx, yFloor + 0.14, spec.cz);
+        lg.add(balGlass);
+        const balRail = new THREE.Mesh(
+          getRoundedRibbonGeo(spec.w + 2.08, spec.d + 2.08, 2.8, 0.08, 0.08, 0.05, 0.012),
+          archMats.bronzeMullion
+        );
+        balRail.position.set(spec.cx, yFloor + 1.07, spec.cz);
+        lg.add(balRail);
+
+        // Alternating balcony planter troughs with cascading greenery
+        [-spec.w * 0.26, spec.w * 0.26].forEach((px, pi) => {
+          if ((lv + pi) % 2 === 0) {
+            buildPlanterTrough(
+              lg,
+              spec.cx + px,
+              yFloor + 0.14,
+              spec.cz + dirZ * (spec.d * 0.5 + 0.72),
+              3.0,
+              rotFacingDoor,
+              lv * 17 + pi,
+              archMats
+            );
+          }
+        });
+      } else if (style === 'blade') {
+        // Cantilevered sculptural white rounded floor plate projecting toward doorSide + cedar soffit (Reference Image 3)
+        const slab = new THREE.Mesh(
+          getRoundedSlabGeo(spec.w + 1.8, spec.d + 2.0, 2.1, 0.3, 0.07),
+          archMats.stuccoWhite
+        );
+        slab.position.set(spec.cx, yFloor - 0.02, spec.cz + dirZ * 0.42);
+        slab.castShadow = true;
+        slab.receiveShadow = true;
+        lg.add(slab);
+        pickMeshes.push(slab);
+
+        const soffit = new THREE.Mesh(
+          getRoundedRibbonGeo(spec.w + 1.55, spec.d + 1.75, 1.95, 1.05, 1.05, 0.06, 0.015),
+          archMats.timberSoffit
+        );
+        soffit.position.set(spec.cx, yFloor - 0.18, spec.cz + dirZ * 0.42);
+        lg.add(soffit);
+
+        const balGlass = new THREE.Mesh(
+          getRoundedPerimeterWallGeo(spec.w + 1.45, spec.d + 1.65, 1.85, 0.88, 0.028),
+          buildingGlass
+        );
+        balGlass.position.set(spec.cx, yFloor + 0.12, spec.cz + dirZ * 0.42);
+        lg.add(balGlass);
+      } else if (style === 'stone_pergola') {
+        // Deep cantilevered timber-soffit eaves + glass terrace + lush planters (Reference Image 4)
+        const slab = new THREE.Mesh(
+          getRoundedSlabGeo(spec.w + 2.2, spec.d + 2.2, 1.8, 0.3, 0.06),
+          archMats.bullnoseConcrete
+        );
+        slab.position.set(spec.cx, yFloor - 0.02, spec.cz);
+        slab.castShadow = true;
+        slab.receiveShadow = true;
+        lg.add(slab);
+        pickMeshes.push(slab);
+
+        const soffit = new THREE.Mesh(
+          getRoundedRibbonGeo(spec.w + 2.0, spec.d + 2.0, 1.68, 1.1, 1.1, 0.065, 0.015),
+          archMats.timberSoffit
+        );
+        soffit.position.set(spec.cx, yFloor - 0.18, spec.cz);
+        lg.add(soffit);
+
+        const balGlass = new THREE.Mesh(
+          getRoundedPerimeterWallGeo(spec.w + 1.85, spec.d + 1.85, 1.55, 0.9, 0.028),
+          buildingGlass
+        );
+        balGlass.position.set(spec.cx, yFloor + 0.12, spec.cz);
+        lg.add(balGlass);
+
+        if (lv % 2 === 1) {
+          buildPlanterTrough(
+            lg,
+            spec.cx - spec.w * 0.25,
+            yFloor + 0.12,
+            spec.cz + dirZ * (spec.d * 0.5 + 0.65),
+            3.4,
+            rotFacingDoor,
+            lv * 23,
+            archMats
+          );
+          buildPlanterTrough(
+            lg,
+            spec.cx + spec.w * 0.25,
+            yFloor + 0.12,
+            spec.cz + dirZ * (spec.d * 0.5 + 0.65),
+            3.4,
+            rotFacingDoor,
+            lv * 31,
+            archMats
+          );
+        }
+      } else {
+        // 'shed_seam': Sleek rounded-corner slab wrapped by dark standing-seam ribbed architectural fascia (Reference Image 1)
+        const slab = new THREE.Mesh(
+          getRoundedSlabGeo(spec.w + 1.0, spec.d + 1.0, 1.4, 0.28, 0.05),
+          slabFloorMat
+        );
+        slab.position.set(spec.cx, yFloor, spec.cz);
+        slab.castShadow = true;
+        slab.receiveShadow = true;
+        lg.add(slab);
+        pickMeshes.push(slab);
+
+        const seamBand = new THREE.Mesh(
+          getRoundedRibbonGeo(spec.w + 1.18, spec.d + 1.18, 1.5, 0.16, 0.16, 0.44, 0.02),
+          archMats.standingSeam
+        );
+        seamBand.position.set(spec.cx, yFloor - 0.04, spec.cz);
+        lg.add(seamBand);
+      }
 
       // Ceiling slab & recessed linear lighting
-      const cSlab = boxAt(cg, spec.w - 0.1, 0.16, spec.d - 0.1, spec.cx, ceilY, spec.cz, M.white, false, false);
+      const cSlab = new THREE.Mesh(
+        getRoundedSlabGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, 0.02),
+        M.white
+      );
+      cSlab.position.set(spec.cx, ceilY, spec.cz);
+      cg.add(cSlab);
       pickMeshes.push(cSlab);
       const lxSpan = Math.max(4, spec.w - 8);
       [-spec.d * 0.22, spec.d * 0.22].forEach((dz) => {
         ceilingLinearLight(cg, spec.cx, ceilY - 0.08, spec.cz + dz, lxSpan, 0.26, M);
       });
 
-      buildPerimeterWalls(lg, spec, lv, buildingGlass, wallMat, frameDarkMat, true, pickMeshes);
+      buildPerimeterWalls(lg, spec, lv, buildingGlass, wallMat, frameDarkMat, archMats, style, true, pickMeshes);
 
       // Floor 0 interior props per niche, OR upper floor office/lounge setups
       if (lv === 0) {
@@ -488,26 +695,37 @@ export function buildDistrictBuildings(
 
     // Populate unique hero Ground floor interiors & exterior signatures
     const g0 = levelGroups[0];
-    const fy = spec.groundY + SLAB_THICK * 0.5; // -0.50m inside ground hall? Wait: -0.62 + 0.12 = -0.50; let's adjust groundY slab top cleanly!
-    // Wait: let's keep floor surface flush at -0.56 or -0.50 consistently.
-    // Let's check: slab center is at yFloor = -0.62, thickness SLAB_THICK = 0.08 so slab top = -0.58!
-    //Wait! Above we used boxAt(..., yFloor, ..., slabFloorMat) with height SLAB_THICK = 0.24, which makes top at -0.50.
-    // Let's keep SLAB_THICK at 0.24 for visual slab thickness, or sink ground floor slab slightly?
-    // Even simpler: let groundY in districtData be -0.62, and for lv=0 place floor top at -0.56 (by offsetting yFloor slab center to -0.68 on lv=0 and -0.62+lv*floorH on upper floors), OR use `fy = spec.groundY + SLAB_THICK * 0.5 = -0.50` everywhere!
-    // Yes! Using `fy = spec.groundY + SLAB_THICK * 0.5` (-0.50 on Ground, and `-0.50 + lv * floorH` on upper floors) guarantees 100% flush seating and standing in both buildings and sim!
+    const fy = spec.groundY + SLAB_THICK * 0.5;
 
-    // Illuminated Entrance Fascia Sign (mounted on door side above Ground lintel)
-    const signZ = spec.doorSide === 'south' ? spec.cz + spec.d * 0.5 + 0.16 : spec.cz - spec.d * 0.5 - 0.16;
-    const signRotY = spec.doorSide === 'south' ? 0 : Math.PI;
-    const signW = Math.min(11.5, spec.w * 0.58);
-    const signBox = boxAt(g0, signW, 1.32, 0.18, spec.doorX, spec.groundY + spec.floorH + 0.18, signZ, frameDarkMat, true, false, 0.04);
+    // Illuminated Entrance Fascia Sign (mounted cleanly on outer face of canopy / balcony rim)
+    const signOutset =
+      spec.id === 'travel'
+        ? 3.56
+        : style === 'tower'
+          ? 1.32
+          : style === 'blade'
+            ? 1.48
+            : style === 'stone_pergola'
+              ? 3.56
+              : 3.46;
+    const signZ = spec.cz + dirZ * (spec.d * 0.5 + signOutset);
+    const signY =
+      spec.id === 'travel'
+        ? spec.groundY + spec.floorH + 0.58
+        : style === 'shed_seam'
+          ? spec.groundY + spec.floorH + 0.16
+          : style === 'stone_pergola'
+            ? spec.groundY + spec.floorH + 0.34
+            : spec.groundY + spec.floorH + 0.24;
+    const signW = Math.min(10.8, spec.w * 0.54);
+    const signBox = boxAt(g0, signW, 1.24, 0.18, spec.doorX, signY, signZ, frameDarkMat, true, false, 0.04);
     const signTex = makeSignTexture(spec.name, spec.niche, spec.accent);
     const signFace = new THREE.Mesh(
-      new THREE.PlaneGeometry(signW - 0.16, 1.16),
+      new THREE.PlaneGeometry(signW - 0.16, 1.08),
       new THREE.MeshBasicMaterial({ map: signTex })
     );
-    signFace.position.set(spec.doorX, spec.groundY + spec.floorH + 0.18, signZ + (spec.doorSide === 'south' ? 0.1 : -0.1));
-    signFace.rotation.y = signRotY;
+    signFace.position.set(spec.doorX, signY, signZ + dirZ * 0.1);
+    signFace.rotation.y = rotFacingDoor;
     g0.add(signFace);
     pickMeshes.push(signBox, signFace);
 
@@ -591,25 +809,42 @@ export function buildDistrictBuildings(
       g0.add(kdsMesh);
       kdsScreen.setMesh(kdsMesh);
 
-      // Exterior striped terrace awning & 2 outdoor bistro tables
-      for (let i = 0; i < 9; i++) {
-        const aw = boxAt(
-          g0,
-          1.9,
-          0.14,
-          3.4,
-          spec.cx - 7.6 + i * 1.9,
-          fy + 2.9,
-          spec.cz + 11.7,
-          i % 2 === 0 ? terracottaMat : M.white,
-          true,
-          false
-        );
-        aw.rotation.x = 0.18;
-      }
+      // Exterior vine-draped timber pergola porte-cochère on ashlar stone piers + 2 outdoor bistro tables (Reference Image 4)
+      buildVinePergolaCanopy(
+        g0,
+        spec.doorX,
+        spec.groundY,
+        spec.doorZ + 1.75,
+        spec.w - 1.6,
+        3.5,
+        spec.floorH - 0.36,
+        [-4.6, 4.6],
+        410,
+        archMats
+      );
+      buildTropicalPalm(g0, spec.cx - spec.w * 0.44, spec.groundY, spec.doorZ + 2.8, 3.8, 412, M, archMats);
       makeDiningTable(g0, spec.cx - 5.2, spec.groundY, spec.cz + 12.1, M, 0.56);
       makeDiningTable(g0, spec.cx + 5.2, spec.groundY, spec.cz + 12.1, M, 0.56);
     } else if (spec.id === 'dealership') {
+      // Cantilevered forecourt showroom canopy with cedar soffit (Reference Image 1)
+      const foreCanopy = new THREE.Mesh(
+        getRoundedSlabGeo(12.8, 3.4, 0.65, 0.34, 0.05),
+        archMats.stuccoWhite
+      );
+      foreCanopy.position.set(spec.doorX, spec.groundY + spec.floorH - 0.18, spec.doorZ + 1.75);
+      foreCanopy.castShadow = true;
+      g0.add(foreCanopy);
+      const foreSoffit = new THREE.Mesh(
+        getRoundedSlabGeo(12.2, 2.9, 0.5, 0.07, 0.015),
+        archMats.timberSoffit
+      );
+      foreSoffit.position.set(spec.doorX, spec.groundY + spec.floorH - 0.34, spec.doorZ + 1.75);
+      g0.add(foreSoffit);
+      [-5.2, 5.2].forEach((px) => {
+        cylAt(g0, 0.16, 0.18, spec.floorH - 0.3, spec.doorX + px, spec.groundY + (spec.floorH - 0.3) * 0.5, spec.doorZ + 2.9, archMats.bronzeMullion, true, true, 14);
+      });
+      buildTropicalPalm(g0, spec.cx - spec.w * 0.45, spec.groundY, spec.doorZ + 2.5, 3.9, 515, M, archMats);
+
       // Apex Motors Showroom: Rotating center car turntable + 2 flanking display vehicles + sales desks
       const turnGrp = new THREE.Group();
       turnGrp.position.set(spec.cx, fy, spec.cz + 0.4);
@@ -688,11 +923,23 @@ export function buildDistrictBuildings(
       g0.add(cbMesh);
       carBoard.setMesh(cbMesh);
     } else if (spec.id === 'bank') {
-      // Nairobi Trust Bank: Portico columns, 3 ATM kiosks, teller counter, heavy steel circular vault door, FX board
+      // Sculpted rounded bullnose portico canopy over existing portico piers (preserving obstacles.ts column positions)
       [-3.8, -1.9, 1.9, 3.8].forEach((ox) => {
-        cylAt(g0, 0.34, 0.38, spec.floorH - 0.1, spec.doorX + ox, spec.groundY + spec.floorH * 0.5, spec.doorZ + 1.4, bankStoneMat, true, true, 18);
+        cylAt(g0, 0.32, 0.36, spec.floorH - 0.12, spec.doorX + ox, spec.groundY + spec.floorH * 0.5, spec.doorZ + 1.4, archMats.stuccoWhite, true, true, 18);
       });
-      boxAt(g0, 9.6, 0.42, 2.4, spec.doorX, spec.groundY + spec.floorH - 0.1, spec.doorZ + 0.9, bankStoneMat, true, false, 0.04);
+      const bankPortico = new THREE.Mesh(
+        getRoundedSlabGeo(9.8, 2.8, 0.9, 0.36, 0.07),
+        archMats.bullnoseConcrete
+      );
+      bankPortico.position.set(spec.doorX, spec.groundY + spec.floorH - 0.06, spec.doorZ + 1.0);
+      bankPortico.castShadow = true;
+      g0.add(bankPortico);
+      const bankSoffit = new THREE.Mesh(
+        getRoundedSlabGeo(9.2, 2.4, 0.75, 0.06, 0.015),
+        archMats.timberSoffit
+      );
+      bankSoffit.position.set(spec.doorX, spec.groundY + spec.floorH - 0.24, spec.doorZ + 1.0);
+      g0.add(bankSoffit);
 
       // 3 ATM Vestibule kiosks on front-west interior
       [-8.5, -6.5, -4.5].forEach((ox) => {
@@ -789,9 +1036,12 @@ export function buildDistrictBuildings(
         g.fillStyle = '#6ee7b7';
         g.fillText(text + text, 20 - offset, h / 2);
       });
-      boxAt(g0, 16.4, 1.35, 0.24, spec.cx, spec.groundY + spec.floorH * 2 - 0.1, spec.cz + spec.d * 0.5 + 0.16, frameDarkMat, true, false);
-      const tkMesh = new THREE.Mesh(new THREE.PlaneGeometry(16.0, 1.15), ticker.mat);
-      tkMesh.position.set(spec.cx, spec.groundY + spec.floorH * 2 - 0.1, spec.cz + spec.d * 0.5 + 0.29);
+      boxAt(g0, 16.4, 1.24, 0.22, spec.cx, spec.groundY + spec.floorH * 2 + 0.12, spec.cz + spec.d * 0.5 + 1.28, frameDarkMat, true, false, 0.04);
+      [-5.8, 5.8].forEach((bx) => {
+        boxAt(g0, 0.22, 0.26, 0.65, spec.cx + bx, spec.groundY + spec.floorH * 2 + 0.04, spec.cz + spec.d * 0.5 + 0.98, archMats.bronzeMullion, true, false);
+      });
+      const tkMesh = new THREE.Mesh(new THREE.PlaneGeometry(16.0, 1.06), ticker.mat);
+      tkMesh.position.set(spec.cx, spec.groundY + spec.floorH * 2 + 0.12, spec.cz + spec.d * 0.5 + 1.4);
       g0.add(tkMesh);
       ticker.setMesh(tkMesh);
 
@@ -861,9 +1111,25 @@ export function buildDistrictBuildings(
       g0.add(obMesh);
       obBoard.setMesh(obMesh);
     } else if (spec.id === 'travel') {
-      // Skyline Travel & Aviation: Curved aviation canopy, rotating hanging 3D globe, live flight board, check-in desks
-      const canopy = boxAt(g0, 14.5, 0.24, 3.8, spec.doorX, spec.groundY + spec.floorH + 0.55, spec.doorZ - 1.4, M.white, true, false, 0.08);
-      canopy.rotation.x = -0.14;
+      // Sculpted sloped cantilevered aviation wing canopy with cedar soffit (facing north street)
+      const travelCanopy = new THREE.Mesh(
+        getSlopedRoofBladeGeo(15.2, 3.8, 0.12, 0.34, 0.56, 0.78, 0.04),
+        archMats.stuccoWhite
+      );
+      travelCanopy.position.set(spec.doorX, spec.groundY + spec.floorH - 0.1, spec.doorZ - 1.6);
+      travelCanopy.rotation.y = Math.PI;
+      travelCanopy.castShadow = true;
+      g0.add(travelCanopy);
+      const travelSoffit = new THREE.Mesh(
+        getSlopedRoofBladeGeo(14.6, 3.4, 0.06, 0.12, 0.5, 0.56, 0.015),
+        archMats.timberSoffit
+      );
+      travelSoffit.position.set(spec.doorX, spec.groundY + spec.floorH - 0.1, spec.doorZ - 1.55);
+      travelSoffit.rotation.y = Math.PI;
+      g0.add(travelSoffit);
+      [-5.8, 5.8].forEach((px) => {
+        cylAt(g0, 0.15, 0.17, spec.floorH + 0.42, spec.doorX + px, spec.groundY + (spec.floorH + 0.42) * 0.5, spec.doorZ - 2.95, archMats.bronzeMullion, true, true, 14);
+      });
 
       // Suspended rotating 3D globe in main lobby
       const globeMat = new THREE.MeshStandardMaterial({
@@ -946,10 +1212,24 @@ export function buildDistrictBuildings(
       g0.add(flMesh);
       flBoard.setMesh(flMesh);
     } else if (spec.id === 'tourism') {
-      // Kenya Safari & Tourism: Cedar pergola entrance, 3D topographical Kenya relief map table, 4x4 Jeep showcase
-      for (let i = 0; i < 7; i++) {
-        boxAt(g0, 0.24, 0.24, 3.2, spec.doorX - 4.5 + i * 1.5, spec.groundY + spec.floorH + 0.1, spec.doorZ - 1.2, woodCedarMat, true, false);
-      }
+      // Vine-draped cedar pergola entrance porte-cochère on ashlar stone piers (facing north street)
+      const tourPergola = new THREE.Group();
+      buildVinePergolaCanopy(
+        tourPergola,
+        0,
+        0,
+        0,
+        14.0,
+        3.4,
+        spec.floorH - 0.32,
+        [-4.8, 4.8],
+        615,
+        archMats
+      );
+      tourPergola.position.set(spec.doorX, spec.groundY, spec.doorZ - 1.7);
+      tourPergola.rotation.y = Math.PI;
+      g0.add(tourPergola);
+      buildTropicalPalm(g0, spec.cx + spec.w * 0.44, spec.groundY, spec.doorZ - 2.6, 3.9, 620, M, archMats);
 
       // 3D Topographical Kenya / Mt. Kenya & Mara Relief Map Table
       const mapX = spec.cx - 5.8;
@@ -1025,9 +1305,9 @@ export function buildDistrictBuildings(
       g0.add(sfMesh);
       sfBoard.setMesh(sfMesh);
     } else if (spec.id === 'medical') {
-      // VitalCare Medical & Pharmacy: Rotating 3D emerald cross beacon, pharmacy shelves, triage desk, diagnostic board
+      // VitalCare Medical & Pharmacy: Rotating 3D emerald cross beacon elevated cleanly on cantilevered sloped roof blade
       const crossBeacon = new THREE.Group();
-      crossBeacon.position.set(spec.doorX, spec.groundY + spec.h + 1.85, spec.doorZ);
+      crossBeacon.position.set(spec.doorX, spec.groundY + spec.h + 4.45, spec.doorZ + 0.9);
       boxAt(crossBeacon, 2.1, 0.68, 0.34, 0, 0, 0, accentMat, true, false, 0.04);
       boxAt(crossBeacon, 0.68, 2.1, 0.34, 0, 0, 0, accentMat, true, false, 0.04);
       roofShellGroup.add(crossBeacon);
@@ -1136,9 +1416,9 @@ export function buildDistrictBuildings(
       g0.add(medMesh);
       medBoard.setMesh(medMesh);
     } else if (spec.id === 'logistics') {
-      // SwiftPort Cargo & Logistics: Rooftop comms radar, east loading dock bay doors, automated parcel sorting conveyor, pallet racks & fleet dispatch desks
+      // SwiftPort Cargo & Logistics: Rooftop radar mast elevated cleanly above asymmetric shed roof peak
       const radarMast = new THREE.Group();
-      radarMast.position.set(spec.cx + 8.5, spec.groundY + spec.h + 0.4, spec.cz);
+      radarMast.position.set(spec.cx + 5.8, spec.groundY + spec.h + 2.95, spec.cz);
       cylAt(radarMast, 0.14, 0.22, 1.5, 0, 0.75, 0, frameDarkMat, true, false, 12);
       const radarSweep = new THREE.Group();
       radarSweep.position.set(0, 1.65, 0);
@@ -1147,9 +1427,23 @@ export function buildDistrictBuildings(
       roofShellGroup.add(radarMast);
       rotatingProps.push({ obj: radarSweep, speed: 1.4, axis: 'y' });
 
-      // North entrance dispatch canopy
-      boxAt(g0, 12.5, 0.22, 3.2, spec.doorX, spec.groundY + spec.floorH + 0.25, spec.doorZ - 1.3, frameDarkMat, true, false, 0.05);
-      boxAt(g0, 12.5, 0.08, 0.22, spec.doorX, spec.groundY + spec.floorH + 0.25, spec.doorZ - 2.9, accentMat, false, false);
+      // North cantilevered forecourt dispatch canopy with cedar timber soffit (Reference Image 1)
+      const logCanopy = new THREE.Mesh(
+        getRoundedSlabGeo(13.2, 3.4, 0.65, 0.34, 0.05),
+        archMats.stuccoWhite
+      );
+      logCanopy.position.set(spec.doorX, spec.groundY + spec.floorH - 0.16, spec.doorZ - 1.65);
+      logCanopy.castShadow = true;
+      g0.add(logCanopy);
+      const logSoffit = new THREE.Mesh(
+        getRoundedSlabGeo(12.6, 2.9, 0.5, 0.07, 0.015),
+        archMats.timberSoffit
+      );
+      logSoffit.position.set(spec.doorX, spec.groundY + spec.floorH - 0.32, spec.doorZ - 1.65);
+      g0.add(logSoffit);
+      [-5.2, 5.2].forEach((px) => {
+        cylAt(g0, 0.16, 0.18, spec.floorH - 0.3, spec.doorX + px, spec.groundY + (spec.floorH - 0.3) * 0.5, spec.doorZ - 2.8, archMats.bronzeMullion, true, true, 14);
+      });
 
       // Exterior East Loading Dock Roll-Up Bays (facing Freight Yard at x = 70..77)
       const dockX = spec.cx + spec.w * 0.5 + 0.06;
@@ -1282,14 +1576,203 @@ export function buildDistrictBuildings(
       logBoard.setMesh(logMesh);
     }
 
-    // Roof shell + parapet + HVAC machinery + skylight frame
+    // Architectural Rooftop Crowns (4 cohesive tropical-modern silhouettes replacing boxy flat roofs)
     root.add(roofShellGroup);
     const roofY = spec.groundY + spec.h;
-    const roofSlab = boxAt(roofShellGroup, spec.w + 0.6, 0.34, spec.d + 0.6, spec.cx, roofY, spec.cz, wallMat, true, true, 0.05);
-    const roofCap = boxAt(roofShellGroup, spec.w + 0.8, 0.18, spec.d + 0.8, spec.cx, roofY + 0.24, spec.cz, frameDarkMat, false, false, 0.03);
-    boxAt(roofShellGroup, spec.w * 0.24, 1.4, spec.d * 0.26, spec.cx - spec.w * 0.18, roofY + 0.85, spec.cz, std({ color: 0x6f7884, roughness: 0.72 }), true, false, 0.05);
-    boxAt(roofShellGroup, spec.w * 0.32, 0.28, spec.d * 0.34, spec.cx + spec.w * 0.14, roofY + 0.28, spec.cz, accentMat, false, false, 0.04);
-    pickMeshes.push(roofSlab, roofCap);
+
+    if (style === 'tower') {
+      // Reference Image 2: Rounded-corner rooftop bullnose terrace crown + infinity plunge pool + fluted timber pavilion + palms
+      const roofDeck = new THREE.Mesh(
+        getRoundedSlabGeo(spec.w + 2.6, spec.d + 2.6, 3.1, 0.36, 0.08),
+        archMats.bullnoseConcrete
+      );
+      roofDeck.position.set(spec.cx, roofY + 0.05, spec.cz);
+      roofDeck.castShadow = true;
+      roofDeck.receiveShadow = true;
+      roofShellGroup.add(roofDeck);
+      pickMeshes.push(roofDeck);
+
+      const roofRail = new THREE.Mesh(
+        getRoundedPerimeterWallGeo(spec.w + 2.0, spec.d + 2.0, 2.75, 0.95, 0.032),
+        buildingGlass
+      );
+      roofRail.position.set(spec.cx, roofY + 0.22, spec.cz);
+      roofShellGroup.add(roofRail);
+
+      // Rounded fluted rooftop crown pavilion
+      const pavW = spec.w * 0.44;
+      const pavD = spec.d * 0.38;
+      const pavH = 2.6;
+      const pavWall = new THREE.Mesh(
+        getRoundedPerimeterWallGeo(pavW, pavD, 1.8, pavH, 0.16),
+        archMats.timberFin
+      );
+      pavWall.position.set(spec.cx + spec.w * 0.12, roofY + 0.22, spec.cz - spec.d * 0.12);
+      roofShellGroup.add(pavWall);
+      const pavCap = new THREE.Mesh(
+        getRoundedSlabGeo(pavW + 1.2, pavD + 1.2, 2.1, 0.26, 0.06),
+        archMats.bullnoseConcrete
+      );
+      pavCap.position.set(spec.cx + spec.w * 0.12, roofY + 0.22 + pavH + 0.12, spec.cz - spec.d * 0.12);
+      pavCap.castShadow = true;
+      roofShellGroup.add(pavCap);
+      pickMeshes.push(pavCap);
+
+      // Rooftop infinity plunge pool & palms on street-facing rim
+      const plungeDeck = new THREE.Mesh(
+        getRoundedSlabGeo(7.2, 4.0, 0.9, 0.36, 0.05),
+        archMats.bullnoseConcrete
+      );
+      plungeDeck.position.set(spec.cx - spec.w * 0.2, roofY + 0.36, spec.cz + dirZ * (spec.d * 0.22));
+      roofShellGroup.add(plungeDeck);
+      const plungeWater = new THREE.Mesh(
+        getRoundedSlabGeo(6.2, 3.1, 0.7, 0.2, 0.02),
+        archMats.poolWater
+      );
+      plungeWater.position.set(spec.cx - spec.w * 0.2, roofY + 0.5, spec.cz + dirZ * (spec.d * 0.22));
+      roofShellGroup.add(plungeWater);
+
+      buildTropicalPalm(roofShellGroup, spec.cx - spec.w * 0.4, roofY + 0.22, spec.cz - spec.d * 0.3, 3.4, 701 + spec.cx, M, archMats);
+      buildTropicalPalm(roofShellGroup, spec.cx + spec.w * 0.38, roofY + 0.22, spec.cz + dirZ * spec.d * 0.28, 3.7, 709 + spec.cx, M, archMats);
+      buildPlanterTrough(roofShellGroup, spec.cx, roofY + 0.24, spec.cz + dirZ * (spec.d * 0.5 + 0.7), 5.6, rotFacingDoor, 720, archMats);
+    } else if (style === 'blade') {
+      // Reference Image 3: Dramatic sloped cantilevered blade roof + warm cedar soffit + dark bronze louvre clerestory
+      const baseDeck = new THREE.Mesh(
+        getRoundedSlabGeo(spec.w + 1.8, spec.d + 2.0, 2.1, 0.28, 0.06),
+        archMats.stuccoWhite
+      );
+      baseDeck.position.set(spec.cx, roofY, spec.cz + dirZ * 0.42);
+      baseDeck.receiveShadow = true;
+      roofShellGroup.add(baseDeck);
+
+      const bladeGroup = new THREE.Group();
+      bladeGroup.position.set(spec.cx, roofY, spec.cz + dirZ * 0.65);
+      bladeGroup.rotation.y = rotFacingDoor;
+      const bladeW = spec.w + 3.2;
+      const bladeD = spec.d + 3.4;
+      const bladeRoof = new THREE.Mesh(
+        getSlopedRoofBladeGeo(bladeW, bladeD, 0.45, 0.88, 2.85, 3.3, 0.06),
+        archMats.stuccoWhite
+      );
+      bladeRoof.castShadow = true;
+      bladeRoof.receiveShadow = true;
+      bladeGroup.add(bladeRoof);
+
+      const bladeSoffit = new THREE.Mesh(
+        getSlopedRoofBladeGeo(bladeW - 0.6, bladeD - 0.6, 0.38, 0.46, 2.78, 2.86, 0.02),
+        archMats.timberSoffit
+      );
+      bladeGroup.add(bladeSoffit);
+
+      // Vertical dark bronze architectural louvre clerestory fins beneath the high front eave
+      for (let lx = -bladeW * 0.44; lx <= bladeW * 0.44; lx += 0.55) {
+        boxAt(bladeGroup, 0.09, 1.45, 0.22, lx, 1.88, bladeD * 0.42, archMats.bronzeMullion, true, false, 0.01);
+      }
+      // Slender cylindrical columns holding front cantilevered blade eave
+      [-bladeW * 0.42, -bladeW * 0.14, bladeW * 0.14, bladeW * 0.42].forEach((cx) => {
+        cylAt(bladeGroup, 0.14, 0.14, 2.85, cx, 1.42, bladeD * 0.42, archMats.stuccoWhite, true, false, 14);
+      });
+      roofShellGroup.add(bladeGroup);
+      pickMeshes.push(baseDeck, bladeRoof);
+
+      buildTropicalPalm(roofShellGroup, spec.cx - spec.w * 0.38, roofY + 0.14, spec.cz + dirZ * (spec.d * 0.35), 3.3, 811 + spec.cx, M, archMats);
+      buildTropicalPalm(roofShellGroup, spec.cx + spec.w * 0.38, roofY + 0.14, spec.cz + dirZ * (spec.d * 0.35), 3.5, 819 + spec.cx, M, archMats);
+    } else if (style === 'stone_pergola') {
+      // Reference Image 4: Sloped cantilevered timber-soffit eave + ashlar stone turret + rooftop vine pergola & tropical palms
+      const baseDeck = new THREE.Mesh(
+        getRoundedSlabGeo(spec.w + 2.2, spec.d + 2.2, 1.8, 0.28, 0.06),
+        archMats.bullnoseConcrete
+      );
+      baseDeck.position.set(spec.cx, roofY, spec.cz);
+      baseDeck.receiveShadow = true;
+      roofShellGroup.add(baseDeck);
+
+      const eaveGroup = new THREE.Group();
+      eaveGroup.position.set(spec.cx - spec.w * 0.12, roofY, spec.cz);
+      eaveGroup.rotation.y = rotFacingDoor;
+      const eaveRoof = new THREE.Mesh(
+        getSlopedRoofBladeGeo(spec.w * 0.72, spec.d + 2.8, 0.4, 0.76, 1.85, 2.22, 0.05),
+        archMats.stuccoWhite
+      );
+      eaveRoof.castShadow = true;
+      eaveGroup.add(eaveRoof);
+      const eaveSoffit = new THREE.Mesh(
+        getSlopedRoofBladeGeo(spec.w * 0.72 - 0.5, spec.d + 2.4, 0.34, 0.4, 1.79, 1.86, 0.015),
+        archMats.timberSoffit
+      );
+      eaveGroup.add(eaveSoffit);
+      // Ashlar stone chimney / feature tower anchoring the sloped roof
+      boxAt(eaveGroup, 2.4, 2.55, 2.2, -spec.w * 0.28, 1.25, -spec.d * 0.22, archMats.ashlarStone, true, true, 0.04);
+      roofShellGroup.add(eaveGroup);
+      pickMeshes.push(baseDeck, eaveRoof);
+
+      // Rooftop vine-draped lounge pergola on opposite terrace wing
+      buildVinePergolaCanopy(
+        roofShellGroup,
+        spec.cx + spec.w * 0.26,
+        roofY + 0.14,
+        spec.cz,
+        spec.w * 0.34,
+        spec.d * 0.65,
+        2.3,
+        [-spec.w * 0.13, spec.w * 0.13],
+        830,
+        archMats
+      );
+      buildTropicalPalm(roofShellGroup, spec.cx + spec.w * 0.38, roofY + 0.14, spec.cz + dirZ * spec.d * 0.32, 3.6, 845, M, archMats);
+    } else {
+      // 'shed_seam' (Reference Image 1): Asymmetric sloped shed roof with warm cedar soffit + standing-seam cladding + glazed clerestory
+      const baseDeck = new THREE.Mesh(
+        getRoundedSlabGeo(spec.w + 1.1, spec.d + 1.1, 1.4, 0.26, 0.05),
+        frameDarkMat
+      );
+      baseDeck.position.set(spec.cx, roofY, spec.cz);
+      baseDeck.receiveShadow = true;
+      roofShellGroup.add(baseDeck);
+
+      const shedW = spec.w + 2.6;
+      const shedD = spec.d + 2.2;
+      const shedTop = new THREE.Mesh(
+        getAsymmetricShedRoofGeo(shedW, shedD, 0.45, spec.w * 0.16, 2.95, 1.35, 0.36, 0.05),
+        archMats.standingSeam
+      );
+      shedTop.position.set(spec.cx, roofY, spec.cz);
+      shedTop.castShadow = true;
+      shedTop.receiveShadow = true;
+      roofShellGroup.add(shedTop);
+
+      const shedSoffit = new THREE.Mesh(
+        getAsymmetricShedRoofGeo(shedW - 0.5, shedD - 0.4, 0.38, spec.w * 0.16, 2.88, 1.28, 0.08, 0.015),
+        archMats.timberSoffit
+      );
+      shedSoffit.position.set(spec.cx, roofY, spec.cz);
+      roofShellGroup.add(shedSoffit);
+
+      // Glazed gable clerestory & bronze mullions tailored strictly beneath the asymmetric shed soffit
+      const clereW = spec.w - 1.6;
+      const peakX = spec.w * 0.16;
+      const halfShedW = shedW * 0.5;
+      const shedHeightAt = (lx: number): number => {
+        if (lx <= peakX) {
+          return 0.38 + ((lx + halfShedW) / (peakX + halfShedW)) * (2.88 - 0.38);
+        }
+        return 2.88 + ((lx - peakX) / (halfShedW - peakX)) * (1.28 - 2.88);
+      };
+      const clereLeftY = shedHeightAt(-clereW * 0.5) - 0.04;
+      const clereRightY = shedHeightAt(clereW * 0.5) - 0.04;
+      const clereGeo = getGableClerestoryGeo(clereW, clereLeftY, peakX, 2.82, clereRightY, 0.05);
+      [-spec.d * 0.47, spec.d * 0.47].forEach((dz) => {
+        const clereZ = spec.cz + dz;
+        const clereGlass = new THREE.Mesh(clereGeo, buildingGlass);
+        clereGlass.position.set(spec.cx, roofY + 0.06, clereZ);
+        roofShellGroup.add(clereGlass);
+        for (let lx = -clereW * 0.45; lx <= clereW * 0.45; lx += 3.1) {
+          const mh = Math.max(0.28, shedHeightAt(lx) - 0.1);
+          boxAt(roofShellGroup, 0.12, mh, 0.14, spec.cx + lx, roofY + 0.06 + mh * 0.5, clereZ, archMats.bronzeMullion, true, false);
+        }
+      });
+      pickMeshes.push(baseDeck, shedTop);
+    }
 
     // Exterior paved apron & soft contact shadow
     const pl = new THREE.Mesh(

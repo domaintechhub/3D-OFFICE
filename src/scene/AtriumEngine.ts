@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { clearArchitecturalFormsCache } from './architecturalForms';
 import { buildSceneArchitecture, type ArchitectureHandles, type MonitorPickTarget } from './architecture';
 import {
   BASE,
@@ -61,6 +62,7 @@ export class AtriumEngine {
   private readonly skyFillLight: THREE.DirectionalLight;
   private readonly hemiLight: THREE.HemisphereLight;
   private readonly skyMat: THREE.ShaderMaterial;
+  private readonly skyDome: THREE.Mesh;
   private readonly fog: THREE.FogExp2;
 
   private readonly raycaster = new THREE.Raycaster();
@@ -87,6 +89,8 @@ export class AtriumEngine {
   private hudEmitAccum = 0;
   private cutawayAnimating = false;
   private onHudChange: (snapshot: HudSnapshot) => void;
+  private onFatalError?: (message: string) => void;
+  private resizeObserver: ResizeObserver | null = null;
   private unwireWalk: () => void;
   private disposed = false;
 
@@ -128,24 +132,39 @@ export class AtriumEngine {
   private readonly _segPt = new THREE.Vector3();
   private readonly _lastActorPos = new THREE.Vector3();
 
-  constructor(container: HTMLElement, onHudChange: (snapshot: HudSnapshot) => void) {
+  constructor(
+    container: HTMLElement,
+    onHudChange: (snapshot: HudSnapshot) => void,
+    onFatalError?: (message: string) => void
+  ) {
     this.container = container;
     this.onHudChange = onHudChange;
+    this.onFatalError = onFatalError;
     this.isSoftwareGl = detectSoftwareGl();
 
     const width = Math.max(1, container.clientWidth);
     const height = Math.max(1, container.clientHeight);
 
-    this.renderer = new THREE.WebGLRenderer({
-      antialias: !this.isSoftwareGl,
-      powerPreference: 'low-power',
-    });
+    try {
+      this.renderer = new THREE.WebGLRenderer({
+        antialias: !this.isSoftwareGl,
+        powerPreference: this.isSoftwareGl ? 'low-power' : 'high-performance',
+      });
+    } catch {
+      this.renderer = new THREE.WebGLRenderer({
+        antialias: false,
+        powerPreference: 'default',
+      });
+    }
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.96;
     this.renderer.shadowMap.enabled = false;
+    this.renderer.domElement.style.display = 'block';
+    this.renderer.domElement.style.width = '100%';
+    this.renderer.domElement.style.height = '100%';
     container.appendChild(this.renderer.domElement);
 
     setMaxAnisotropy(this.isSoftwareGl ? 1 : Math.min(8, this.renderer.capabilities.getMaxAnisotropy()));
@@ -154,12 +173,16 @@ export class AtriumEngine {
     this.fog = new THREE.FogExp2(0x1b2434, 0.0022);
     this.scene.fog = this.fog;
 
-    // Room environment IBL for physically-based metals, glass & car clearcoat
-    const pmrem = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    pmrem.dispose();
+    // Room environment IBL for physically-based metals, glass & car clearcoat (safe fallback if GPU driver rejects PMREM)
+    try {
+      const pmrem = new THREE.PMREMGenerator(this.renderer);
+      this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      pmrem.dispose();
+    } catch {
+      this.scene.environment = null;
+    }
 
-    this.camera = new THREE.PerspectiveCamera(40, width / height, 0.08, 420);
+    this.camera = new THREE.PerspectiveCamera(40, width / height, 0.08, 1200);
     this.camera.position.set(0, 20, 64);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -192,10 +215,10 @@ export class AtriumEngine {
         uLightning: { value: 0.0 },
       },
       vertexShader: `
-        varying vec3 vWorldPos;
+        varying vec3 vDir;
         void main() {
+          vDir = position;
           vec4 wp = modelMatrix * vec4(position, 1.0);
-          vWorldPos = wp.xyz;
           gl_Position = projectionMatrix * viewMatrix * wp;
         }
       `,
@@ -206,7 +229,7 @@ export class AtriumEngine {
         uniform float uTime;
         uniform float uCloudCover;
         uniform float uLightning;
-        varying vec3 vWorldPos;
+        varying vec3 vDir;
 
         float hash21(vec2 p) {
           p = fract(p * vec2(234.34, 435.345));
@@ -237,7 +260,7 @@ export class AtriumEngine {
         }
 
         void main() {
-          vec3 d = normalize(vWorldPos);
+          vec3 d = normalize(vDir);
           float h = d.y;
           vec3 col = h >= 0.0
             ? mix(uHorizon, uZenith, pow(clamp(h, 0.0, 1.0), 0.52))
@@ -263,8 +286,11 @@ export class AtriumEngine {
         }
       `,
     });
-    const skyDome = new THREE.Mesh(new THREE.SphereGeometry(320, 24, 16), this.skyMat);
-    this.scene.add(skyDome);
+    this.skyDome = new THREE.Mesh(new THREE.SphereGeometry(520, 48, 32), this.skyMat);
+    this.skyDome.frustumCulled = false;
+    this.skyDome.renderOrder = -1000;
+    this.skyDome.position.copy(this.camera.position);
+    this.scene.add(this.skyDome);
 
     // Three-point + architectural sky/sun illumination (zero real-time shadow pass overhead)
     this.hemiLight = new THREE.HemisphereLight(0xc8e0ff, 0x565048, 0.84);
@@ -350,6 +376,10 @@ export class AtriumEngine {
 
     // Wire events & audio gesture unlock
     window.addEventListener('resize', this.handleResize);
+    if (typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver = new ResizeObserver(() => this.handleResize());
+      this.resizeObserver.observe(this.container);
+    }
     document.addEventListener('visibilitychange', this.handleVisibilityChange);
     window.addEventListener('pointerdown', this.handleAudioUnlock, { passive: true });
     window.addEventListener('keydown', this.handleAudioUnlock, { passive: true });
@@ -358,6 +388,7 @@ export class AtriumEngine {
     this.renderer.domElement.addEventListener('wheel', this.handleWheel, { passive: true });
     this.renderer.domElement.addEventListener('click', this.handleClick);
     this.renderer.domElement.addEventListener('webglcontextlost', this.handleContextLost);
+    this.renderer.domElement.addEventListener('webglcontextrestored', this.handleContextRestored);
 
     const initW = this.weather.update(0.016, this.elapsed, this.sim.simMin, this.activeLevel, this.arch.roofShellGroup.visible);
     this.sim.setWeatherTimeMultiplier(this.weather.getTimeMultiplier());
@@ -365,9 +396,13 @@ export class AtriumEngine {
     this.emitHud();
     const now = performance.now();
     this.lastTs = now;
-    this.lastRenderTs = now;
+    this.lastRenderTs = 0;
     this.lastInteractionTs = now;
-    this.scheduleNextTick();
+    this.rafId = requestAnimationFrame(() => {
+      if (this.disposed) return;
+      this.handleResize();
+      this.loop(performance.now());
+    });
     (window as unknown as { __atrium?: AtriumEngine }).__atrium = this;
   }
 
@@ -1057,6 +1092,15 @@ export class AtriumEngine {
     clearTimeout(this.timerId);
   };
 
+  private handleContextRestored = () => {
+    if (this.disposed) return;
+    const now = performance.now();
+    this.lastTs = now;
+    this.lastRenderTs = 0;
+    this.handleResize();
+    this.scheduleNextTick();
+  };
+
   private updateTimeOfDayLighting(simMinutes: number, weatherState?: WeatherAtmosphereState) {
     // Solar elevation curve (sunrise ~06:20, zenith ~12:30, sunset ~18:40)
     const hr = simMinutes / 60;
@@ -1132,6 +1176,7 @@ export class AtriumEngine {
     this.skyMat.uniforms.uCloudCover.value = w.cloudCover;
     this.skyMat.uniforms.uLightning.value = flash;
     this.fog.color.copy(this._fogCol);
+    this.renderer.setClearColor(this._fogCol, 1);
 
     // Wet plaza / street asphalt response during rain, thunderstorm, or snowmelt
     this.asphaltMat.roughness = THREE.MathUtils.lerp(0.92, 0.24, w.wetness);
@@ -1166,99 +1211,106 @@ export class AtriumEngine {
       this.lastRenderTs = now;
     }
 
-    const dt = Math.min(0.15, Math.max(0.001, (now - this.lastTs) / 1000));
-    this.lastTs = now;
-    this.elapsed += dt;
+    try {
+      const dt = Math.min(0.15, Math.max(0.001, (now - this.lastTs) / 1000));
+      this.lastTs = now;
+      this.elapsed += dt;
 
-    // Kinetic atrium centerpiece + roof ventilator fans
-    this.arch.sculptureCore.rotation.y += dt * 0.35;
-    this.arch.sculptureCore.rotation.x = 0.26 + Math.sin(this.elapsed * 0.35) * 0.04;
-    if (this.arch.sculptureRings[0]) this.arch.sculptureRings[0].rotation.z += dt * 0.45;
-    if (this.arch.sculptureRings[1]) this.arch.sculptureRings[1].rotation.x -= dt * 0.32;
-    this.arch.sculptureHalo.material.opacity = 0.04 + Math.sin(this.elapsed * 1.9) * 0.015;
-    for (const f of this.arch.roofFans) {
-      f.rotation.y += dt * 4.5;
-    }
+      // Kinetic atrium centerpiece + roof ventilator fans
+      this.arch.sculptureCore.rotation.y += dt * 0.35;
+      this.arch.sculptureCore.rotation.x = 0.26 + Math.sin(this.elapsed * 0.35) * 0.04;
+      if (this.arch.sculptureRings[0]) this.arch.sculptureRings[0].rotation.z += dt * 0.45;
+      if (this.arch.sculptureRings[1]) this.arch.sculptureRings[1].rotation.x -= dt * 0.32;
+      this.arch.sculptureHalo.material.opacity = 0.04 + Math.sin(this.elapsed * 1.9) * 0.015;
+      for (const f of this.arch.roofFans) {
+        f.rotation.y += dt * 4.5;
+      }
 
-    // Floor cutaway peel-off animation from above
-    this.updateFloorCutaway(dt);
+      // Floor cutaway peel-off animation from above
+      this.updateFloorCutaway(dt);
 
-    // Dynamic weather particles, window droplets/frost & time-of-day atmosphere
-    const wState = this.weather.update(
-      dt,
-      this.elapsed,
-      this.sim.simMin,
-      this.activeLevel,
-      this.arch.roofShellGroup.visible
-    );
-    this.sim.setWeatherTimeMultiplier(this.weather.getTimeMultiplier());
-    this.updateTimeOfDayLighting(this.sim.simMin, wState);
+      // Dynamic weather particles, window droplets/frost & time-of-day atmosphere
+      const wState = this.weather.update(
+        dt,
+        this.elapsed,
+        this.sim.simMin,
+        this.activeLevel,
+        this.arch.roofShellGroup.visible
+      );
+      this.sim.setWeatherTimeMultiplier(this.weather.getTimeMultiplier());
+      this.updateTimeOfDayLighting(this.sim.simMin, wState);
 
-    // Staff, lifts, traffic, tour & first-person walk
-    if (this.selectedActor) {
-      this._lastActorPos.copy(this.selectedActor.g.position);
-    }
-    this.sim.update(dt, this.elapsed, this.camera, this.controls);
+      // Staff, lifts, traffic, tour & first-person walk
+      if (this.selectedActor) {
+        this._lastActorPos.copy(this.selectedActor.g.position);
+      }
+      this.sim.update(dt, this.elapsed, this.camera, this.controls);
 
-    if (this.selectedActor) {
-      if (
-        this.followSelectedActor &&
-        !this.sim.walkOn &&
-        !this.sim.tourOn &&
-        !this.sim.isCameraFlying()
-      ) {
-        const curPos = this.selectedActor.g.position;
-        const dx = curPos.x - this._lastActorPos.x;
-        const dy = curPos.y - this._lastActorPos.y;
-        const dz = curPos.z - this._lastActorPos.z;
-        if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > 0.0001) {
-          this.controls.target.x += dx;
-          this.controls.target.y += dy;
-          this.controls.target.z += dz;
-          this.camera.position.x += dx;
-          this.camera.position.y += dy;
-          this.camera.position.z += dz;
-          this.controls.update();
+      if (this.selectedActor) {
+        if (
+          this.followSelectedActor &&
+          !this.sim.walkOn &&
+          !this.sim.tourOn &&
+          !this.sim.isCameraFlying()
+        ) {
+          const curPos = this.selectedActor.g.position;
+          const dx = curPos.x - this._lastActorPos.x;
+          const dy = curPos.y - this._lastActorPos.y;
+          const dz = curPos.z - this._lastActorPos.z;
+          if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > 0.0001) {
+            this.controls.target.x += dx;
+            this.controls.target.y += dy;
+            this.controls.target.z += dz;
+            this.camera.position.x += dx;
+            this.camera.position.y += dy;
+            this.camera.position.z += dz;
+            this.controls.update();
+          }
+        }
+        this.updateSelectedVisuals();
+      } else {
+        this.thoughtBubbleSprite.visible = false;
+        this.selectionRing.visible = false;
+      }
+
+      // Spatialized ambient office audio (HVAC hum, soft typing, distant chatter)
+      this._camRight.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
+      this.audio.update(dt, this.camera.position, this._camRight, this.sim.getAmbientSources(), {
+        walkOn: this.sim.walkOn,
+        activeLevel: this.activeLevel,
+        simRate: this.sim.simRate,
+        trafficHint: this.sim.getTrafficAudioHint(this.camera.position, this._camRight),
+      });
+
+      // Animated office screens & wall TVs (only draws visible screens on active floors)
+      const cut = this.getCutawayLevelIndex();
+      updateAllScreens(this.screenReg, this.camera, this.elapsed, cut);
+      if (this.inspectedMonitor) {
+        const s = this.inspectedMonitor.screenRef;
+        if (this.elapsed >= s.next) {
+          s.next = this.elapsed + 0.18;
+          s.g.clearRect(0, 0, s.g.canvas.width, s.g.canvas.height);
+          s.fn(s.g, s.g.canvas.width, s.g.canvas.height, this.elapsed + s.off);
+          (s.tx as THREE.CanvasTexture).needsUpdate = true;
         }
       }
-      this.updateSelectedVisuals();
-    } else {
-      this.thoughtBubbleSprite.visible = false;
-      this.selectionRing.visible = false;
-    }
 
-    // Spatialized ambient office audio (HVAC hum, soft typing, distant chatter)
-    this._camRight.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
-    this.audio.update(dt, this.camera.position, this._camRight, this.sim.getAmbientSources(), {
-      walkOn: this.sim.walkOn,
-      activeLevel: this.activeLevel,
-      simRate: this.sim.simRate,
-      trafficHint: this.sim.getTrafficAudioHint(this.camera.position, this._camRight),
-    });
+      this.skyDome.position.copy(this.camera.position);
+      this.renderer.render(this.scene, this.camera);
 
-    // Animated office screens & wall TVs (only draws visible screens on active floors)
-    const cut = this.getCutawayLevelIndex();
-    updateAllScreens(this.screenReg, this.camera, this.elapsed, cut);
-    if (this.inspectedMonitor) {
-      const s = this.inspectedMonitor.screenRef;
-      if (this.elapsed >= s.next) {
-        s.next = this.elapsed + 0.18;
-        s.g.clearRect(0, 0, s.g.canvas.width, s.g.canvas.height);
-        s.fn(s.g, s.g.canvas.width, s.g.canvas.height, this.elapsed + s.off);
-        (s.tx as THREE.CanvasTexture).needsUpdate = true;
+      this.hudEmitAccum += dt;
+      if (this.hudEmitAccum >= 0.18) {
+        this.hudEmitAccum = 0;
+        this.emitHud();
       }
-    }
 
-    this.renderer.render(this.scene, this.camera);
-
-    this.hudEmitAccum += dt;
-    if (this.hudEmitAccum >= 0.18) {
-      this.hudEmitAccum = 0;
-      this.emitHud();
-    }
-
-    if (this.isSoftwareGl) {
-      this.scheduleNextTick();
+      if (this.isSoftwareGl) {
+        this.scheduleNextTick();
+      }
+    } catch (err) {
+      cancelAnimationFrame(this.rafId);
+      clearTimeout(this.timerId);
+      this.onFatalError?.(err instanceof Error ? err.message : '3D render loop encountered an unexpected error.');
     }
   };
 
@@ -1613,6 +1665,8 @@ export class AtriumEngine {
     this.disposed = true;
     cancelAnimationFrame(this.rafId);
     clearTimeout(this.timerId);
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
     window.removeEventListener('resize', this.handleResize);
     document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     window.removeEventListener('pointerdown', this.handleAudioUnlock);
@@ -1622,6 +1676,7 @@ export class AtriumEngine {
     this.renderer.domElement.removeEventListener('wheel', this.handleWheel);
     this.renderer.domElement.removeEventListener('click', this.handleClick);
     this.renderer.domElement.removeEventListener('webglcontextlost', this.handleContextLost);
+    this.renderer.domElement.removeEventListener('webglcontextrestored', this.handleContextRestored);
     this.unwireWalk();
     this.weather.dispose();
     this.sim.dispose();
@@ -1635,6 +1690,7 @@ export class AtriumEngine {
     this.selectionRing.geometry.dispose();
     (this.selectionRing.material as THREE.Material).dispose();
     this.controls.dispose();
+    clearArchitecturalFormsCache();
 
     const geometries = new Set<THREE.BufferGeometry>();
     const materials = new Set<THREE.Material>();
