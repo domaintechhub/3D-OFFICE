@@ -710,19 +710,22 @@ class DistrictSocialNetwork {
     const worker = this.pickWorkerForBuilding(input.toBuilding);
     const code = `JOB-${this.nextJobNumber++}`;
     const timeLabel = formatSimClock(this.currentSimMin);
-    const channel = input.channel || targetDir.channel;
+    const channel = (input.channel || targetDir.channel).trim().slice(0, 40) || targetDir.channel;
+    const safeTitle = input.title.trim().slice(0, 140) || 'District Task';
+    const safeBrief = (input.brief.trim() || `Execute ${safeTitle} at ${targetDir.name}.`).slice(0, 320);
+    const safeFromName = (input.fromName.trim() || fromDir.name).slice(0, 80);
 
     const job: SocialJobTask = {
       id: `job-${Date.now()}-${this.nextJobNumber}`,
       code,
       platform: input.platform,
       channel,
-      title: input.title.trim(),
-      brief: input.brief.trim() || `Execute ${input.title.trim()} at ${targetDir.name}.`,
+      title: safeTitle,
+      brief: safeBrief,
       priority: input.priority || 'Normal',
       fromBuilding: input.fromBuilding,
-      fromName: input.fromName || fromDir.name,
-      fromHandle: makeHandle(input.fromName || fromDir.shortName),
+      fromName: safeFromName,
+      fromHandle: makeHandle(safeFromName || fromDir.shortName),
       sourceDevice: input.sourceDevice,
       toBuilding: input.toBuilding,
       toCompanyName: targetDir.name,
@@ -735,7 +738,7 @@ class DistrictSocialNetwork {
       updates: [
         {
           time: timeLabel,
-          author: input.fromName || fromDir.shortName,
+          author: safeFromName || fromDir.shortName,
           text: `Dispatched from ${input.sourceDevice} via ${input.platform.toUpperCase()} (${channel}).`,
         },
         {
@@ -755,8 +758,8 @@ class DistrictSocialNetwork {
       buildingId: input.fromBuilding,
       buildingName: fromDir.name,
       accent: targetDir.accent,
-      authorName: input.fromName || fromDir.shortName,
-      authorHandle: makeHandle(input.fromName || fromDir.shortName),
+      authorName: safeFromName || fromDir.shortName,
+      authorHandle: makeHandle(safeFromName || fromDir.shortName),
       authorRole: `Sent via ${input.sourceDevice}`,
       device: input.sourceDevice,
       body: `[${code}] → ${targetDir.shortName} (${worker.name}): ${job.title}`,
@@ -773,18 +776,23 @@ class DistrictSocialNetwork {
   public publishPost(input: PublishPostInput): SocialPost {
     const dir = DISTRICT_SOCIAL_DIRECTORY[input.buildingId];
     const timeLabel = formatSimClock(this.currentSimMin);
+    const safeAuthorName = (input.authorName.trim() || dir.shortName).slice(0, 80);
+    const safeAuthorRole = (input.authorRole.trim() || 'Team Member').slice(0, 80);
+    const safeChannel = (input.channel || dir.channel).trim().slice(0, 40) || dir.channel;
+    const safeBody = input.body.trim().slice(0, 400);
+
     const post: SocialPost = {
       id: `post-${this.nextPostNumber++}`,
       platform: input.platform,
-      channel: input.channel || dir.channel,
+      channel: safeChannel,
       buildingId: input.buildingId,
       buildingName: dir.name,
       accent: dir.accent,
-      authorName: input.authorName,
-      authorHandle: makeHandle(input.authorName),
-      authorRole: input.authorRole,
+      authorName: safeAuthorName,
+      authorHandle: makeHandle(safeAuthorName),
+      authorRole: safeAuthorRole,
       device: input.device,
-      body: input.body.trim(),
+      body: safeBody,
       timeLabel,
       likes: 1,
       replies: 0,

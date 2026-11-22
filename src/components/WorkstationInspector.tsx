@@ -240,38 +240,9 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
     onForceRedrawMonitor?.();
   };
 
-  const pushHistory = (entry: BrowserHistoryEntry) => {
-    setLiveHistory((prev) => {
-      const head = prev.slice(0, historyIdx + 1);
-      const next = [...head, entry];
-      setHistoryIdx(next.length - 1);
-      return next;
-    });
-  };
-
-  const browseLiveUrl = async (rawUrl: string) => {
-    const normalized = /^https?:\/\//i.test(rawUrl.trim())
-      ? rawUrl.trim()
-      : `https://${rawUrl.trim()}`;
-    fetchAbortRef.current?.abort();
-    const ac = new AbortController();
-    fetchAbortRef.current = ac;
-    setBrowseLoading(true);
-    setBrowseError(null);
-    setAutoPilot(false);
-    setSearchInput(normalized);
-
-    try {
-      const resp = await fetch(`/api/browse?url=${encodeURIComponent(normalized)}`, {
-        signal: ac.signal,
-      });
-      const json = (await resp.json()) as BrowsePageData;
-      if (!resp.ok || !json.ok) {
-        setBrowseError(json.error || `HTTP ${resp.status} while loading ${normalized}`);
-        return;
-      }
-      pushHistory({ kind: 'browse', data: json, inputLabel: json.finalUrl });
-      setSearchInput(json.finalUrl);
+  const syncHistoryEntryTo3dMonitor = (entry: BrowserHistoryEntry) => {
+    if (entry.kind === 'browse') {
+      const json = entry.data;
       syncLiveSessionTo3dMonitor({
         tabTitle: json.title.slice(0, 28) || json.domain,
         url: json.finalUrl,
@@ -292,6 +263,100 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
         ],
         researchNote: `Live page loaded (${json.latencyMs}ms) for ${monitor.zone}.`,
       });
+    } else {
+      const json = entry.data;
+      syncLiveSessionTo3dMonitor({
+        tabTitle: `Search: ${json.query.slice(0, 20)}`,
+        url: `search://${encodeURIComponent(json.query)}`,
+        searchQuery: json.query,
+        articleTitle: `${json.query} — Live Web Search (${json.results.length} results)`,
+        articleDomain: `Web & Wikipedia · ${json.latencyMs}ms`,
+        sections: json.results.slice(0, 3).map((r) => ({
+          heading: `${r.domain} · ${r.title}`,
+          excerpt: r.snippet || r.url,
+          highlight: r.url,
+        })),
+        researchNote: json.instantAbstract || `Live web search executed in ${json.latencyMs}ms.`,
+      });
+    }
+  };
+
+  const pushHistory = (entry: BrowserHistoryEntry) => {
+    setLiveHistory((prev) => {
+      const head = prev.slice(0, historyIdx + 1);
+      const next = [...head, entry];
+      setHistoryIdx(next.length - 1);
+      return next;
+    });
+  };
+
+  const decodeTextEntities = (raw: string): string =>
+    raw
+      .replace(/&#(\d+);/g, (_, n) => {
+        const code = Number(n);
+        return Number.isFinite(code) && code > 0 && code < 0x10ffff ? String.fromCodePoint(code) : ' ';
+      })
+      .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+        const code = Number.parseInt(hex, 16);
+        return Number.isFinite(code) && code > 0 && code < 0x10ffff ? String.fromCodePoint(code) : ' ';
+      })
+      .replace(/&(quot|amp|apos|lt|gt|nbsp);/gi, (_, ent: string) => {
+        const k = ent.toLowerCase();
+        if (k === 'quot') return '"';
+        if (k === 'amp') return '&';
+        if (k === 'apos') return "'";
+        if (k === 'lt') return '<';
+        if (k === 'gt') return '>';
+        return ' ';
+      });
+
+  const browseLiveUrl = async (rawUrl: string) => {
+    const trimmed = rawUrl.trim();
+    if (!trimmed || trimmed.length > 2048) {
+      setBrowseError('Enter a valid http(s) URL (max 2048 characters).');
+      return;
+    }
+    const hasExplicitScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed);
+    const normalized = hasExplicitScheme ? trimmed : `https://${trimmed}`;
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(normalized);
+    } catch {
+      setBrowseError('Invalid URL format.');
+      return;
+    }
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      setBrowseError('Only http:// and https:// URLs are permitted.');
+      return;
+    }
+    const safeNormalized = parsedUrl.toString();
+
+    fetchAbortRef.current?.abort();
+    const ac = new AbortController();
+    fetchAbortRef.current = ac;
+    setBrowseLoading(true);
+    setBrowseError(null);
+    setAutoPilot(false);
+    setSearchInput(safeNormalized);
+
+    try {
+      const resp = await fetch(`/api/browse?url=${encodeURIComponent(safeNormalized)}`, {
+        signal: ac.signal,
+      });
+      const isJson = (resp.headers.get('content-type') || '').includes('application/json');
+      if (!isJson) {
+        setBrowseError(`Direct webpage proxy unavailable in static mode. Use Web Search or open ${safeNormalized} externally.`);
+        return;
+      }
+      const json = (await resp.json()) as BrowsePageData;
+      if (!resp.ok || !json.ok) {
+        setBrowseError(json.error || `HTTP ${resp.status} while loading ${safeNormalized}`);
+        return;
+      }
+      const entry: BrowserHistoryEntry = { kind: 'browse', data: json, inputLabel: json.finalUrl };
+      pushHistory(entry);
+      setSearchInput(json.finalUrl);
+      syncHistoryEntryTo3dMonitor(entry);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       setBrowseError(err instanceof Error ? err.message : 'Unable to reach live URL.');
@@ -303,7 +368,7 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
   };
 
   const searchLiveWeb = async (rawQuery: string) => {
-    const q = rawQuery.trim();
+    const q = rawQuery.trim().slice(0, 180);
     if (!q) return;
     fetchAbortRef.current?.abort();
     const ac = new AbortController();
@@ -312,30 +377,55 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
     setBrowseError(null);
     setAutoPilot(false);
     setSearchInput(q);
+    const started = performance.now();
 
     try {
-      const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}`, {
-        signal: ac.signal,
-      });
-      const json = (await resp.json()) as SearchPageData;
-      if (!resp.ok || !json.ok) {
-        setBrowseError(json.error || `Web search failed (HTTP ${resp.status})`);
-        return;
+      let json: SearchPageData | null = null;
+      try {
+        const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ac.signal });
+        if (resp.ok && (resp.headers.get('content-type') || '').includes('application/json')) {
+          const parsed = (await resp.json()) as SearchPageData;
+          if (parsed.ok) json = parsed;
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') throw err;
       }
-      pushHistory({ kind: 'search', data: json, inputLabel: q });
-      syncLiveSessionTo3dMonitor({
-        tabTitle: `Search: ${q.slice(0, 20)}`,
-        url: `search://${encodeURIComponent(q)}`,
-        searchQuery: q,
-        articleTitle: `${q} — Live Web Search (${json.results.length} results)`,
-        articleDomain: `DuckDuckGo & Wikipedia · ${json.latencyMs}ms`,
-        sections: json.results.slice(0, 3).map((r) => ({
-          heading: `${r.domain} · ${r.title}`,
-          excerpt: r.snippet || r.url,
-          highlight: r.url,
-        })),
-        researchNote: json.instantAbstract || `Live web search executed in ${json.latencyMs}ms.`,
-      });
+
+      if (!json) {
+        const wikiResp = await fetch(
+          `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&format=json&srlimit=8&utf8=1&origin=*`,
+          { signal: ac.signal }
+        );
+        if (!wikiResp.ok) {
+          setBrowseError(`Web search failed (HTTP ${wikiResp.status})`);
+          return;
+        }
+        const wikiJson = (await wikiResp.json()) as {
+          query?: { search?: Array<{ title: string; snippet: string }> };
+        };
+        const results: SearchResultItem[] = (wikiJson.query?.search || []).map((item) => ({
+          title: `${item.title} — Wikipedia`,
+          url: `https://en.wikipedia.org/wiki/${encodeURIComponent(item.title.replace(/ /g, '_'))}`,
+          domain: 'en.wikipedia.org',
+          snippet: decodeTextEntities(item.snippet.replace(/<[^>]+>/g, ' '))
+            .replace(/\s+/g, ' ')
+            .trim(),
+          source: 'Wikipedia',
+        }));
+        json = {
+          ok: true,
+          query: q,
+          latencyMs: Math.round(performance.now() - started),
+          instantAbstract: results[0]?.snippet || '',
+          instantSource: 'Wikipedia',
+          instantUrl: results[0]?.url || '',
+          results,
+        };
+      }
+
+      const entry: BrowserHistoryEntry = { kind: 'search', data: json, inputLabel: q };
+      pushHistory(entry);
+      syncHistoryEntryTo3dMonitor(entry);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       setBrowseError(err instanceof Error ? err.message : 'Web search request failed.');
@@ -597,9 +687,11 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
                   onClick={() => {
                     if (historyIdx > 0) {
                       const prevIdx = historyIdx - 1;
+                      const entry = liveHistory[prevIdx];
                       setHistoryIdx(prevIdx);
                       setBrowseError(null);
-                      setSearchInput(liveHistory[prevIdx].inputLabel);
+                      setSearchInput(entry.inputLabel);
+                      syncHistoryEntryTo3dMonitor(entry);
                     }
                   }}
                   aria-label="Back"
@@ -613,9 +705,11 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
                   onClick={() => {
                     if (historyIdx < liveHistory.length - 1) {
                       const nextIdx = historyIdx + 1;
+                      const entry = liveHistory[nextIdx];
                       setHistoryIdx(nextIdx);
                       setBrowseError(null);
-                      setSearchInput(liveHistory[nextIdx].inputLabel);
+                      setSearchInput(entry.inputLabel);
+                      syncHistoryEntryTo3dMonitor(entry);
                     }
                   }}
                   aria-label="Forward"

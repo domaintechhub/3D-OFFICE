@@ -1,9 +1,12 @@
+import type dns from 'node:dns';
 import { lookup as dnsLookup } from 'node:dns/promises';
+import http from 'node:http';
+import https from 'node:https';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
-import express, { type Request, type Response } from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 
 dotenv.config();
 
@@ -18,7 +21,7 @@ const MAX_FETCH_BYTES = 1_500_000;
 const FETCH_TIMEOUT_MS = 8_000;
 
 /* =========================================================
-   SSRF & INPUT HARDENING UTILITIES
+   SSRF, DNS-REBINDING & INPUT HARDENING UTILITIES
    ========================================================= */
 function isPrivateIpv4(ip: string): boolean {
   const parts = ip.split('.').map((n) => Number(n));
@@ -37,26 +40,89 @@ function isPrivateIpv4(ip: string): boolean {
   return false;
 }
 
-function isPrivateOrUnsafeIp(rawIp: string): boolean {
-  const ip = rawIp.trim().toLowerCase();
-  if (net.isIPv4(ip)) return isPrivateIpv4(ip);
-  if (net.isIPv6(ip)) {
-    if (ip === '::' || ip === '::1') return true;
-    if (ip.startsWith('::ffff:')) {
-      const mapped = ip.slice('::ffff:'.length);
-      if (net.isIPv4(mapped)) return isPrivateIpv4(mapped);
+function parseIpv6Groups(raw: string): number[] | null {
+  let ip = raw.trim().toLowerCase();
+  const zoneIdx = ip.indexOf('%');
+  if (zoneIdx !== -1) ip = ip.slice(0, zoneIdx);
+  if (!net.isIPv6(ip)) return null;
+
+  const lastColon = ip.lastIndexOf(':');
+  if (lastColon !== -1 && ip.slice(lastColon + 1).includes('.')) {
+    const octets = ip.slice(lastColon + 1).split('.').map(Number);
+    if (octets.length !== 4 || octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
+      return null;
     }
-    if (ip.startsWith('fc') || ip.startsWith('fd')) return true; // ULA fc00::/7
-    if (ip.startsWith('fe8') || ip.startsWith('fe9') || ip.startsWith('fea') || ip.startsWith('feb')) {
-      return true; // fe80::/10 link-local
-    }
-    if (ip.startsWith('ff')) return true; // multicast
-    return false;
+    const hi = ((octets[0] << 8) | octets[1]).toString(16);
+    const lo = ((octets[2] << 8) | octets[3]).toString(16);
+    ip = `${ip.slice(0, lastColon)}:${hi}:${lo}`;
   }
-  return true;
+
+  const parts = ip.split('::');
+  if (parts.length > 2) return null;
+  const left = parts[0] ? parts[0].split(':').filter(Boolean) : [];
+  const right = parts.length === 2 && parts[1] ? parts[1].split(':').filter(Boolean) : [];
+  const missing = 8 - (left.length + right.length);
+  if ((parts.length === 1 && left.length !== 8) || (parts.length === 2 && missing < 0)) {
+    return null;
+  }
+  const full = parts.length === 2 ? [...left, ...Array<string>(missing).fill('0'), ...right] : left;
+  if (full.length !== 8) return null;
+  const nums = full.map((g) => Number.parseInt(g, 16));
+  if (nums.some((n) => !Number.isInteger(n) || n < 0 || n > 0xffff)) return null;
+  return nums;
 }
 
-async function assertSafePublicUrl(rawUrl: string): Promise<URL> {
+function groupsToIpv4(hi: number, lo: number): string {
+  return `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+}
+
+function isPrivateOrUnsafeIp(rawIp: string): boolean {
+  const ip = rawIp.trim().toLowerCase().replace(/^\[|\]$/g, '');
+  const zoneIdx = ip.indexOf('%');
+  const cleanIp = zoneIdx !== -1 ? ip.slice(0, zoneIdx) : ip;
+  if (zoneIdx !== -1) return true; // block any scoped/zone-qualified addresses
+
+  if (net.isIPv4(cleanIp)) return isPrivateIpv4(cleanIp);
+
+  const g = parseIpv6Groups(cleanIp);
+  if (!g) return true;
+
+  // ::/128 (unspecified) and ::1/128 (loopback)
+  if (g[0] === 0 && g[1] === 0 && g[2] === 0 && g[3] === 0 && g[4] === 0 && g[5] === 0) {
+    if (g[6] === 0 && (g[7] === 0 || g[7] === 1)) return true;
+    // ::/96 IPv4-compatible IPv6
+    return isPrivateIpv4(groupsToIpv4(g[6], g[7]));
+  }
+  // ::ffff:0:0/96 IPv4-mapped IPv6 (both dotted and hex forms)
+  if (g[0] === 0 && g[1] === 0 && g[2] === 0 && g[3] === 0 && g[4] === 0 && g[5] === 0xffff) {
+    return isPrivateIpv4(groupsToIpv4(g[6], g[7]));
+  }
+  // 64:ff9b::/96 & 64:ff9b:1::/48 (NAT64)
+  if (g[0] === 0x0064 && g[1] === 0xff9b) return true;
+  // 100::/64 (discard)
+  if (g[0] === 0x0100 && g[1] === 0 && g[2] === 0 && g[3] === 0) return true;
+  // 2001::/32 (Teredo) & 2001:2::/48 & 2001:db8::/32
+  if (g[0] === 0x2001 && (g[1] === 0 || g[1] === 2 || g[1] === 0x0db8)) return true;
+  // 2002::/16 (6to4 tunneling)
+  if (g[0] === 0x2002) {
+    return isPrivateIpv4(groupsToIpv4(g[1], g[2]));
+  }
+  // fc00::/7 (ULA), fe80::/10 (link-local), fec0::/10 (site-local), ff00::/8 (multicast)
+  if ((g[0] & 0xfe00) === 0xfc00) return true;
+  if ((g[0] & 0xffc0) === 0xfe80) return true;
+  if ((g[0] & 0xffc0) === 0xfec0) return true;
+  if ((g[0] & 0xff00) === 0xff00) return true;
+
+  return false;
+}
+
+interface ResolvedPublicTarget {
+  parsed: URL;
+  pinnedAddress: string;
+  pinnedFamily: 4 | 6;
+}
+
+async function assertSafePublicUrl(rawUrl: string): Promise<ResolvedPublicTarget> {
   let parsed: URL;
   try {
     parsed = new URL(rawUrl);
@@ -70,9 +136,21 @@ async function assertSafePublicUrl(rawUrl: string): Promise<URL> {
   if (parsed.username || parsed.password) {
     throw new Error('URLs with embedded credentials are not permitted.');
   }
+  if (parsed.port && parsed.port !== '80' && parsed.port !== '443') {
+    throw new Error('Only standard HTTP (80) and HTTPS (443) ports are allowed.');
+  }
 
-  const host = parsed.hostname.toLowerCase();
-  if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) {
+  const rawHost = parsed.hostname.toLowerCase().replace(/\.+$/, '');
+  const host = rawHost.startsWith('[') && rawHost.endsWith(']') ? rawHost.slice(1, -1) : rawHost;
+  if (
+    !host ||
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host.endsWith('.local') ||
+    host.endsWith('.internal') ||
+    host.endsWith('.home') ||
+    host.endsWith('.arpa')
+  ) {
     throw new Error('Private or local hostnames are blocked.');
   }
 
@@ -81,89 +159,148 @@ async function assertSafePublicUrl(rawUrl: string): Promise<URL> {
     if (isPrivateOrUnsafeIp(host)) {
       throw new Error('Direct private or loopback IP access is blocked.');
     }
-    return parsed;
+    return { parsed, pinnedAddress: host, pinnedFamily: ipType === 6 ? 6 : 4 };
   }
 
-  const records = await dnsLookup(host, { all: true });
+  let records: Array<{ address: string; family: number }>;
+  try {
+    records = await dnsLookup(host, { all: true });
+  } catch {
+    throw new Error('Could not resolve remote host.');
+  }
   if (!records || records.length === 0) {
-    throw new Error(`Could not resolve host "${host}".`);
+    throw new Error('Could not resolve remote host.');
   }
   for (const rec of records) {
     if (isPrivateOrUnsafeIp(rec.address)) {
-      throw new Error(`Host "${host}" resolved to a blocked private network address.`);
+      throw new Error('Host resolved to a blocked private network address.');
     }
   }
-  return parsed;
+  const primary = records[0];
+  return {
+    parsed,
+    pinnedAddress: primary.address,
+    pinnedFamily: primary.family === 6 ? 6 : 4,
+  };
+}
+
+function requestPinnedPublic(
+  target: ResolvedPublicTarget,
+  accept: string
+): Promise<{ status: number; headers: http.IncomingHttpHeaders; text: string; contentType: string }> {
+  return new Promise((resolve, reject) => {
+    const isHttps = target.parsed.protocol === 'https:';
+    const transport = isHttps ? https : http;
+    const customLookup = ((
+      _hostname: string,
+      options: dns.LookupOptions | ((err: NodeJS.ErrnoException | null, address: string, family: number) => void),
+      callback?: (err: NodeJS.ErrnoException | null, address: string | dns.LookupAddress[], family?: number) => void
+    ) => {
+      if (typeof options === 'function') {
+        options(null, target.pinnedAddress, target.pinnedFamily);
+        return;
+      }
+      if (callback) {
+        if ((options as dns.LookupAllOptions)?.all) {
+          callback(null, [{ address: target.pinnedAddress, family: target.pinnedFamily }]);
+        } else {
+          callback(null, target.pinnedAddress, target.pinnedFamily);
+        }
+      }
+    }) as unknown as NonNullable<http.RequestOptions['lookup']>;
+
+    let settled = false;
+    const finishErr = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    };
+
+    const req = transport.request(
+      target.parsed,
+      {
+        method: 'GET',
+        lookup: customLookup,
+        timeout: FETCH_TIMEOUT_MS,
+        headers: {
+          'User-Agent': USER_AGENT,
+          Accept: accept,
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'identity',
+        },
+      },
+      (res) => {
+        const status = res.statusCode ?? 0;
+        const contentType = String(res.headers['content-type'] || 'text/html').toLowerCase();
+
+        if (status >= 300 && status < 400) {
+          res.resume();
+          if (!settled) {
+            settled = true;
+            resolve({ status, headers: res.headers, text: '', contentType });
+          }
+          return;
+        }
+
+        const chunks: Buffer[] = [];
+        let total = 0;
+        res.on('data', (chunk: Buffer) => {
+          total += chunk.byteLength;
+          if (total <= MAX_FETCH_BYTES) {
+            chunks.push(chunk);
+          } else {
+            const keep = chunk.byteLength - (total - MAX_FETCH_BYTES);
+            if (keep > 0) chunks.push(chunk.subarray(0, keep));
+            res.destroy();
+          }
+        });
+        res.on('end', () => {
+          if (settled) return;
+          settled = true;
+          const text = Buffer.concat(chunks).toString('utf8');
+          resolve({ status, headers: res.headers, text, contentType });
+        });
+        res.on('close', () => {
+          if (settled) return;
+          settled = true;
+          const text = Buffer.concat(chunks).toString('utf8');
+          resolve({ status, headers: res.headers, text, contentType });
+        });
+        res.on('error', () => finishErr(new Error('Failed while reading remote response.')));
+      }
+    );
+
+    req.on('timeout', () => {
+      req.destroy();
+      finishErr(new Error('Remote request timed out.'));
+    });
+    req.on('error', () => finishErr(new Error('Unable to connect to remote host.')));
+    req.end();
+  });
 }
 
 async function fetchPublicWithRedirects(
   initialUrl: string,
   accept = 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8'
-): Promise<{ response: globalThis.Response; finalUrl: string; text: string; status: number; contentType: string }> {
+): Promise<{ finalUrl: string; text: string; status: number; contentType: string }> {
   let currentUrl = initialUrl;
   let hop = 0;
 
   while (hop <= 4) {
-    const safeUrl = await assertSafePublicUrl(currentUrl);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const target = await assertSafePublicUrl(currentUrl);
+    const { status, headers, text, contentType } = await requestPinnedPublic(target, accept);
 
-    let resp: globalThis.Response;
-    try {
-      resp = await fetch(safeUrl.toString(), {
-        method: 'GET',
-        redirect: 'manual',
-        signal: controller.signal,
-        headers: {
-          'User-Agent': USER_AGENT,
-          Accept: accept,
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-      });
-    } finally {
-      clearTimeout(timer);
-    }
-
-    if (resp.status >= 300 && resp.status < 400) {
-      const loc = resp.headers.get('location');
+    if (status >= 300 && status < 400) {
+      const loc = typeof headers.location === 'string' ? headers.location : '';
       if (!loc) {
-        throw new Error(`Redirect (${resp.status}) missing Location header.`);
+        throw new Error(`Redirect (${status}) missing Location header.`);
       }
-      currentUrl = new URL(loc, safeUrl).toString();
+      currentUrl = new URL(loc, target.parsed).toString();
       hop++;
       continue;
     }
 
-    const contentType = (resp.headers.get('content-type') || 'text/html').toLowerCase();
-    const reader = resp.body?.getReader();
-    if (!reader) {
-      return { response: resp, finalUrl: safeUrl.toString(), text: '', status: resp.status, contentType };
-    }
-
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) {
-        total += value.byteLength;
-        if (total > MAX_FETCH_BYTES) {
-          chunks.push(value.subarray(0, Math.max(0, value.byteLength - (total - MAX_FETCH_BYTES))));
-          await reader.cancel();
-          break;
-        }
-        chunks.push(value);
-      }
-    }
-
-    const combined = new Uint8Array(chunks.reduce((acc, c) => acc + c.byteLength, 0));
-    let offset = 0;
-    for (const chunk of chunks) {
-      combined.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    const text = new TextDecoder('utf-8', { fatal: false }).decode(combined);
-    return { response: resp, finalUrl: safeUrl.toString(), text, status: resp.status, contentType };
+    return { finalUrl: target.parsed.toString(), text, status, contentType };
   }
 
   throw new Error('Too many redirects (limit 4).');
@@ -321,17 +458,67 @@ function unwrapDdgHref(rawHref: string): string | null {
 }
 
 /* =========================================================
-   EXPRESS APP + REAL BACKEND ROUTES
+   RATE LIMITING & EXPRESS APP
    ========================================================= */
+function createRateLimiter(maxRequests: number, windowMs: number) {
+  const hits = new Map<string, { count: number; resetAt: number }>();
+  return (req: Request, res: Response, next: NextFunction) => {
+    const now = Date.now();
+    const key = req.ip || req.socket.remoteAddress || 'unknown';
+    if (hits.size > 2000) {
+      for (const [k, v] of hits.entries()) {
+        if (v.resetAt <= now) hits.delete(k);
+      }
+      if (hits.size > 2000) hits.clear();
+    }
+    const entry = hits.get(key);
+    if (!entry || entry.resetAt <= now) {
+      hits.set(key, { count: 1, resetAt: now + windowMs });
+      next();
+      return;
+    }
+    if (entry.count >= maxRequests) {
+      res.status(429).json({ ok: false, error: 'Too many requests. Please wait a moment.' });
+      return;
+    }
+    entry.count += 1;
+    next();
+  };
+}
+
+function isAllowedTextContentType(contentType: string): boolean {
+  const mime = contentType.split(';')[0].trim().toLowerCase();
+  return (
+    mime.startsWith('text/') ||
+    mime === 'application/json' ||
+    mime === 'application/xml' ||
+    mime === 'application/xhtml+xml' ||
+    mime.endsWith('+json') ||
+    mime.endsWith('+xml')
+  );
+}
+
 async function startServer() {
   const app = express();
+  app.disable('x-powered-by');
+  app.set('trust proxy', 1);
   app.use(express.json({ limit: '64kb' }));
+
+  app.use((_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    next();
+  });
+
+  const apiBrowseLimiter = createRateLimiter(30, 60_000);
+  const apiLiveLimiter = createRateLimiter(60, 60_000);
 
   app.get('/api/health', (_req: Request, res: Response) => {
     res.json({ ok: true, service: 'DomainTechHub Full-Stack Server', time: new Date().toISOString() });
   });
 
-  app.get('/api/browse', async (req: Request, res: Response) => {
+  app.get('/api/browse', apiBrowseLimiter, async (req: Request, res: Response) => {
     const raw = typeof req.query.url === 'string' ? req.query.url.trim() : '';
     if (!raw || raw.length > 2048) {
       res.status(400).json({ ok: false, error: 'Provide a valid http(s) URL.' });
@@ -342,11 +529,15 @@ async function startServer() {
     const started = Date.now();
     try {
       const { finalUrl, text, status, contentType } = await fetchPublicWithRedirects(withScheme);
+      if (!isAllowedTextContentType(contentType)) {
+        res.status(415).json({ ok: false, error: 'Only HTML, JSON, and text webpages are supported.' });
+        return;
+      }
       const latencyMs = Date.now() - started;
       const u = new URL(finalUrl);
       const domain = u.hostname.replace(/^www\./, '');
 
-      if (contentType.includes('application/json')) {
+      if (contentType.includes('application/json') || contentType.includes('+json')) {
         let pretty = text.slice(0, 4000);
         try {
           pretty = JSON.stringify(JSON.parse(text), null, 2).slice(0, 4000);
@@ -417,7 +608,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/search', async (req: Request, res: Response) => {
+  app.get('/api/search', apiBrowseLimiter, async (req: Request, res: Response) => {
     const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
     if (!query || query.length > 180) {
       res.status(400).json({ ok: false, error: 'Search query must be 1–180 characters.' });
@@ -505,7 +696,7 @@ async function startServer() {
     });
   });
 
-  app.get('/api/nairobi-live', async (_req: Request, res: Response) => {
+  app.get('/api/nairobi-live', apiLiveLimiter, async (_req: Request, res: Response) => {
     const now = new Date();
     const nairobiParts = new Intl.DateTimeFormat('en-GB', {
       timeZone: 'Africa/Nairobi',

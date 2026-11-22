@@ -224,16 +224,68 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
     setNairobiLoading(true);
     setNairobiError(null);
     try {
-      const res = await fetch('/api/nairobi-live');
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || `HTTP ${res.status}`);
+      let minutesOfDay: number | null = null;
+      let cond: WeatherMode = 'clear';
+      let tempC: number | null = null;
+      let summary = '';
+
+      try {
+        const res = await fetch('/api/nairobi-live');
+        if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
+          const data = await res.json();
+          if (data?.ok) {
+            minutesOfDay = Number(data.minutesOfDay);
+            cond = (data.condition || 'clear') as WeatherMode;
+            tempC = typeof data.temperatureC === 'number' ? data.temperatureC : null;
+            summary = typeof data.summary === 'string' ? data.summary : '';
+          }
+        }
+      } catch {
+        // Fall back to direct browser Nairobi EAT + Open-Meteo CORS fetch
       }
-      const cond = (data.condition || 'clear') as WeatherMode;
-      onApplyLiveNairobi(Number(data.minutesOfDay) || 12 * 60, cond);
-      const tempPart = typeof data.temperatureC === 'number' ? `${data.temperatureC}°C` : '';
-      const sumPart = typeof data.summary === 'string' ? data.summary : '';
-      setLiveNairobiTemp([tempPart, sumPart].filter(Boolean).join(' · ') || 'EAT Live');
+
+      if (minutesOfDay === null) {
+        const parts = new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Africa/Nairobi',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).formatToParts(new Date());
+        const hh = Number(parts.find((p) => p.type === 'hour')?.value) || 0;
+        const mm = Number(parts.find((p) => p.type === 'minute')?.value) || 0;
+        minutesOfDay = hh * 60 + mm;
+
+        const wxRes = await fetch(
+          'https://api.open-meteo.com/v1/forecast?latitude=-1.286389&longitude=36.817223&current=temperature_2m,precipitation,weather_code,cloud_cover&timezone=Africa%2FNairobi'
+        );
+        if (wxRes.ok) {
+          const wx = await wxRes.json();
+          const cur = wx?.current;
+          if (cur) {
+            tempC = typeof cur.temperature_2m === 'number' ? Math.round(cur.temperature_2m * 10) / 10 : null;
+            const code = typeof cur.weather_code === 'number' ? cur.weather_code : 0;
+            const precip = typeof cur.precipitation === 'number' ? cur.precipitation : 0;
+            const cloud = typeof cur.cloud_cover === 'number' ? cur.cloud_cover : 0;
+            if (code >= 95) {
+              cond = 'storm';
+              summary = 'Thunderstorm';
+            } else if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82) || precip > 0.2) {
+              cond = 'rain';
+              summary = 'Rain Showers';
+            } else if (code === 2 || code === 3 || code === 45 || code === 48 || cloud >= 60) {
+              cond = 'overcast';
+              summary = code === 45 || code === 48 ? 'Mist & Clouds' : 'Mostly Cloudy';
+            } else {
+              cond = 'clear';
+              summary = code === 1 ? 'Mostly Clear' : 'Clear Sky';
+            }
+          }
+        }
+      }
+
+      onApplyLiveNairobi(Number.isFinite(minutesOfDay) ? minutesOfDay : 12 * 60, cond);
+      const tempPart = tempC !== null ? `${tempC}°C` : '';
+      setLiveNairobiTemp([tempPart, summary].filter(Boolean).join(' · ') || 'EAT Live');
     } catch (err) {
       setNairobiError(err instanceof Error ? err.message : 'Live Nairobi sync failed');
     } finally {

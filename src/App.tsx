@@ -1,9 +1,14 @@
-import { Component, type ErrorInfo, type ReactNode, useEffect, useRef, useState } from 'react';
-import { CharacterStudioModal } from './components/CharacterStudioModal';
+import { Component, lazy, Suspense, type ErrorInfo, type ReactNode, useEffect, useRef, useState } from 'react';
 import { HudOverlay } from './components/HudOverlay';
-import { SocialChannelsPanel } from './components/SocialChannelsPanel';
 import { AtriumEngine } from './scene/AtriumEngine';
 import type { HudSnapshot } from './scene/constants';
+
+const CharacterStudioModal = lazy(() =>
+  import('./components/CharacterStudioModal').then((m) => ({ default: m.CharacterStudioModal }))
+);
+const SocialChannelsPanel = lazy(() =>
+  import('./components/SocialChannelsPanel').then((m) => ({ default: m.SocialChannelsPanel }))
+);
 
 const INITIAL_HUD: HudSnapshot = {
   simMinutes: 9 * 60 + 25,
@@ -99,6 +104,13 @@ function AtriumApp() {
   const [studioOpen, setStudioOpen] = useState(false);
   const [socialOpen, setSocialOpen] = useState(false);
 
+  const hudRef = useRef(hud);
+  hudRef.current = hud;
+  const studioOpenRef = useRef(studioOpen);
+  studioOpenRef.current = studioOpen;
+  const socialOpenRef = useRef(socialOpen);
+  socialOpenRef.current = socialOpen;
+
   useEffect(() => {
     const el = mountRef.current;
     if (!el) return;
@@ -122,6 +134,43 @@ function AtriumApp() {
     } catch (err) {
       setWebglError(err instanceof Error ? err.message : 'Unable to initialize 3D WebGL context.');
     }
+  }, []);
+
+  useEffect(() => {
+    const handleShortcutKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.repeat) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (studioOpenRef.current || socialOpenRef.current) return;
+
+      const target = e.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
+
+      const engine = engineRef.current;
+      if (!engine) return;
+
+      const key = e.key.toLowerCase();
+      const currentHud = hudRef.current;
+
+      if (e.code === 'KeyW' || key === 'w') {
+        if (!currentHud.driving && !currentHud.walking) {
+          engine.toggleWalk();
+        }
+      } else if (e.code === 'KeyH' || key === 'h') {
+        engine.soundCarHorn();
+      } else if (e.code === 'KeyC' || key === 'c') {
+        engine.cycleCameraMode();
+      }
+    };
+
+    window.addEventListener('keydown', handleShortcutKeyDown);
+    return () => window.removeEventListener('keydown', handleShortcutKeyDown);
   }, []);
 
   if (webglError) {
@@ -182,14 +231,22 @@ function AtriumApp() {
         onForceRedrawMonitor={() => engineRef.current?.forceRedrawInspectedMonitor()}
         onApplyLiveNairobi={(minutes, cond) => engineRef.current?.applyLiveNairobiSync(minutes, cond)}
       />
-      <CharacterStudioModal isOpen={studioOpen} onClose={() => setStudioOpen(false)} />
-      <SocialChannelsPanel
-        isOpen={socialOpen}
-        activeBuilding={hud.activeBuilding}
-        onClose={() => setSocialOpen(false)}
-        onSelectBuilding={(id) => engineRef.current?.selectBuilding(id)}
-        onJobDispatched={(bId) => engineRef.current?.notifyCompanyJob(bId)}
-      />
+      {studioOpen && (
+        <Suspense fallback={null}>
+          <CharacterStudioModal isOpen={studioOpen} onClose={() => setStudioOpen(false)} />
+        </Suspense>
+      )}
+      {socialOpen && (
+        <Suspense fallback={null}>
+          <SocialChannelsPanel
+            isOpen={socialOpen}
+            activeBuilding={hud.activeBuilding}
+            onClose={() => setSocialOpen(false)}
+            onSelectBuilding={(id) => engineRef.current?.selectBuilding(id)}
+            onJobDispatched={(bId) => engineRef.current?.notifyCompanyJob(bId)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

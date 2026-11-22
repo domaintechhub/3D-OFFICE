@@ -29,10 +29,6 @@ export function setLiveBrowserOverride(stationKey: string, session: BrowserSessi
   }
 }
 
-export function getLiveBrowserOverride(stationKey: string): BrowserSession | null {
-  return liveBrowserOverrides.get(stationKey) ?? null;
-}
-
 const hr = (n: number) => Math.abs((Math.sin(n * 12.9898) * 43758.5453) % 1);
 const wsTyped = (s: string, t: number, cps: number) => s.slice(0, Math.max(0, Math.min(s.length, Math.floor(t * cps))));
 const wsEase = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : 1 - Math.pow(1 - x, 3));

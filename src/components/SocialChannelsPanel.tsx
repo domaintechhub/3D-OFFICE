@@ -68,8 +68,19 @@ export const SocialChannelsPanel: React.FC<SocialChannelsPanelProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    return socialNetwork.subscribe(() => setVersion((v) => v + 1));
-  }, [isOpen]);
+    const unsub = socialNetwork.subscribe(() => setVersion((v) => v + 1));
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      unsub();
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [isOpen, onClose]);
 
   const jobs = socialNetwork.getJobs();
   const posts = socialNetwork.getPosts();

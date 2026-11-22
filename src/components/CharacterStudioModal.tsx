@@ -2,13 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { Download, FolderUp, Layers, Play, RotateCw, Square, User, X } from 'lucide-react';
-import {
-  CHARACTER_GLB_MANIFEST,
-  getCharacterPipelineSummary,
-  loadRiggedGlbFromFile,
-  type LoadedGlbCharacter,
-} from '../scene/characterAssets';
+import { Download, FolderUp, Play, RotateCw, Square, User, X } from 'lucide-react';
+import { loadRiggedGlbFromFile, type LoadedGlbCharacter } from '../scene/characterAssets';
 import {
   BONE_NAMES,
   OFFICE_CHARACTER_ROSTER,
@@ -247,10 +242,7 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
   const [exportNote, setExportNote] = useState<string | null>(null);
   const [contextLost, setContextLost] = useState(false);
   const [importedGlb, setImportedGlb] = useState<LoadedGlbCharacter | null>(null);
-  const [showPipelineDrawer, setShowPipelineDrawer] = useState(false);
   const [glbLoading, setGlbLoading] = useState(false);
-
-  const pipelineSummary = getCharacterPipelineSummary();
 
   const studioRef = useRef<{
     scene: THREE.Scene;
@@ -699,18 +691,6 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
             />
             <button
               type="button"
-              onClick={() => setShowPipelineDrawer((v) => !v)}
-              className={`hidden sm:flex items-center gap-1.5 rounded border px-2.5 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                showPipelineDrawer
-                  ? 'border-sky-400/60 bg-sky-500/20 text-sky-100'
-                  : 'border-white/15 bg-white/5 text-slate-300 hover:bg-white/12'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>GLB Pipeline ({pipelineSummary.enabledExternalSlots}/{pipelineSummary.totalManifestSlots})</span>
-            </button>
-            <button
-              type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={glbLoading || contextLost}
               className="flex items-center gap-1.5 rounded border border-sky-500/45 bg-sky-500/20 px-3 py-1.5 text-xs font-medium text-sky-100 hover:bg-sky-500/30 disabled:opacity-50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
@@ -738,32 +718,6 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
             </button>
           </div>
         </div>
-
-        {showPipelineDrawer && (
-          <div className="border-b border-white/12 bg-[#090d14] px-4 py-2.5 text-[11px] text-slate-300">
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
-              <span className="font-semibold text-sky-300">
-                External Rigged .GLB Asset Pipeline (Mixamo / Ready Player Me / Blender glTF 2.0)
-              </span>
-              <span className="font-mono-tabular text-slate-400">
-                Drop any rigged .glb onto the viewport or click Load .GLB above
-              </span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5 font-mono-tabular text-[10px]">
-              {CHARACTER_GLB_MANIFEST.map((entry) => (
-                <div
-                  key={entry.presetId}
-                  className="flex items-center justify-between rounded border border-white/10 bg-white/[0.03] px-2.5 py-1"
-                >
-                  <span className="text-slate-200 truncate">{entry.expectedPath}</span>
-                  <span className="text-slate-500 ml-2 shrink-0">
-                    {entry.rigConvention} · {entry.enabled ? 'active' : 'awaiting file'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Main 3-Column Studio Body */}
         <div className="flex flex-1 min-h-0 flex-col lg:flex-row">

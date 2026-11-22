@@ -412,7 +412,6 @@ export class AtriumEngine {
       this.handleResize();
       this.loop(performance.now());
     });
-    (window as unknown as { __atrium?: AtriumEngine }).__atrium = this;
   }
 
   private runProceduralFoliageScript(M: MaterialLibrary): ProceduralFoliageResult {
@@ -1768,6 +1767,26 @@ export class AtriumEngine {
     this.emitHud();
   }
 
+  public cycleCameraMode() {
+    this.markInteraction();
+    if (this.sim.isDriving()) {
+      this.sim.toggleDriveCamera();
+      this.emitHud();
+      return;
+    }
+    if (this.sim.walkOn) {
+      return;
+    }
+    const spec = DISTRICT_BUILDING_MAP[this.activeBuilding];
+    const views: string[] = ['overview', 'roof'];
+    for (let lv = 0; lv < spec.floors; lv++) {
+      views.push(String(lv));
+    }
+    const idx = views.indexOf(this.activeLevel);
+    const nextView = views[(idx + 1) % views.length];
+    this.selectLevel(nextView);
+  }
+
   public toggleDriveHeadlights() {
     this.markInteraction();
     this.sim.toggleDriveHeadlights();
@@ -1787,6 +1806,7 @@ export class AtriumEngine {
 
   public soundCarHorn() {
     this.markInteraction();
+    this.audio.unlock();
     this.audio.playCarHorn();
   }
 

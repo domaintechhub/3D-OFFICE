@@ -160,7 +160,6 @@ export const BASE = [
 ] as const;
 
 export const BASE_BOT = -9.4;
-export const MIDY = ROOF * 0.489;
 
 export const ceilY = (s: number): number => LV[s] + LH[s] - 0.4;
 export const ceilHeight = (s: number): number => ceilY(s) - LV[s];
@@ -168,7 +167,6 @@ export const ceilHeight = (s: number): number => ceilY(s) - LV[s];
 export const LANE = 10.05;
 export const LIFTX = 28.55;
 export const GATE = 26.2;
-export const STAND = 3.2;
 export const GATE_STOP = GATE - 1.05;
 
 export const LIFT_SVC = [BASE[1].y, BASE[0].y, ...LV];
@@ -221,16 +219,6 @@ export const VIEWS: Record<string, { p: [number, number, number]; t: [number, nu
   b2: { p: [0, -9.0 + 31.0, 25.0], t: [0, -9.0 + 1.0, 5.0] },
   roof: { p: [18, 41, 26], t: [0, 27.0, 4.8] },
 };
-
-export const NEIGHBOURS = [
-  { name: 'Left neighbour', x: -36, z: 0, w: 22, d: 20, h: 22, style: 'glass' as const },
-  { name: 'Right neighbour', x: 35, z: 1, w: 20, d: 18, h: 18, style: 'concrete' as const },
-  { name: 'Far left tower', x: -62, z: -4, w: 24, d: 22, h: 40, style: 'glass' as const },
-  { name: 'Far right block', x: 60, z: -2, w: 24, d: 20, h: 31, style: 'brick' as const },
-  { name: 'Behind (rear lane)', x: 0, z: -24, w: 52, d: 16, h: 29, style: 'concrete' as const },
-  { name: 'Across the street L', x: -30, z: 88, w: 30, d: 18, h: 22, style: 'brick' as const },
-  { name: 'Across the street R', x: 28, z: 90, w: 34, d: 18, h: 34, style: 'glass' as const },
-];
 
 export const ROAD_Z = 66;
 
