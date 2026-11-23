@@ -2274,28 +2274,28 @@ export class AtriumSimulation {
       )
     );
 
-    // 2. VitalCare Medical Clinic (4 bays along z = -15.0 ring road via ±36.5 inner drives)
-    [-16.0, -11.0, 11.0, 16.0].forEach((bx) =>
+    // 2. VitalCare Medical Clinic (4 bays along z = 36.5 East Medical Park forecourt via x = 116 entry / x = 152 exit)
+    [122.0, 126.5, 141.5, 146.0].forEach((bx) =>
       pushBay({
         company: 'medical',
-        sd: bx < 0 ? -1 : 1,
+        sd: bx < 134 ? -1 : 1,
         x: bx,
-        z: -10.5,
+        z: 41.2,
         face: 0,
-        gateX: -36.5,
+        gateX: 116.0,
         gateLane: LANE_WEST,
         exitLane: LANE_EAST,
         entryPts: [
-          [-36.5, LANE_WEST],
-          [-36.5, -15.0],
-          [bx, -15.0],
-          [bx, -10.5],
+          [116.0, LANE_WEST],
+          [116.0, 36.5],
+          [bx, 36.5],
+          [bx, 41.2],
         ],
         exitPts: [
-          [bx, -15.0],
-          [36.5, -15.0],
-          [36.5, LANE_WEST],
-          [36.5, LANE_EAST],
+          [bx, 36.5],
+          [152.0, 36.5],
+          [152.0, LANE_WEST],
+          [152.0, LANE_EAST],
         ],
       })
     );
@@ -4998,14 +4998,14 @@ export class AtriumSimulation {
         ) {
           v.state = 'toBay';
           v._arr = 0;
-        } else if (v.dir > 0 && v.x >= 109.5) {
+        } else if (v.dir > 0 && v.x >= RING_X - 10.5) {
           // Turn smoothly from Central Eastbound onto Perimeter Ring Road (East T-junction)
           const goOuter = ((vIdx + Math.floor(m)) % 2) === 0;
           v.state = 'toRing';
           v._arr = 0;
           if (goOuter) {
             v.turnPts = [
-              [118.2, LANE_EAST],
+              [RING_X - 1.8, LANE_EAST],
               [RING_X + RING_LANE_OFF, 62.5],
               [RING_X + RING_LANE_OFF, 56.0],
             ];
@@ -5013,21 +5013,21 @@ export class AtriumSimulation {
             v.nextRingS = RING_S_EAST_JUNC + 10.0;
           } else {
             v.turnPts = [
-              [113.5, LANE_EAST],
+              [RING_X - 6.5, LANE_EAST],
               [RING_X - RING_LANE_OFF, 74.5],
               [RING_X - RING_LANE_OFF, 80.0],
             ];
             v.nextRingDir = -1;
             v.nextRingS = RING_S_EAST_JUNC - 14.0;
           }
-        } else if (v.dir < 0 && v.x <= -109.5) {
+        } else if (v.dir < 0 && v.x <= -(RING_X - 10.5)) {
           // Turn smoothly from Central Westbound onto Perimeter Ring Road (West T-junction)
           const goOuter = ((vIdx + Math.floor(m)) % 2) === 0;
           v.state = 'toRing';
           v._arr = 0;
           if (goOuter) {
             v.turnPts = [
-              [-118.2, LANE_WEST],
+              [-(RING_X - 1.8), LANE_WEST],
               [-RING_X - RING_LANE_OFF, 69.5],
               [-RING_X - RING_LANE_OFF, 76.0],
             ];
@@ -5035,7 +5035,7 @@ export class AtriumSimulation {
             v.nextRingS = RING_S_WEST_JUNC + 10.0;
           } else {
             v.turnPts = [
-              [-113.5, LANE_WEST],
+              [-(RING_X - 6.5), LANE_WEST],
               [-RING_X + RING_LANE_OFF, 57.5],
               [-RING_X + RING_LANE_OFF, 52.0],
             ];
@@ -5061,7 +5061,7 @@ export class AtriumSimulation {
             if (dGate > 0 && dGate < 16) {
               signalDir = v.dir > 0 ? 1 : -1;
             }
-          } else if ((v.dir > 0 && v.x > 96) || (v.dir < 0 && v.x < -96)) {
+          } else if ((v.dir > 0 && v.x > RING_X - 24) || (v.dir < 0 && v.x < -(RING_X - 24))) {
             signalDir = 1;
           }
 
@@ -5090,14 +5090,14 @@ export class AtriumSimulation {
           v.turnPts =
             v.ringDir > 0
               ? [
-                  [121.5, 65.5],
-                  [114.5, LANE_WEST],
-                  [106.5, LANE_WEST],
+                  [RING_X + 1.5, 65.5],
+                  [RING_X - 5.5, LANE_WEST],
+                  [RING_X - 13.5, LANE_WEST],
                 ]
               : [
-                  [115.2, 61.5],
-                  [109.0, LANE_WEST],
-                  [104.0, LANE_WEST],
+                  [RING_X - 4.8, 61.5],
+                  [RING_X - 11.0, LANE_WEST],
+                  [RING_X - 16.0, LANE_WEST],
                 ];
         } else if (wantsCentralEast) {
           v.state = 'toStreet';
@@ -5107,14 +5107,14 @@ export class AtriumSimulation {
           v.turnPts =
             v.ringDir > 0
               ? [
-                  [-121.5, 66.5],
-                  [-114.5, LANE_EAST],
-                  [-106.5, LANE_EAST],
+                  [-(RING_X + 1.5), 66.5],
+                  [-(RING_X - 5.5), LANE_EAST],
+                  [-(RING_X - 13.5), LANE_EAST],
                 ]
               : [
-                  [-115.2, 70.5],
-                  [-109.0, LANE_EAST],
-                  [-104.0, LANE_EAST],
+                  [-(RING_X - 4.8), 70.5],
+                  [-(RING_X - 11.0), LANE_EAST],
+                  [-(RING_X - 16.0), LANE_EAST],
                 ];
         } else {
           const desiredSpd = this.getRingStopTarget(v, pose);
@@ -6144,7 +6144,7 @@ export class AtriumSimulation {
       case 'crypto':
         return { x: 90.0, z: 18.0 };
       case 'medical':
-        return { x: 0.0, z: -15.0 };
+        return { x: 134.0, z: 36.5 };
       case 'travel':
         return { x: -48.0, z: 77.2 };
       case 'tourism':
@@ -6190,8 +6190,14 @@ export class AtriumSimulation {
     if (z >= 59.0 && z <= 73.5) {
       return z < ROAD_Z ? 'Central Boulevard · Westbound' : 'Central Boulevard · Eastbound';
     }
-    if (z >= -20.0 && z <= -9.5 && Math.abs(x) <= 42) {
-      return 'Medical Ring Road · Clinic North';
+    if (z >= 32.0 && z <= 43.0 && x >= 112 && x <= 156) {
+      return 'VitalCare Medical Forecourt · East Park';
+    }
+    if (Math.abs(x - 116.0) < 5.0 && z >= 34 && z <= 66) {
+      return 'VitalCare Medical West Entry';
+    }
+    if (Math.abs(x - 152.0) < 5.0 && z >= 34 && z <= 66) {
+      return 'VitalCare Medical East Exit';
     }
     if (Math.abs(x - -73.5) < 5.5 && z >= 12 && z <= 66) {
       return 'West Commercial Avenue';
@@ -6199,10 +6205,10 @@ export class AtriumSimulation {
     if (Math.abs(x - 73.5) < 5.5 && z >= 12 && z <= 66) {
       return 'East Commercial Avenue';
     }
-    if (Math.abs(x - -36.5) < 5.0 && z >= -18 && z <= 66) {
+    if (Math.abs(x - -36.5) < 5.0 && z >= 14 && z <= 66) {
       return 'Hub West Inner Drive';
     }
-    if (Math.abs(x - 36.5) < 5.0 && z >= -18 && z <= 66) {
+    if (Math.abs(x - 36.5) < 5.0 && z >= 14 && z <= 66) {
       return 'Hub East Inner Drive';
     }
     if (z >= 22 && z <= 38 && Math.abs(x) <= 34) {

@@ -222,7 +222,7 @@ export const VIEWS: Record<string, { p: [number, number, number]; t: [number, nu
 };
 
 export const ROAD_Z = 66;
-export const RING_X = 120;
+export const RING_X = 178;
 export const RING_Z_NORTH = -52;
 export const RING_Z_SOUTH = 118;
 export const RING_CORNER_R = 18;

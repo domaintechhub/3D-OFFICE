@@ -246,7 +246,7 @@ export class AtriumEngine {
     this.controls.enableDamping = !this.isSoftwareGl;
     this.controls.dampingFactor = 0.07;
     this.controls.minDistance = 1.6;
-    this.controls.maxDistance = 175;
+    this.controls.maxDistance = 230;
     this.controls.maxPolarAngle = Math.PI * 0.488;
     this.controls.update();
 

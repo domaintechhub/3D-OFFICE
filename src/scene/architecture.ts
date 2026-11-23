@@ -3252,7 +3252,7 @@ export function buildSceneArchitecture(
   const plazaGroup = new THREE.Group();
   scene.add(plazaGroup);
 
-  const grdGeo = new THREE.PlaneGeometry(420, 360, 112, 96);
+  const grdGeo = new THREE.PlaneGeometry(520, 360, 128, 96);
   grdGeo.rotateX(-Math.PI / 2);
   {
     const pos = grdGeo.attributes.position;
@@ -3265,8 +3265,8 @@ export function buildSceneArchitecture(
     for (let i = 0; i < pos.count; i++) {
       const gx = pos.getX(i);
       const gz = pos.getZ(i) + 30;
-      // Keep the entire district + outer Perimeter Ring Road flat (|x| <= 135, z in [-66..134])
-      const dx = Math.max(0, Math.abs(gx) - 135);
+      // Keep the entire district + outer Perimeter Ring Road flat (|x| <= 193, z in [-66..134])
+      const dx = Math.max(0, Math.abs(gx) - 193);
       const dz = Math.max(0, gz < -66 ? -66 - gz : gz > 134 ? gz - 134 : 0);
       const edgeDist = Math.hypot(dx, dz);
       const ramp = Math.min(1, Math.max(0, edgeDist / 28));
@@ -3278,12 +3278,12 @@ export function buildSceneArchitecture(
         Math.sin((gx + gz) * 0.065) * 0.65;
       let elev = Math.max(0, smoothRamp * (2.6 + wave));
 
-      // Gentle raised berm inside the 4 inner corner green parks (clear of buildings & ring road)
+      // Gentle raised berm inside open green parks (clear of buildings & ring road)
       const corners: Array<[number, number]> = [
-        [-96, 36],
-        [96, 36],
-        [-96, -28],
-        [96, -28],
+        [-148, 36],
+        [-148, -28],
+        [148, -28],
+        [136, 92],
       ];
       for (const [cx, cz] of corners) {
         const dCorner = Math.hypot(gx - cx, gz - cz);
@@ -3618,10 +3618,10 @@ export function buildSceneArchitecture(
   // North commercial promenades directly in front of Bank/Restaurant & Dealership/Crypto
   addWalkStrip(62, 5.0, -72.5, 9.5);
   addWalkStrip(62, 5.0, 72.5, 9.5);
-  // West & East breezeway paths leading back to Medical (-20) + Medical front sidewalk (clear of 60m Hub & ±36.5 drives)
-  addWalkStrip(4.0, 32, -32.2, -2.0);
-  addWalkStrip(4.0, 32, 32.2, -2.0);
-  addWalkStrip(70, 3.0, 0, -18.5);
+  // East Medical Park walkways & VitalCare entrance promenade (x = 108..160, z = 30..58)
+  addWalkStrip(52, 3.6, 134, 31.8);
+  addWalkStrip(2.8, 25.0, 110.5, 45.8);
+  addWalkStrip(2.8, 25.0, 157.5, 45.8);
   // North-South pedestrian footwalks aligned with x = ±32 crosswalks (clear of ±36.5 driveways)
   addWalkStrip(3.2, 50, -32.0, 33.0);
   addWalkStrip(3.2, 50, 32.0, 33.0);
@@ -3634,16 +3634,18 @@ export function buildSceneArchitecture(
   addWalkStrip(3.2, 9.8, -32.0, 79.1);
   addWalkStrip(3.2, 9.8, 32.0, 79.1);
 
-  // Central Boulevard curbs (terminate cleanly at ±107.5 for T-junction curb fillets)
+  // Central Boulevard curbs (terminate cleanly at ±165.5 for T-junction curb fillets)
   const northSegments: Array<[number, number]> = [
-    [-107.5, -76.8],
+    [-165.5, -76.8],
     [-70.2, -39.6],
     [-33.4, 33.4],
     [39.6, 70.2],
-    [76.8, 107.5],
+    [76.8, 112.8],
+    [119.2, 148.8],
+    [155.2, 165.5],
   ];
   const southSegments: Array<[number, number]> = [
-    [-107.5, -96.8],
+    [-165.5, -96.8],
     [-91.2, -76.8],
     [-71.2, -62.8],
     [-57.2, -38.8],
@@ -3651,7 +3653,7 @@ export function buildSceneArchitecture(
     [-11.2, 11.2],
     [16.8, 35.2],
     [40.8, 73.8],
-    [80.2, 107.5],
+    [80.2, 165.5],
   ];
 
   // Quarter-circle bullnose curb return elbow geometry turning outward from boulevard into driveway edges
@@ -3686,14 +3688,14 @@ export function buildSceneArchitecture(
       curbMesh.receiveShadow = true;
       cityGroup.add(curbMesh);
 
-      if (x0 > -107) {
+      if (x0 > -165) {
         const elbL = new THREE.Mesh(curbElbowGeo, M.concrete);
         elbL.position.set(x0, ySt + 0.09, ROAD_Z + s * 8.32);
         elbL.scale.set(-1, 1, s);
         elbL.castShadow = true;
         cityGroup.add(elbL);
       }
-      if (x1 < 107) {
+      if (x1 < 165) {
         const elbR = new THREE.Mesh(curbElbowGeo, M.concrete);
         elbR.position.set(x1, ySt + 0.09, ROAD_Z + s * 8.32);
         elbR.scale.set(1, 1, s);
@@ -3786,7 +3788,7 @@ export function buildSceneArchitecture(
 
   // Galvanized slotted steel drainage grates across main driveway mouths
   const grateMat = std({ color: 0x8f979e, roughness: 0.36, metalness: 0.72 });
-  [-73.5, -36.5, 36.5, 73.5].forEach((dx) => {
+  [-73.5, -36.5, 36.5, 73.5, 116.0, 152.0].forEach((dx) => {
     boxAt(cityGroup, 5.2, 0.025, 0.42, dx, ySt + 0.01, ROAD_Z - 7.85, M.concrete, false, true, 0.006);
     for (let sx = -2.2; sx <= 2.2; sx += 0.22) {
       boxAt(cityGroup, 0.07, 0.032, 0.34, dx + sx, ySt + 0.014, ROAD_Z - 7.85, grateMat, false, false, 0.003);
@@ -3810,8 +3812,8 @@ export function buildSceneArchitecture(
     d.position.set(x, ySt + 0.01, z);
     cityGroup.add(d);
   };
-  for (let x = -108; x <= 108; x += 8) addDash(x, ROAD_Z, 0);
-  for (let x = -98; x <= 98; x += 8) {
+  for (let x = -(RING_X - 12); x <= RING_X - 12; x += 8) addDash(x, ROAD_Z, 0);
+  for (let x = -(RING_CX - 4); x <= RING_CX - 4; x += 8) {
     addDash(x, RING_Z_NORTH, 0);
     addDash(x, RING_Z_SOUTH, 0);
   }
@@ -3900,14 +3902,18 @@ export function buildSceneArchitecture(
 
   // Lush manicured hedges & flowering edge shrubs along boulevard median verges
   [
+    [-142, 22, -1],
     [-96, 16, -1],
     [-55, 14, -1],
     [-19, 13, -1],
     [19, 13, -1],
     [55, 14, -1],
     [96, 16, -1],
+    [134, 16, -1],
+    [-142, 24, 1],
     [-84, 10, 1],
     [95, 12, 1],
+    [134, 24, 1],
   ].forEach(([hx, hLen, side], idx) => {
     buildManicuredHedge(cityGroup, hx, ySt, ROAD_Z + side * 10.65, hLen, 0.95, 0.85, 0, 410 + idx * 13, M, archMats);
     if (idx % 2 === 0) {
@@ -3915,12 +3921,12 @@ export function buildSceneArchitecture(
     }
   });
 
-  // Inner corner green gardens with river-stone beds & multi-stemmed flowering/leafy shrubs (tucked inside ring road)
+  // Inner park green gardens with river-stone beds & multi-stemmed flowering/leafy shrubs (tucked inside ring road)
   [
-    [-96, 36],
-    [96, 36],
-    [-96, -28],
-    [96, -28],
+    [-148, 36],
+    [-148, -28],
+    [148, -28],
+    [136, 92],
   ].forEach((p, idx) => {
     buildOrganicShrub(cityGroup, p[0] - 4.2, ySt + 0.04, p[1] - 3.2, 1.55, 1.65, 620 + idx * 11, M, archMats, false);
     buildOrganicShrub(cityGroup, p[0] + 3.9, ySt + 0.04, p[1] + 2.9, 1.38, 1.48, 640 + idx * 13, M, archMats, true);
@@ -3928,13 +3934,13 @@ export function buildSceneArchitecture(
   });
 
   // Curved gooseneck lamps along Central Boulevard & Perimeter Ring Road (clear of driveways)
-  [-98, -56, -32, 32, 56, 98].forEach((x) => {
+  [-152, -126, -98, -56, -32, 32, 56, 98, 134, 162].forEach((x) => {
     gooseneckLamp(cityGroup, x, ySt, ROAD_Z - 11.4, -1, M);
   });
-  [-82, -68, -24, 24, 86].forEach((x) => {
+  [-150, -124, -82, -68, -24, 24, 86, 126, 154].forEach((x) => {
     gooseneckLamp(cityGroup, x, ySt, ROAD_Z + 11.2, 1, M);
   });
-  [-84, -42, 42, 84].forEach((x) => {
+  [-146, -116, -84, -42, 42, 84, 116, 146].forEach((x) => {
     gooseneckLamp(cityGroup, x, ySt, RING_Z_NORTH - 11.2, -1, M);
     gooseneckLamp(cityGroup, x, ySt, RING_Z_SOUTH + 11.2, 1, M);
   });
@@ -3988,15 +3994,17 @@ export function buildSceneArchitecture(
     buildOrganicShrub(cityGroup, sx, ySt, 47.0, 0.88, 0.98, 750 + sIdx * 13, M, archMats, true);
   });
 
-  // Sculpted street trees along Central Boulevard (inside ±104) & Perimeter Ring outer verges
+  // Sculpted street trees along Central Boulevard & Perimeter Ring outer verges
   const rndT = (n: number) => (((Math.sin(n * 12.9898) * 43758.5453) % 1) + 1) % 1;
   let ti = 0;
-  for (let x = -102; x <= 102; x += 13.5) {
+  for (let x = -156; x <= 156; x += 13.5) {
     if (
       Math.abs(x) < 7 ||
       Math.abs(Math.abs(x) - 36.5) < 4.5 ||
       Math.abs(Math.abs(x) - 32.0) < 3.5 ||
-      Math.abs(Math.abs(x) - 73.5) < 5.0
+      Math.abs(Math.abs(x) - 73.5) < 5.0 ||
+      Math.abs(x - 116.0) < 4.5 ||
+      Math.abs(x - 152.0) < 4.5
     ) {
       continue;
     }
@@ -4004,13 +4012,13 @@ export function buildSceneArchitecture(
     tree(cityGroup, x, ySt, ROAD_Z - 11.4 + r * 1.0, 5.4 + r * 2.6, 2.0 + r * 0.9, ti * 7 + 3, M);
     ti++;
   }
-  [-102, -67, -26, -21, 21, 26, 88, 102].forEach((x) => {
+  [-156, -132, -102, -67, -26, -21, 21, 26, 88, 112, 134, 158].forEach((x) => {
     const r = rndT(x * 0.71 + ti * 2.3);
     tree(cityGroup, x, ySt, ROAD_Z + 11.4 + r * 0.9, 6.2 + r * 2.8, 2.2 + r * 0.9, ti * 7 + 91, M);
     ti++;
   });
   // Perimeter Ring outer street trees
-  for (let x = -98; x <= 98; x += 22) {
+  for (let x = -(RING_CX - 4); x <= RING_CX - 4; x += 22) {
     if (Math.abs(x) < 9) continue;
     const rN = rndT(x * 0.43 + 11);
     tree(cityGroup, x, ySt, RING_Z_NORTH - 11.6 - rN * 0.8, 5.8 + rN * 2.4, 2.1 + rN * 0.8, ti * 7 + 19, M);
@@ -4027,6 +4035,22 @@ export function buildSceneArchitecture(
     tree(cityGroup, RING_X + 11.6 + rE * 0.8, ySt, z, 5.6 + rE * 2.4, 2.0 + rE * 0.8, ti * 7 + 57, M);
     ti++;
   }
+  // West Botanical Park & East Medical Healing Garden canopy trees (strictly clear of buildings & drives)
+  [
+    [-146, 12],
+    [-124, 16],
+    [-132, 44],
+    [-118, -18],
+    [118, -14],
+    [148, -12],
+    [134, -2],
+    [118, 96],
+    [152, 92],
+  ].forEach(([tx, tz], k) => {
+    const r = rndT(tx * 0.23 + tz * 0.41 + k);
+    tree(cityGroup, tx, ySt, tz, 5.8 + r * 2.4, 2.0 + r * 0.7, ti * 7 + 101 + k * 5, M);
+    ti++;
+  });
   for (let i = 0; i < 9; i++) {
     const x = -34 + i * 8.6 + (rndT(i * 3.1) - 0.5) * 3;
     if (Math.abs(x) < 7 || Math.abs(Math.abs(x) - 36.5) < 4.5 || Math.abs(x) > 29.0) continue;
@@ -4075,16 +4099,16 @@ export function buildSceneArchitecture(
     }
   };
 
-  // 1. DomainTechHub Inner Drives (x = ±36.5, extending to Medical Ring Road z = -15) & Hub Parking Bays
+  // 1. DomainTechHub Inner Drives (x = ±36.5, extending to z = 15.5 for Bistro/Motors forecourts) & Hub Parking Bays
   const DRV_X = 36.5;
   const AISLE_Z = 29.75;
   const BAY_XS = [8.2, 11.7, 15.2, 18.7, 22.0];
   const BAY_ROWS = [25, 34.5];
   [-1, 1].forEach((sd) => {
     const xd = sd * DRV_X;
-    flat(5.0, 60.5 - -17.5, xd, (60.5 - 17.5) / 2, -0.604, asphaltMat);
+    flat(5.0, 45.0, xd, 38.0, -0.604, asphaltMat);
     flat(DRV_X - 5.2, 5.3, sd * ((5.2 + DRV_X) / 2), AISLE_Z, -0.604, asphaltMat);
-    for (let z = 57; z > -13; z -= 4.2) flat(0.14, 1.7, xd, z, -0.598, linePaintMat);
+    for (let z = 57; z >= 19; z -= 4.2) flat(0.14, 1.7, xd, z, -0.598, linePaintMat);
     BAY_ROWS.forEach((bz) => {
       const sorted = sd > 0 ? BAY_XS : BAY_XS.map((b) => -b).reverse();
       paintRowStalls(sorted, bz, 3.5, 4.4);
@@ -4093,13 +4117,20 @@ export function buildSceneArchitecture(
     });
   });
 
-  // 2. VitalCare Medical Ring Road (z = -15.0, x = -39..+39) & Patient Drop-Off Bays
-  flat(78.0, 5.0, 0, -15.0, -0.604, asphaltMat);
-  for (let x = -32; x <= 32; x += 4.4) flat(1.8, 0.14, x, -15.0, -0.598, linePaintMat);
-  flat(12.0, 4.2, -13.5, -10.5, -0.604, asphaltMat);
-  flat(12.0, 4.2, 13.5, -10.5, -0.604, asphaltMat);
-  paintRowStalls([-16.0, -11.0], -10.5, 5.0, 4.0);
-  paintRowStalls([11.0, 16.0], -10.5, 5.0, 4.0);
+  // 2. VitalCare Medical East Park Loop (x = 116 entry, x = 152 exit, z = 36.5 forecourt) & Patient/Ambulance Bays
+  flat(5.0, 27.0, 116.0, 47.0, -0.604, asphaltMat);
+  flat(5.0, 27.0, 152.0, 47.0, -0.604, asphaltMat);
+  for (let z = 57; z >= 39; z -= 4.2) {
+    flat(0.14, 1.7, 116.0, z, -0.598, linePaintMat);
+    flat(0.14, 1.7, 152.0, z, -0.598, linePaintMat);
+  }
+  flat(41.0, 5.0, 134.0, 36.5, -0.604, asphaltMat);
+  for (let x = 119; x <= 149; x += 4.4) flat(1.8, 0.14, x, 36.5, -0.598, linePaintMat);
+  flat(10.0, 4.4, 124.25, 41.2, -0.604, asphaltMat);
+  flat(10.0, 4.4, 143.75, 41.2, -0.604, asphaltMat);
+  paintRowStalls([122.0, 126.5], 41.2, 4.5, 4.2);
+  paintRowStalls([141.5, 146.0], 41.2, 4.5, 4.2);
+  [122.0, 126.5, 141.5, 146.0].forEach((bx) => addWheelStop(bx, 42.85));
 
   // 3. West Commercial Avenue (x = -73.5) & Bank (-90) / Restaurant (-57) Forecourt Road (z = 18.0)
   flat(5.4, 45.0, -73.5, 38.0, -0.604, asphaltMat);

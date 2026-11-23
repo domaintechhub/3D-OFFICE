@@ -1092,6 +1092,11 @@ function populateDistrictBuildingGeometry(
         { x: spec.cx + 5.2, z: spec.cz + 12.1, r: 0.58 }
       );
     } else if (spec.id === 'dealership') {
+      // Exterior automotive porte-cochere columns
+      circles.push(
+        { x: spec.doorX - 4.8, z: spec.doorZ + 2.45, r: 0.24 },
+        { x: spec.doorX + 4.8, z: spec.doorZ + 2.45, r: 0.24 }
+      );
       // Center rotating turntable
       circles.push({ x: spec.cx, z: spec.cz + 0.4, r: 3.22 });
       // Flanking display vehicles on floating basalt plinths
@@ -1149,6 +1154,11 @@ function populateDistrictBuildingGeometry(
         { x: spec.cx - 4.2, z: spec.cz + 1.2, r: 0.45 }
       );
     } else if (spec.id === 'crypto') {
+      // Exterior cyber porte-cochere columns
+      circles.push(
+        { x: spec.doorX - 4.6, z: spec.doorZ + 2.25, r: 0.24 },
+        { x: spec.doorX + 4.6, z: spec.doorZ + 2.25, r: 0.24 }
+      );
       // Cold-storage MPC vault pod (cx, cz - 5.1)
       addBox(boxes, spec.cx, spec.cz - 5.1, 4.48, 3.48);
       // Two biometric check-in kiosks flanking south medallion
@@ -1216,6 +1226,11 @@ function populateDistrictBuildingGeometry(
         addBox(boxes, spec.cx + ox, spec.cz + 5.2, 2.58, 1.08);
       });
     } else if (spec.id === 'medical') {
+      // Exterior ambulance / patient drop-off porte-cochere columns
+      circles.push(
+        { x: spec.doorX - 5.8, z: spec.doorZ + 2.95, r: 0.26 },
+        { x: spec.doorX + 5.8, z: spec.doorZ + 2.95, r: 0.26 }
+      );
       // Pharmacy counter, backlit medicine racks, 2-8C vaccine fridge & automated Rx kiosk
       addBox(boxes, spec.cx - 14.5, spec.cz - 2.2, 10.4, 1.3);
       addBox(boxes, spec.cx - 14.5, spec.cz - 7.1, 10.45, 0.56);
@@ -2742,8 +2757,8 @@ function getDistrictWalkColliders(): FloorColliderSet {
     boxes,
     obbs,
     circles,
-    minX: -106.0,
-    maxX: 106.0,
+    minX: -164.0,
+    maxX: 164.0,
     minZ: -38.0,
     maxZ: 106.0,
     curvedCounter: hubCol.curvedCounter,
