@@ -303,7 +303,7 @@ export class DistrictSim {
     // 1. Savanna Bistro & Grill (Restaurant)
     const rest = DISTRICT_BUILDING_MAP.restaurant;
     this.spawnActor(
-      'restaurant', 0, rest.cx - 0.5, rest.cz - 8.1, 0, 'standCounter',
+      'restaurant', 0, rest.cx - 0.5, rest.cz - 7.7, 0, 'standCounter',
       nextPersonOpts(false, 0xf4f6f9, { outfit: 'shirtTrousers', coat: true }),
       {
         id: 'rest-chef',
@@ -318,7 +318,7 @@ export class DistrictSim {
       'Open Wood-Fired Kitchen', M
     );
     this.spawnActor(
-      'restaurant', 0, rest.cx - 4.5, rest.cz - 8.2, 0, 'standCounter',
+      'restaurant', 0, rest.cx - 4.2, rest.cz - 7.8, 0, 'standCounter',
       nextPersonOpts(true, 0xf4f6f9, { outfit: 'shirtTrousers', coat: true }),
       {
         id: 'rest-pizzaiolo',
@@ -333,7 +333,7 @@ export class DistrictSim {
       'Open Wood-Fired Kitchen', M
     );
     this.spawnActor(
-      'restaurant', 0, rest.cx + 10.0, rest.cz - 2.2, -Math.PI / 2, 'standCounter',
+      'restaurant', 0, rest.cx + 9.0, rest.cz - 2.2, -Math.PI / 2, 'standCounter',
       nextPersonOpts(false, 0x262930, { outfit: 'smartCasual', sleeve: 'rolled' }),
       {
         id: 'rest-barista',
@@ -347,7 +347,7 @@ export class DistrictSim {
       'Espresso & Cocktail Bar', M
     );
     this.spawnActor(
-      'restaurant', 0, rest.cx + 5.2, rest.cz + 7.25, Math.PI, 'type',
+      'restaurant', 0, rest.cx + 4.8, rest.cz + 7.25, Math.PI, 'type',
       nextPersonOpts(true, 0x1e293b, { outfit: 'suit', blazer: true }),
       {
         id: 'rest-host',
@@ -361,11 +361,11 @@ export class DistrictSim {
       'Dining Hall & Reservations', M
     );
     const diners: Array<[number, number, number, string]> = [
-      [rest.cx - 5.2 - 1.15, rest.cz + 0.2, Math.PI / 2, 'sitTalk'],
-      [rest.cx - 5.2 + 1.15, rest.cz + 0.2, -Math.PI / 2, 'sitTalk'],
-      [rest.cx + 2.6 - 1.15, rest.cz + 0.2, Math.PI / 2, 'sitReadDoc'],
-      [rest.cx - 5.2 - 1.15, rest.cz + 4.8, Math.PI / 2, 'sitTalk'],
-      [rest.cx + 2.6 + 1.15, rest.cz + 4.8, -Math.PI / 2, 'sitCollaborate'],
+      [rest.cx - 3.6 - 1.1, rest.cz - 1.6, Math.PI / 2, 'sitTalk'],
+      [rest.cx - 3.6 + 1.1, rest.cz - 1.6, -Math.PI / 2, 'sitTalk'],
+      [rest.cx + 2.2 - 1.1, rest.cz - 1.6, Math.PI / 2, 'sitReadDoc'],
+      [rest.cx - 3.6 + 1.1, rest.cz + 3.2, -Math.PI / 2, 'sitTalk'],
+      [rest.cx + 2.2 + 1.1, rest.cz + 3.2, -Math.PI / 2, 'sitCollaborate'],
     ];
     diners.forEach(([dx, dz, df, dp], idx) => {
       const fem = idx % 2 === 1;
@@ -523,16 +523,17 @@ export class DistrictSim {
 
     // 5. Skyline Travel & Aviation
     const travel = DISTRICT_BUILDING_MAP.travel;
-    [-9.0, -4.6].forEach((ox, i) => {
-      const fem = i === 0;
+    [-10.3, -7.7, -5.1].forEach((ox, i) => {
+      const fem = i !== 1;
       this.spawnActor(
-        'travel', 0, travel.cx + ox, travel.cz + 4.35, Math.PI, i === 0 ? 'type' : 'phone',
+        'travel', 0, travel.cx + ox, travel.cz + 4.35, Math.PI, i === 1 ? 'phone' : 'type',
         nextPersonOpts(fem, 0x17325c, { outfit: 'suit', blazer: true }),
         {
           id: `travel-agent-${i}`,
           name: generateCharacterName(fem, 91 + i),
-          role: `Flight & Visa Agent ${i + 1}`,
+          role: i === 2 ? 'Corporate Ticketing Lead' : `Flight & Visa Agent ${i + 1}`,
           department: `${travel.name} · Check-In Desk`,
+          seniority: i === 2 ? 'Senior' : undefined,
           accentColor: travel.accent,
           personality: pickPersonality(91 + i),
           topicKey: 'travel',
@@ -541,7 +542,7 @@ export class DistrictSim {
       );
     });
     this.spawnActor(
-      'travel', 0, travel.cx - 6.8, travel.cz + 1.2, 0, 'hold',
+      'travel', 0, travel.cx - 6.8, travel.cz + 0.8, 0, 'hold',
       nextPersonOpts(false, undefined, { coat: true }),
       {
         id: 'travel-guest-1',
@@ -571,17 +572,22 @@ export class DistrictSim {
 
     // 6. Kenya Safari & Tourism
     const tourism = DISTRICT_BUILDING_MAP.tourism;
-    [-5.5, 5.5].forEach((ox, i) => {
+    [-5.2, -0.8, 3.6].forEach((ox, i) => {
       const fem = i === 1;
+      const roleLabels = [
+        'Safari Expedition Planner',
+        'Eco-Lodge Concierge',
+        'Conservancy & Bush-Flight Specialist',
+      ];
       this.spawnActor(
         'tourism', 0, tourism.cx + ox, tourism.cz + 6.08, Math.PI, i === 0 ? 'leanScreen' : 'type',
         nextPersonOpts(fem, 0x4b5c34, { outfit: 'smartCasual', sleeve: 'rolled' }),
         {
           id: `tourism-planner-${i}`,
           name: generateCharacterName(fem, 101 + i),
-          role: i === 0 ? 'Safari Expedition Planner' : 'Eco-Lodge Concierge',
+          role: roleLabels[i],
           department: `${tourism.name} · Expedition Desk`,
-          seniority: 'Senior',
+          seniority: i === 0 ? 'Lead' : 'Senior',
           accentColor: tourism.accent,
           personality: pickPersonality(101 + i),
           topicKey: 'tourism',
@@ -590,7 +596,7 @@ export class DistrictSim {
       );
     });
     this.spawnActor(
-      'tourism', 0, tourism.cx - 2.6, tourism.cz - 0.8, -Math.PI / 2, 'talk',
+      'tourism', 0, tourism.cx - 2.0, tourism.cz - 1.2, -Math.PI / 2, 'talk',
       nextPersonOpts(false, 0x6b5a3c, { outfit: 'shirtTrousers' }),
       {
         id: 'tourism-guide',
@@ -605,7 +611,7 @@ export class DistrictSim {
       'Relief Map & 4x4 Showcase', M
     );
     this.spawnActor(
-      'tourism', 0, tourism.cx - 1.3, tourism.cz - 0.8, Math.PI / 2, 'stand',
+      'tourism', 0, tourism.cx - 0.7, tourism.cz - 1.2, Math.PI / 2, 'stand',
       nextPersonOpts(true),
       {
         id: 'tourism-guest',
@@ -697,15 +703,21 @@ export class DistrictSim {
 
     // 8. SwiftPort Cargo & Logistics
     const log = DISTRICT_BUILDING_MAP.logistics;
-    [3.8, 7.8].forEach((ox, i) => {
+    [3.2, 5.8, 8.4].forEach((ox, i) => {
       const fem = i === 1;
+      const role =
+        i === 0
+          ? 'Freight Dispatch Manager'
+          : i === 1
+            ? 'Customs & Waybill Officer'
+            : 'Air-Cargo Clearance Coordinator';
       this.spawnActor(
-        'logistics', 0, log.cx + ox, log.cz + 3.65, Math.PI, i === 0 ? 'type' : 'sitPhone',
+        'logistics', 0, log.cx + ox, log.cz + 3.65, Math.PI, i === 0 ? 'type' : i === 1 ? 'sitPhone' : 'monitorLook',
         nextPersonOpts(fem, 0x1f2937, { outfit: 'shirtTrousers', lanyard: true }),
         {
           id: `logistics-dispatch-${i}`,
           name: generateCharacterName(fem, 121 + i),
-          role: i === 0 ? 'Freight Dispatch Manager' : 'Customs & Waybill Officer',
+          role,
           department: `${log.name} · Dispatch Control`,
           seniority: i === 0 ? 'Lead' : 'Senior',
           accentColor: log.accent,
@@ -759,16 +771,16 @@ export class DistrictSim {
       'Dispatch & Waybill Control', M, 0.95
     );
 
-    // 9. TerraCraft Estates, Build & Interiors (Real Estate + Construction + Interior Design in 1 building)
+    // 9. TerraCraft Estates, Build & Interiors (Curved-Glass Entrance Hall & Open-Plan Studio)
     const re = DISTRICT_BUILDING_MAP.realestate;
     this.spawnActor(
-      'realestate', 0, re.cx - 6.8, re.cz + 6.08, Math.PI, 'type',
+      'realestate', 0, re.cx + 8.22, re.cz - 6.45, 0, 'type',
       nextPersonOpts(true, 0x3b2f2f, { outfit: 'suit', lanyard: true }),
       {
         id: 'realestate-broker',
         name: generateCharacterName(true, 131),
         role: 'Senior Property Broker',
-        department: `${re.name} · Real Estate Gallery`,
+        department: `${re.name} · Featured Properties`,
         seniority: 'Lead',
         accentColor: re.accent,
         personality: pickPersonality(131),
@@ -777,7 +789,7 @@ export class DistrictSim {
       'Real Estate Masterplan Gallery', M
     );
     this.spawnActor(
-      'realestate', 0, re.cx + 7.4, re.cz + 6.08, Math.PI, 'monitorLook',
+      'realestate', 0, re.cx + 8.22, re.cz - 1.45, 0, 'monitorLook',
       nextPersonOpts(false, 0xd97706, { outfit: 'smartCasual', sleeve: 'rolled', lanyard: true }),
       {
         id: 'realestate-engineer',
@@ -792,7 +804,7 @@ export class DistrictSim {
       'Construction CAD & Interior Atelier', M
     );
     this.spawnActor(
-      'realestate', 0, re.cx + 5.6, re.cz - 3.6, Math.PI / 4, 'inspectPanel',
+      'realestate', 0, re.cx + 8.22, re.cz + 3.95, 0, 'type',
       nextPersonOpts(true, 0x8338ec, { outfit: 'blouseSkirt', lanyard: true }),
       {
         id: 'realestate-interior',
@@ -807,27 +819,27 @@ export class DistrictSim {
       'Construction CAD & Interior Atelier', M
     );
     this.spawnActor(
-      'realestate', 0, re.cx + 0.2, re.cz + 3.9, Math.PI, 'standCounter',
+      'realestate', 0, re.cx - 5.55, re.cz - 4.25, Math.PI * 0.75, 'type',
       nextPersonOpts(false, 0x1e293b, { outfit: 'shirtTrousers', lanyard: true }),
       {
         id: 'realestate-concierge',
         name: generateCharacterName(false, 134),
-        role: 'Turnkey Project Concierge',
-        department: `${re.name} · Reception`,
+        role: 'Front Desk Concierge',
+        department: `${re.name} · Marble Reception`,
         accentColor: re.accent,
         personality: pickPersonality(134),
         topicKey: 'realestate',
       },
-      '3-in-1 Reception & Pipeline', M
+      'Curved Marble Reception', M
     );
     this.spawnActor(
-      'realestate', 0, re.cx - 4.1, re.cz - 0.8, -Math.PI / 2, 'stand',
+      'realestate', 0, re.cx - 2.35, re.cz - 1.45, Math.PI / 2, 'stand',
       nextPersonOpts(true),
       {
         id: 'realestate-client',
         name: generateCharacterName(true, 135),
         role: 'Homebuyer & Fit-Out Client',
-        department: `${re.name} · 3D Scale Model`,
+        department: `${re.name} · 3D Masterplan Vitrine`,
         accentColor: re.accent,
         personality: pickPersonality(135),
         topicKey: 'client',
@@ -837,6 +849,97 @@ export class DistrictSim {
 
     // Upper floor office staff across all district buildings (staff every registered desk chair)
     const upperPoses = ['type', 'sitPhone', 'monitorLook'];
+    const reL1Roles = [
+      { role: 'Acquisitions Analyst · L1', dept: 'Acquisitions & Valuation', zone: 'Acquisitions & Valuation Pod' },
+      { role: 'Urban Masterplanner · L1', dept: 'Masterplanning Studio', zone: 'Masterplanning & Design Pod' },
+      { role: 'BIM Project Architect · L1', dept: 'BIM & CAD Studio', zone: 'Glass Studio Atelier' },
+      { role: 'Managing Director · L1', dept: 'Executive Suite', zone: 'Executive Director Suite' },
+      { role: 'Senior Development Lead · L1', dept: 'Development Review', zone: 'Collaborative Review Table' },
+    ];
+    const reL2Roles = [
+      { role: 'Bespoke Kitchen & Stone Advisor · L2', dept: 'Material Slab Atelier', zone: 'Material Slab Atelier' },
+      { role: 'Lead Material Stylist · L2', dept: 'Finish & Material Atelier', zone: 'Finish & Material Atelier' },
+      { role: 'Senior Interior Designer · L2', dept: 'Finish & Material Atelier', zone: 'Finish & Material Atelier' },
+      { role: 'Showroom Model Specialist · L2', dept: '3D Masterplan Gallery', zone: '3D Masterplan Gallery' },
+    ];
+    const reL3Roles = [
+      { role: 'Senior Acquisitions Manager · L3', dept: 'Acquisitions Studio', zone: 'Real Estate Investment Studio' },
+      { role: 'Development Finance Lead · L3', dept: 'Capital & Finance', zone: 'Real Estate Investment Studio' },
+      { role: 'Managing Partner · L3', dept: 'Executive Closing Suite', zone: 'Executive Closing Suite' },
+      { role: 'Project Legal Counsel · L3', dept: 'Deal Advisory', zone: 'Advisory & Deal Table' },
+    ];
+    const reL4Roles = [
+      { role: 'Board Chairperson · L4', dept: 'Executive Boardroom', zone: 'Executive Boardroom' },
+      { role: 'Chief Operating Officer · L4', dept: 'Executive Boardroom', zone: 'Executive Boardroom' },
+      { role: 'Chief Executive Officer · L4', dept: 'CEO Penthouse Suite', zone: 'CEO Penthouse Suite' },
+      { role: 'Chief Financial Officer · L4', dept: 'CFO Head Office', zone: 'CFO & Capital Strategy Office' },
+      { role: 'Head of Developments · L4', dept: 'Developments Head Office', zone: 'Developments & Architecture Office' },
+      { role: 'Executive Assistant to CEO · L4', dept: 'C-Suite Reception', zone: 'C-Suite Reception' },
+    ];
+    const travelL1Roles = [
+      { role: 'Private Charter Director · L1', dept: 'Charter Flight Atelier', zone: 'Private Jet Charter Atelier' },
+      { role: 'Group Aviation Coordinator · L1', dept: 'Charter Flight Atelier', zone: 'Private Jet Charter Atelier' },
+      { role: 'Senior Visa Specialist · L1', dept: 'Embassy & Visa Concierge', zone: 'Embassy & Visa Concierge' },
+    ];
+    const travelL2Roles = [
+      { role: 'Flight Dispatch Controller · L2', dept: 'Operations Control Bridge', zone: 'Operations Control Bridge' },
+      { role: 'Cabin Experience Curator · L2', dept: 'First-Class Cabin Showroom', zone: 'Operations Control Bridge' },
+    ];
+    const travelL3Roles = [
+      { role: 'Airline Alliances Director · L3', dept: 'Alliance Boardroom', zone: 'Airline Alliances Boardroom' },
+      { role: 'VP Flight Operations · L3', dept: 'Alliance Boardroom', zone: 'Airline Alliances Boardroom' },
+      { role: 'Chief Aviation Officer & CEO · L3', dept: 'CEO Aviation Command', zone: 'CEO & Aviation Command Suite' },
+      { role: 'Head of Fleet & Safety · L3', dept: 'Fleet & Safety Office', zone: 'Head of Fleet & Safety Office' },
+      { role: 'Executive Flight Concierge · L3', dept: 'Sky-Deck Reception', zone: 'Sky-Deck Reception' },
+    ];
+    const tourismL1Roles = [
+      { role: 'Mara Itinerary Architect · L1', dept: 'Maasai Mara Itinerary Studio', zone: 'Maasai Mara Itinerary Studio' },
+      { role: 'Coastal & Island Specialist · L1', dept: 'Maasai Mara Itinerary Studio', zone: 'Maasai Mara Itinerary Studio' },
+      { role: 'Lead Safari Cartographer · L1', dept: 'Cartography & Route Planning', zone: 'Cartography & Route Planning' },
+    ];
+    const tourismL2Roles = [
+      { role: 'Eco-Lodge Architect · L2', dept: 'Eco-Lodge Showroom', zone: 'Eco-Lodge Showroom' },
+      { role: 'Conservation Impact Lead · L2', dept: 'Eco-Lodge Showroom', zone: 'Eco-Lodge Showroom' },
+    ];
+    const tourismL3Roles = [
+      { role: 'Director of Wildlife Partnerships · L3', dept: 'Conservation Boardroom', zone: 'Conservation Boardroom' },
+      { role: 'Head of Eco-Lodge Operations · L3', dept: 'Conservation Boardroom', zone: 'Conservation Boardroom' },
+      { role: 'Founder & Chief Safari Officer · L3', dept: 'Founder Safari Penthouse', zone: 'Founder Safari Penthouse' },
+      { role: 'Head of Expeditions & Bush Air · L3', dept: 'Expeditions & Bush Air Office', zone: 'Expeditions & Bush Air Office' },
+      { role: 'Executive Guest Relations Lead · L3', dept: 'Penthouse Reception Pavilion', zone: 'Penthouse Reception Pavilion' },
+    ];
+    const logisticsL1Roles = [
+      { role: 'Ocean & Port Routing Lead · L1', dept: 'Global Route Planning', zone: 'Global Route Planning' },
+      { role: 'Customs Compliance Broker · L1', dept: 'Global Route Planning', zone: 'Global Route Planning' },
+      { role: 'Cold-Chain Telemetry Lead · L1', dept: 'Cold-Chain Telemetry', zone: 'Cold-Chain Telemetry' },
+    ];
+    const logisticsL2Roles = [
+      { role: 'Supply-Chain Systems Architect · L2', dept: 'Logistics Automation Lab', zone: 'Logistics Automation Lab' },
+      { role: 'Fleet Electrification & Robotics Lead · L2', dept: 'Logistics Automation Lab', zone: 'Logistics Automation Lab' },
+    ];
+    const logisticsL3Roles = [
+      { role: 'VP Global Freight & Maritime · L3', dept: 'Global Trade Boardroom', zone: 'Global Trade Boardroom' },
+      { role: 'Director of Customs & Trade Corridors · L3', dept: 'Global Trade Boardroom', zone: 'Global Trade Boardroom' },
+      { role: 'Chief Executive Officer · L3', dept: 'CEO Logistics Command', zone: 'CEO Logistics Command Suite' },
+      { role: 'Head of Fleet & Aviation Cargo · L3', dept: 'Head of Fleet & Air Cargo', zone: 'Head of Fleet & Air Cargo' },
+      { role: 'Executive Operations Coordinator · L3', dept: 'Control Tower Reception', zone: 'Control Tower Reception' },
+    ];
+    const restaurantL1Roles = [
+      { role: 'Head Coffee Roaster & Q-Grader · L1', dept: 'Artisan Coffee Roastery', zone: 'Artisan Coffee Roastery' },
+      { role: 'Executive Pastry & Tapas Chef · L1', dept: 'Tapas & Pastry Kitchen', zone: 'Tapas & Pastry Kitchen' },
+      { role: 'Tapas Sommelier & Mixology Lead · L1', dept: 'Mezzanine Cocktail Lounge', zone: 'Mezzanine Cocktail Lounge' },
+    ];
+    const restaurantL2Roles = [
+      { role: 'Cellar Master & Head Sommelier · L2', dept: 'Chef’s Tasting Gallery', zone: 'Chef’s Tasting Gallery' },
+      { role: 'Chef’s Table Culinary Director · L2', dept: 'Chef’s Tasting Gallery', zone: 'Chef’s Tasting Gallery' },
+    ];
+    const restaurantL3Roles = [
+      { role: 'Hospitality Group Director · L3', dept: 'Private Dining Boardroom', zone: 'Private Dining Boardroom' },
+      { role: 'VP Culinary & Beverage · L3', dept: 'Private Dining Boardroom', zone: 'Private Dining Boardroom' },
+      { role: 'Founder & Culinary CEO · L3', dept: 'Culinary CEO Studio', zone: 'Culinary CEO Studio' },
+      { role: 'Head of Events & Culinary Ops · L3', dept: 'Head of Events Office', zone: 'Head of Events Office' },
+      { role: 'VIP Private Dining Concierge · L3', dept: 'Sky-Grill Concierge', zone: 'Sky-Grill Concierge' },
+    ];
     for (const [bId, handle] of this.buildings) {
       const spec = handle.spec;
       for (let lv = 1; lv < spec.floors; lv++) {
@@ -845,24 +948,240 @@ export class DistrictSim {
         for (let ci = 0; ci < count; ci++) {
           const ch = floorChairs[ci];
           const fem = (lv + ci) % 2 === 1;
+          const customMeta =
+            bId === 'realestate' && lv === 1
+              ? reL1Roles[ci % reL1Roles.length]
+              : bId === 'realestate' && lv === 2
+                ? reL2Roles[ci % reL2Roles.length]
+                : bId === 'realestate' && lv === 3
+                  ? reL3Roles[ci % reL3Roles.length]
+                  : bId === 'realestate' && lv === 4
+                    ? reL4Roles[ci % reL4Roles.length]
+                    : bId === 'travel' && lv === 1
+                      ? travelL1Roles[ci % travelL1Roles.length]
+                      : bId === 'travel' && lv === 2
+                        ? travelL2Roles[ci % travelL2Roles.length]
+                        : bId === 'travel' && lv === 3
+                          ? travelL3Roles[ci % travelL3Roles.length]
+                          : bId === 'tourism' && lv === 1
+                            ? tourismL1Roles[ci % tourismL1Roles.length]
+                            : bId === 'tourism' && lv === 2
+                              ? tourismL2Roles[ci % tourismL2Roles.length]
+                              : bId === 'tourism' && lv === 3
+                                ? tourismL3Roles[ci % tourismL3Roles.length]
+                                : bId === 'logistics' && lv === 1
+                                  ? logisticsL1Roles[ci % logisticsL1Roles.length]
+                                  : bId === 'logistics' && lv === 2
+                                    ? logisticsL2Roles[ci % logisticsL2Roles.length]
+                                    : bId === 'logistics' && lv === 3
+                                      ? logisticsL3Roles[ci % logisticsL3Roles.length]
+                                      : bId === 'restaurant' && lv === 1
+                                        ? restaurantL1Roles[ci % restaurantL1Roles.length]
+                                        : bId === 'restaurant' && lv === 2
+                                          ? restaurantL2Roles[ci % restaurantL2Roles.length]
+                                          : bId === 'restaurant' && lv === 3
+                                            ? restaurantL3Roles[ci % restaurantL3Roles.length]
+                                            : null;
           this.spawnActor(
             bId, lv, ch.restX, ch.restZ, ch.restRot, upperPoses[ci % upperPoses.length],
-            nextPersonOpts(fem, undefined, { lanyard: true }),
+            nextPersonOpts(
+              fem,
+              bId === 'travel'
+                ? 0x17325c
+                : bId === 'tourism'
+                  ? 0x4b5c34
+                  : bId === 'logistics'
+                    ? 0x1e3f66
+                    : bId === 'restaurant'
+                      ? 0x3b2219
+                      : undefined,
+              { lanyard: true }
+            ),
             {
               id: `${bId}-u-${lv}-${ci}`,
               name: generateCharacterName(fem, seedCounter + lv * 11 + ci),
-              role: `Operations & Comms · L${lv}`,
-              department: `${spec.name} · Level ${lv}`,
-              seniority: ci === 0 ? 'Senior' : 'Junior',
+              role: customMeta ? customMeta.role : `Operations & Comms · L${lv}`,
+              department: customMeta ? `${spec.name} · ${customMeta.dept}` : `${spec.name} · Level ${lv}`,
+              seniority: ci === 0 || (customMeta && (ci >= 2 || lv >= 3)) ? 'Senior' : 'Junior',
               accentColor: spec.accent,
               personality: pickPersonality(seedCounter + lv + ci),
               topicKey: bId,
             },
-            `Level ${lv} Operations`, M
+            customMeta ? customMeta.zone : `Level ${lv} Operations`, M
           );
         }
       }
     }
+    // Level 2 Showroom client inspecting the horizontal 3D estate masterplan & material racks
+    this.spawnActor(
+      'realestate', 2, re.cx + 0.1, re.cz - 0.85, -Math.PI / 2, 'stand',
+      nextPersonOpts(false),
+      {
+        id: 'realestate-l2-visitor',
+        name: generateCharacterName(false, 236),
+        role: 'Penthouse Fit-Out Client',
+        department: `${re.name} · L2 Showroom`,
+        accentColor: re.accent,
+        personality: pickPersonality(236),
+        topicKey: 'client',
+      },
+      'Level 2 Showroom Gallery', M, 0.98
+    );
+    // Level 3 Institutional investor inspecting the Calacatta & oak material slabs
+    this.spawnActor(
+      'realestate', 3, re.cx + 1.2, re.cz - 2.0, 0, 'stand',
+      nextPersonOpts(true),
+      {
+        id: 'realestate-l3-visitor',
+        name: generateCharacterName(true, 241),
+        role: 'Institutional Development Partner',
+        department: `${re.name} · L3 Executive Advisory`,
+        accentColor: re.accent,
+        personality: pickPersonality(241),
+        topicKey: 'client',
+      },
+      'Level 3 Slab & Advisory Lounge', M, 0.98
+    );
+    // Level 4 Independent Board Director reviewing quarterly briefing metrics in the Executive Boardroom
+    this.spawnActor(
+      'realestate', 4, re.cx + 7.4, re.cz + 6.4, 0, 'inspectPanel',
+      nextPersonOpts(false, undefined, { lanyard: true }),
+      {
+        id: 'realestate-l4-director',
+        name: generateCharacterName(false, 251),
+        role: 'Non-Executive Board Director · L4',
+        department: `${re.name} · Executive Boardroom`,
+        seniority: 'Senior',
+        accentColor: re.accent,
+        personality: pickPersonality(251),
+        topicKey: 'realestate',
+      },
+      'Executive Boardroom', M, 0.98
+    );
+    // Skyline Travel Level 2 First-Class Cabin VIP Client inspecting the sleeper suite pods
+    this.spawnActor(
+      'travel', 2, travel.cx - 8.0, travel.cz - 3.0, -Math.PI / 2, 'inspectPanel',
+      nextPersonOpts(false, undefined, { coat: true }),
+      {
+        id: 'travel-l2-visitor',
+        name: generateCharacterName(false, 261),
+        role: 'Private Jet Charter Client',
+        department: `${travel.name} · First-Class Showroom`,
+        accentColor: travel.accent,
+        personality: pickPersonality(261),
+        topicKey: 'client',
+      },
+      'First-Class Cabin Showroom', M, 0.98
+    );
+    // Skyline Travel Level 3 Airline Alliance Partner reviewing network routes inside Boardroom
+    this.spawnActor(
+      'travel', 3, travel.cx - 11.4, travel.cz + 0.2, -Math.PI / 2, 'inspectPanel',
+      nextPersonOpts(true, 0x17325c, { lanyard: true }),
+      {
+        id: 'travel-l3-partner',
+        name: generateCharacterName(true, 266),
+        role: 'International Carrier Partner · L3',
+        department: `${travel.name} · Alliance Boardroom`,
+        seniority: 'Senior',
+        accentColor: travel.accent,
+        personality: pickPersonality(266),
+        topicKey: 'travel',
+      },
+      'Airline Alliances Boardroom', M, 0.98
+    );
+    // Kenya Safari & Tourism Level 2 Luxury Tent Suite Visitor inspecting the Canvas Villa & Eco-Lodge Model
+    this.spawnActor(
+      'tourism', 2, tourism.cx - 3.2, tourism.cz - 3.6, Math.PI / 2, 'inspectPanel',
+      nextPersonOpts(true, undefined, { glasses: true }),
+      {
+        id: 'tourism-l2-visitor',
+        name: generateCharacterName(true, 271),
+        role: 'Eco-Lodge Investor & Safari Guest',
+        department: `${tourism.name} · Eco-Lodge Showroom`,
+        accentColor: tourism.accent,
+        personality: pickPersonality(271),
+        topicKey: 'client',
+      },
+      'Eco-Lodge Showroom', M, 0.98
+    );
+    // Kenya Safari & Tourism Level 3 Conservancy Trustee reviewing migration telemetry in Conservation Boardroom
+    this.spawnActor(
+      'tourism', 3, tourism.cx - 11.8, tourism.cz + 0.2, -Math.PI / 2, 'inspectPanel',
+      nextPersonOpts(false, 0x4b5c34, { lanyard: true }),
+      {
+        id: 'tourism-l3-partner',
+        name: generateCharacterName(false, 276),
+        role: 'Mara Conservancy Trustee · L3',
+        department: `${tourism.name} · Conservation Boardroom`,
+        seniority: 'Senior',
+        accentColor: tourism.accent,
+        personality: pickPersonality(276),
+        topicKey: 'tourism',
+      },
+      'Conservation Boardroom', M, 0.98
+    );
+    // SwiftPort Cargo Level 2 Port Client inspecting the Mombasa Container Port & Vessel Diorama
+    this.spawnActor(
+      'logistics', 2, log.cx - 5.6, log.cz - 4.4, -Math.PI / 2, 'inspectPanel',
+      nextPersonOpts(false, undefined, { coat: true }),
+      {
+        id: 'logistics-l2-visitor',
+        name: generateCharacterName(false, 281),
+        role: 'Port Terminal & Fleet Client',
+        department: `${log.name} · Port Diorama Showroom`,
+        accentColor: log.accent,
+        personality: pickPersonality(281),
+        topicKey: 'client',
+      },
+      'Port Diorama Showroom', M, 0.98
+    );
+    // SwiftPort Cargo Level 3 Maritime Alliance Director inspecting telemetry in Global Trade Boardroom
+    this.spawnActor(
+      'logistics', 3, log.cx + 12.8, log.cz, Math.PI / 2, 'inspectPanel',
+      nextPersonOpts(true, 0x1e3f66, { lanyard: true }),
+      {
+        id: 'logistics-l3-partner',
+        name: generateCharacterName(true, 286),
+        role: 'Maritime Alliance Director · L3',
+        department: `${log.name} · Global Trade Boardroom`,
+        seniority: 'Senior',
+        accentColor: log.accent,
+        personality: pickPersonality(286),
+        topicKey: 'logistics',
+      },
+      'Global Trade Boardroom', M, 0.98
+    );
+    // Savanna Bistro Level 2 Fine-Wine Collector inspecting the Amber-Glass Wine Vault Decanting Island
+    this.spawnActor(
+      'restaurant', 2, rest.cx - 4.5, rest.cz - 4.6, -Math.PI / 2, 'inspectPanel',
+      nextPersonOpts(false, undefined, { coat: true }),
+      {
+        id: 'restaurant-l2-visitor',
+        name: generateCharacterName(false, 291),
+        role: 'Vintage Wine Collector & Guest',
+        department: `${rest.name} · Climate Wine Vault`,
+        accentColor: rest.accent,
+        personality: pickPersonality(291),
+        topicKey: 'client',
+      },
+      'Climate Wine Vault', M, 0.98
+    );
+    // Savanna Bistro Level 3 Private Culinary Partner inside Private Dining Boardroom
+    this.spawnActor(
+      'restaurant', 3, rest.cx + 8.0, rest.cz + 0.4, Math.PI / 2, 'inspectPanel',
+      nextPersonOpts(true, 0x3b2219, { lanyard: true }),
+      {
+        id: 'restaurant-l3-partner',
+        name: generateCharacterName(true, 296),
+        role: 'Estate Vineyard Partner · L3',
+        department: `${rest.name} · Private Dining Boardroom`,
+        seniority: 'Senior',
+        accentColor: rest.accent,
+        personality: pickPersonality(296),
+        topicKey: 'restaurant',
+      },
+      'Private Dining Boardroom', M, 0.98
+    );
   }
 
   private populateStreetWalkers(M: MaterialLibrary) {
@@ -1174,6 +1493,134 @@ export class DistrictSim {
 
   private getFloorWalkSpots(bId: BuildingId, lv: number): Array<{ x: number; z: number; face: number; pose: string }> {
     const spec = DISTRICT_BUILDING_MAP[bId];
+    if (bId === 'realestate' && lv === 1) {
+      return [
+        { x: spec.cx + 0.35, z: spec.cz - 4.8, face: -Math.PI / 2, pose: 'hold' },
+        { x: spec.cx - 4.2, z: spec.cz + 5.3, face: -Math.PI / 2, pose: 'coffee' },
+        { x: spec.cx + 4.8, z: spec.cz + 4.4, face: Math.PI / 2, pose: 'talk' },
+        { x: spec.cx + 6.4, z: spec.cz - 5.2, face: Math.PI / 2, pose: 'readDoc' },
+      ];
+    }
+    if (bId === 'realestate' && lv === 2) {
+      return [
+        { x: spec.cx + 8.5, z: spec.cz - 5.3, face: Math.PI / 2, pose: 'inspectPanel' },
+        { x: spec.cx + 6.5, z: spec.cz + 0.2, face: Math.PI / 2, pose: 'hold' },
+        { x: spec.cx + 0.1, z: spec.cz - 0.85, face: -Math.PI / 2, pose: 'stand' },
+        { x: spec.cx - 8.5, z: spec.cz + 3.6, face: 0, pose: 'coffee' },
+      ];
+    }
+    if (bId === 'realestate' && lv === 3) {
+      return [
+        { x: spec.cx + 6.4, z: spec.cz - 4.8, face: Math.PI / 2, pose: 'hold' },
+        { x: spec.cx + 1.2, z: spec.cz - 2.0, face: 0, pose: 'inspectPanel' },
+        { x: spec.cx - 3.6, z: spec.cz - 4.2, face: Math.PI / 2, pose: 'talk' },
+        { x: spec.cx - 7.8, z: spec.cz + 4.6, face: 0, pose: 'coffee' },
+      ];
+    }
+    if (bId === 'realestate' && lv === 4) {
+      return [
+        { x: spec.cx + 3.9, z: spec.cz - 1.2, face: Math.PI / 2, pose: 'hold' },
+        { x: spec.cx - 1.6, z: spec.cz + 0.5, face: 0, pose: 'inspectPanel' },
+        { x: spec.cx - 6.7, z: spec.cz - 2.4, face: Math.PI, pose: 'readDoc' },
+        { x: spec.cx - 7.3, z: spec.cz + 2.55, face: -Math.PI / 2, pose: 'coffee' },
+      ];
+    }
+    if (bId === 'travel' && lv === 1) {
+      return [
+        { x: spec.cx - 5.4, z: spec.cz - 0.5, face: -Math.PI / 2, pose: 'readDoc' },
+        { x: spec.cx + 0.2, z: spec.cz - 0.6, face: 0, pose: 'talk' },
+        { x: spec.cx + 6.8, z: spec.cz + 5.8, face: 0, pose: 'coffee' },
+        { x: spec.cx + 3.8, z: spec.cz - 4.8, face: Math.PI / 2, pose: 'standPhone' },
+      ];
+    }
+    if (bId === 'travel' && lv === 2) {
+      return [
+        { x: spec.cx - 8.0, z: spec.cz - 3.0, face: -Math.PI / 2, pose: 'inspectPanel' },
+        { x: spec.cx - 8.2, z: spec.cz + 3.6, face: 0, pose: 'coffee' },
+        { x: spec.cx + 0.8, z: spec.cz + 6.8, face: 0, pose: 'inspectPanel' },
+        { x: spec.cx + 6.8, z: spec.cz - 1.4, face: Math.PI, pose: 'hold' },
+      ];
+    }
+    if (bId === 'travel' && lv === 3) {
+      return [
+        { x: spec.cx - 5.2, z: spec.cz - 0.8, face: -Math.PI / 2, pose: 'talk' },
+        { x: spec.cx + 0.8, z: spec.cz - 3.5, face: 0, pose: 'readDoc' },
+        { x: spec.cx + 7.2, z: spec.cz - 1.2, face: Math.PI / 2, pose: 'standPhone' },
+        { x: spec.cx + 9.8, z: spec.cz - 3.6, face: Math.PI, pose: 'coffee' },
+      ];
+    }
+    if (bId === 'tourism' && lv === 1) {
+      return [
+        { x: spec.cx - 5.8, z: spec.cz - 0.4, face: -Math.PI / 2, pose: 'readDoc' },
+        { x: spec.cx + 1.0, z: spec.cz - 0.4, face: 0, pose: 'talk' },
+        { x: spec.cx + 9.4, z: spec.cz - 2.2, face: Math.PI, pose: 'coffee' },
+        { x: spec.cx + 9.6, z: spec.cz + 1.8, face: 0, pose: 'standPhone' },
+      ];
+    }
+    if (bId === 'tourism' && lv === 2) {
+      return [
+        { x: spec.cx - 5.0, z: spec.cz - 1.0, face: -Math.PI / 2, pose: 'inspectPanel' },
+        { x: spec.cx - 3.2, z: spec.cz - 3.6, face: Math.PI / 2, pose: 'hold' },
+        { x: spec.cx + 1.0, z: spec.cz + 5.4, face: 0, pose: 'inspectPanel' },
+        { x: spec.cx + 9.4, z: spec.cz + 1.8, face: -Math.PI / 2, pose: 'stand' },
+      ];
+    }
+    if (bId === 'tourism' && lv === 3) {
+      return [
+        { x: spec.cx - 5.2, z: spec.cz - 0.8, face: -Math.PI / 2, pose: 'talk' },
+        { x: spec.cx + 3.0, z: spec.cz - 3.8, face: -Math.PI / 2, pose: 'readDoc' },
+        { x: spec.cx + 7.6, z: spec.cz + 2.8, face: 0, pose: 'coffee' },
+        { x: spec.cx + 7.0, z: spec.cz + 0.2, face: 0, pose: 'standPhone' },
+      ];
+    }
+    if (bId === 'logistics' && lv === 1) {
+      return [
+        { x: spec.cx - 5.6, z: spec.cz - 2.4, face: -Math.PI / 2, pose: 'readDoc' },
+        { x: spec.cx - 0.8, z: spec.cz - 0.4, face: 0, pose: 'talk' },
+        { x: spec.cx + 6.4, z: spec.cz - 3.7, face: Math.PI / 2, pose: 'coffee' },
+        { x: spec.cx + 6.8, z: spec.cz + 2.2, face: 0, pose: 'standPhone' },
+      ];
+    }
+    if (bId === 'logistics' && lv === 2) {
+      return [
+        { x: spec.cx - 5.2, z: spec.cz - 2.2, face: -Math.PI / 2, pose: 'inspectPanel' },
+        { x: spec.cx - 6.8, z: spec.cz + 2.2, face: 0, pose: 'hold' },
+        { x: spec.cx + 1.8, z: spec.cz - 2.4, face: Math.PI, pose: 'inspectPanel' },
+        { x: spec.cx + 9.4, z: spec.cz - 1.2, face: 0, pose: 'stand' },
+      ];
+    }
+    if (bId === 'logistics' && lv === 3) {
+      return [
+        { x: spec.cx + 6.2, z: spec.cz - 0.7, face: Math.PI / 2, pose: 'talk' },
+        { x: spec.cx - 3.6, z: spec.cz - 4.2, face: -Math.PI / 2, pose: 'readDoc' },
+        { x: spec.cx - 7.4, z: spec.cz + 3.8, face: 0, pose: 'coffee' },
+        { x: spec.cx + 2.8, z: spec.cz - 4.4, face: 0, pose: 'standPhone' },
+      ];
+    }
+    if (bId === 'restaurant' && lv === 1) {
+      return [
+        { x: spec.cx - 5.2, z: spec.cz - 2.0, face: -Math.PI / 2, pose: 'inspectPanel' },
+        { x: spec.cx + 3.2, z: spec.cz - 3.6, face: 0, pose: 'coffee' },
+        { x: spec.cx + 0.8, z: spec.cz + 4.4, face: Math.PI / 2, pose: 'talk' },
+        { x: spec.cx + 4.4, z: spec.cz - 1.6, face: -Math.PI / 2, pose: 'standPhone' },
+      ];
+    }
+    if (bId === 'restaurant' && lv === 2) {
+      return [
+        { x: spec.cx - 1.4, z: spec.cz - 2.4, face: -Math.PI / 2, pose: 'inspectPanel' },
+        { x: spec.cx + 0.8, z: spec.cz + 3.2, face: 0, pose: 'readDoc' },
+        { x: spec.cx + 2.2, z: spec.cz + 4.8, face: Math.PI / 2, pose: 'stand' },
+        { x: spec.cx + 1.4, z: spec.cz - 5.2, face: Math.PI, pose: 'hold' },
+      ];
+    }
+    if (bId === 'restaurant' && lv === 3) {
+      return [
+        { x: spec.cx + 3.2, z: spec.cz - 0.7, face: Math.PI / 2, pose: 'talk' },
+        { x: spec.cx - 4.4, z: spec.cz - 1.2, face: 0, pose: 'readDoc' },
+        { x: spec.cx + 1.2, z: spec.cz + 1.4, face: -Math.PI / 2, pose: 'standPhone' },
+        { x: spec.cx - 2.2, z: spec.cz - 4.4, face: 0, pose: 'coffee' },
+      ];
+    }
     if (lv > 0) {
       return [
         { x: spec.cx - spec.w * 0.25, z: spec.cz + spec.d * 0.22, face: 0, pose: 'stand' },
@@ -1183,9 +1630,9 @@ export class DistrictSim {
     }
     if (bId === 'restaurant') {
       return [
-        { x: spec.cx - 1.2, z: spec.cz + 6.5, face: 0, pose: 'stand' },
-        { x: spec.cx + 6.8, z: spec.cz - 2.2, face: Math.PI / 2, pose: 'coffee' },
-        { x: spec.cx - 1.5, z: spec.cz + 2.5, face: Math.PI, pose: 'hold' },
+        { x: spec.cx - 0.8, z: spec.cz + 5.8, face: 0, pose: 'stand' },
+        { x: spec.cx + 5.4, z: spec.cz - 2.2, face: Math.PI / 2, pose: 'coffee' },
+        { x: spec.cx - 0.8, z: spec.cz + 0.8, face: Math.PI, pose: 'hold' },
         { x: spec.doorX, z: spec.doorZ + 1.8, face: 0, pose: 'stand' },
       ];
     }
@@ -1212,16 +1659,18 @@ export class DistrictSim {
     }
     if (bId === 'travel') {
       return [
-        { x: spec.cx + 2.6, z: spec.cz - 2.0, face: -Math.PI / 2, pose: 'stand' },
-        { x: spec.cx - 2.6, z: spec.cz - 2.0, face: Math.PI / 2, pose: 'hold' },
-        { x: spec.cx, z: spec.cz + 4.6, face: 0, pose: 'standPhone' },
+        { x: spec.cx + 2.8, z: spec.cz - 2.0, face: -Math.PI / 2, pose: 'stand' },
+        { x: spec.cx - 3.0, z: spec.cz - 2.2, face: Math.PI / 2, pose: 'hold' },
+        { x: spec.cx - 1.0, z: spec.cz + 6.6, face: 0, pose: 'inspectPanel' },
+        { x: spec.cx + 3.4, z: spec.cz + 0.8, face: Math.PI / 2, pose: 'standPhone' },
       ];
     }
     if (bId === 'tourism') {
       return [
-        { x: spec.cx - 2.6, z: spec.cz - 0.8, face: -Math.PI / 2, pose: 'talk' },
-        { x: spec.cx + 2.2, z: spec.cz - 1.0, face: Math.PI / 2, pose: 'hold' },
-        { x: spec.cx, z: spec.cz + 4.5, face: 0, pose: 'readDoc' },
+        { x: spec.cx - 2.0, z: spec.cz - 1.2, face: -Math.PI / 2, pose: 'talk' },
+        { x: spec.cx + 2.4, z: spec.cz - 1.8, face: Math.PI / 2, pose: 'hold' },
+        { x: spec.cx - 0.8, z: spec.cz + 3.4, face: 0, pose: 'readDoc' },
+        { x: spec.cx + 9.2, z: spec.cz + 2.8, face: 0, pose: 'inspectPanel' },
       ];
     }
     if (bId === 'logistics') {
@@ -1229,6 +1678,14 @@ export class DistrictSim {
         { x: spec.cx - 1.5, z: spec.cz - 3.5, face: -Math.PI / 2, pose: 'inspectPanel' },
         { x: spec.cx + 1.0, z: spec.cz + 1.5, face: 0, pose: 'hold' },
         { x: spec.cx + 9.2, z: spec.cz - 2.0, face: Math.PI / 2, pose: 'readDoc' },
+      ];
+    }
+    if (bId === 'realestate') {
+      return [
+        { x: spec.cx - 2.6, z: spec.cz - 4.8, face: -Math.PI / 2, pose: 'talk' },
+        { x: spec.cx - 0.25, z: spec.cz - 3.3, face: 0, pose: 'hold' },
+        { x: spec.cx + 11.4, z: spec.cz - 2.5, face: Math.PI / 2, pose: 'inspectPanel' },
+        { x: spec.cx - 8.5, z: spec.cz + 3.6, face: 0, pose: 'coffee' },
       ];
     }
     // medical

@@ -13,6 +13,8 @@ import {
   getRoundedPerimeterWallGeo,
   getRoundedRibbonGeo,
   getRoundedSlabGeo,
+  getRoundedSlabWithVoidGeo,
+  getRoundedSlabWithVoidsGeo,
   getSlopedRoofBladeGeo,
   type ArchitecturalMaterials,
 } from './architecturalForms';
@@ -229,6 +231,232 @@ function buildPerimeterWalls(
 
   const backZ = spec.doorSide === 'south' ? spec.cz - hd + WALL_THICK * 0.5 : spec.cz + hd - WALL_THICK * 0.5;
   const frontZ = spec.doorSide === 'south' ? spec.cz + hd - WALL_THICK * 0.5 : spec.cz - hd + WALL_THICK * 0.5;
+
+  // Bespoke curved-corner glass entrance showcase & cylindrical white corner columns for Real Estate Ground Floor
+  if (spec.id === 'realestate' && isGround) {
+    const cornerR = 2.4;
+    const clearGlass = new THREE.MeshPhysicalMaterial({
+      color: 0xdaf0fa,
+      roughness: 0.08,
+      metalness: 0.08,
+      transparent: true,
+      opacity: 0.2,
+      envMapIntensity: 0.72,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const galleryBackMat = new THREE.MeshStandardMaterial({
+      color: 0x3b424c,
+      roughness: 0.68,
+      metalness: 0.08,
+      envMapIntensity: 0.3,
+    });
+
+    // 1. Back wall (South): solid warm-slate architectural wall for coffee bar, meeting rooms & timber slats
+    const reBackSolid = boxAt(
+      parent,
+      spec.w - 0.8,
+      hWall * 0.76,
+      WALL_THICK,
+      spec.cx,
+      yFloor + SLAB_THICK * 0.5 + hWall * 0.38,
+      backZ,
+      wallMat,
+      true,
+      true,
+      0.03
+    );
+    const reBackTransom = boxAt(
+      parent,
+      spec.w - 1.0,
+      hWall * 0.22,
+      0.06,
+      spec.cx,
+      yFloor + SLAB_THICK * 0.5 + hWall * 0.88,
+      backZ,
+      clearGlass,
+      false,
+      false
+    );
+    picks.push(reBackSolid, reBackTransom);
+
+    // 2. White cylindrical structural corner columns (signature sleek storefront pillars)
+    const frontColZ = frontZ - dirZ * 0.42;
+    const backColZ = backZ + dirZ * 0.36;
+    [-1, 1].forEach((side) => {
+      const cxCol = spec.cx + side * (hw - 0.48);
+      const cF = cylAt(parent, 0.32, 0.32, hWall, cxCol, yMid, frontColZ, archMats.stuccoWhite, true, true, 20);
+      const cB = cylAt(parent, 0.28, 0.28, hWall, cxCol, yMid, backColZ, archMats.stuccoWhite, true, true, 18);
+      picks.push(cF, cB);
+    });
+
+    // 3. Sweeping curved glass corner arcs at front NW & NE corners (r = 2.4m, tangent to front & flank glass)
+    const curveH = hWall - 0.24;
+    const eastCurveCx = spec.cx + hw - 0.11 - cornerR;
+    const westCurveCx = spec.cx - hw + 0.11 + cornerR;
+    const frontCurveCz = frontZ - dirZ * cornerR;
+
+    const neArc = new THREE.Mesh(
+      new THREE.CylinderGeometry(cornerR, cornerR, curveH, 18, 1, true, Math.PI * 0.5, Math.PI * 0.5),
+      clearGlass
+    );
+    neArc.position.set(eastCurveCx, yMid, frontCurveCz);
+    parent.add(neArc);
+    picks.push(neArc);
+
+    const nwArc = new THREE.Mesh(
+      new THREE.CylinderGeometry(cornerR, cornerR, curveH, 18, 1, true, Math.PI, Math.PI * 0.5),
+      clearGlass
+    );
+    nwArc.position.set(westCurveCx, yMid, frontCurveCz);
+    parent.add(nwArc);
+    picks.push(nwArc);
+
+    // Slim white/bronze curved sill & header trim along front glass
+    const frontSpanW = spec.w - cornerR * 2 - 0.4;
+    boxAt(parent, frontSpanW, 0.12, 0.16, spec.cx, yFloor + SLAB_THICK * 0.5 + 0.06, frontZ, archMats.stuccoWhite, false, true);
+    boxAt(parent, frontSpanW, 0.12, 0.16, spec.cx, yFloor + spec.floorH - 0.18, frontZ, archMats.stuccoWhite, false, false);
+
+    // 4. Straight front glass panels flanking the open central entrance doorway
+    const leftGlassW = Math.max(0.5, spec.doorX - DOOR_HALF_W - (spec.cx - hw + 0.11 + cornerR));
+    const leftGlassX = spec.cx - hw + 0.11 + cornerR + leftGlassW * 0.5;
+    const lgFront = boxAt(parent, leftGlassW, curveH, 0.055, leftGlassX, yMid, frontZ, clearGlass, false, false);
+
+    const rightGlassW = Math.max(0.5, spec.cx + hw - 0.11 - cornerR - (spec.doorX + DOOR_HALF_W));
+    const rightGlassX = spec.doorX + DOOR_HALF_W + rightGlassW * 0.5;
+    const rgFront = boxAt(parent, rightGlassW, curveH, 0.055, rightGlassX, yMid, frontZ, clearGlass, false, false);
+    picks.push(lgFront, rgFront);
+
+    // Open frameless glass entrance portal & swung-out double doors
+    const transH = Math.max(0.45, hWall - 2.65);
+    boxAt(parent, DOOR_HALF_W * 2, transH, 0.055, spec.doorX, yFloor + SLAB_THICK * 0.5 + 2.65 + transH * 0.5, frontZ, clearGlass, false, false);
+    boxAt(parent, DOOR_HALF_W * 2 + 0.24, 0.1, 0.2, spec.doorX, yFloor + SLAB_THICK * 0.5 + 2.65, frontZ, archMats.bronzeMullion, false, false);
+    [-1, 1].forEach((s) => {
+      boxAt(parent, 0.1, hWall, 0.2, spec.doorX + s * (DOOR_HALF_W + 0.05), yMid, frontZ, archMats.bronzeMullion, true, false);
+      boxAt(parent, 0.05, 2.48, 1.15, spec.doorX + s * DOOR_HALF_W, yFloor + SLAB_THICK * 0.5 + 1.24, frontZ + dirZ * 0.58, clearGlass, false, false);
+    });
+
+    // 5. East flank wall (+X): Featured Properties Gallery backing wall + upper transom glazing
+    const eastWx = spec.cx + hw - WALL_THICK * 0.5;
+    const eastLen = spec.d - cornerR - 0.4;
+    const eastCz = spec.cz - dirZ * (cornerR * 0.5);
+    const eastWall = boxAt(parent, WALL_THICK, hWall * 0.78, eastLen, eastWx, yFloor + SLAB_THICK * 0.5 + hWall * 0.39, eastCz, galleryBackMat, true, true, 0.02);
+    const eastTrans = boxAt(parent, 0.06, hWall * 0.2, eastLen, eastWx, yFloor + SLAB_THICK * 0.5 + hWall * 0.88, eastCz, clearGlass, false, false);
+    picks.push(eastWall, eastTrans);
+
+    // 6. West flank wall (-X): Open glass showcase up front + solid kitchenette backing at rear
+    const westWx = spec.cx - hw + WALL_THICK * 0.5;
+    const westFrontLen = 9.2;
+    const westFrontCz = frontZ - dirZ * (cornerR + westFrontLen * 0.5);
+    const westGlass = boxAt(parent, 0.055, curveH, westFrontLen, westWx, yMid, westFrontCz, clearGlass, false, false);
+    boxAt(parent, WALL_THICK * 0.7, 0.14, westFrontLen, westWx, yFloor + SLAB_THICK * 0.5 + 0.07, westFrontCz, archMats.stuccoWhite, false, true);
+    const westRearLen = spec.d - cornerR - westFrontLen - 0.3;
+    const westRearCz = backZ + dirZ * (westRearLen * 0.5);
+    const westRear = boxAt(parent, WALL_THICK, hWall * 0.78, westRearLen, westWx, yFloor + SLAB_THICK * 0.5 + hWall * 0.39, westRearCz, wallMat, true, true, 0.02);
+    picks.push(westGlass, westRear);
+    return;
+  }
+
+  // Bespoke Upper-Level Perimeter for Real Estate (L1-L4): Matching curved front glass corners & white cylindrical columns
+  if (spec.id === 'realestate' && lv >= 1) {
+    const cornerR = 2.4;
+    const clearGlass = new THREE.MeshPhysicalMaterial({
+      color: 0xdaf0fa,
+      roughness: 0.08,
+      metalness: 0.08,
+      transparent: true,
+      opacity: 0.2,
+      envMapIntensity: 0.72,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const curveH = hWall - 0.22;
+
+    // 1. Back wall (South): crisp off-white architectural wall + upper clerestory glass
+    const reBackSolid = boxAt(
+      parent,
+      spec.w - 0.8,
+      hWall * 0.84,
+      WALL_THICK,
+      spec.cx,
+      yFloor + SLAB_THICK * 0.5 + hWall * 0.42,
+      backZ,
+      archMats.stuccoWhite,
+      true,
+      true,
+      0.03
+    );
+    const reBackTransom = boxAt(
+      parent,
+      spec.w - 1.0,
+      hWall * 0.14,
+      0.06,
+      spec.cx,
+      yFloor + SLAB_THICK * 0.5 + hWall * 0.91,
+      backZ,
+      clearGlass,
+      false,
+      false
+    );
+    picks.push(reBackSolid, reBackTransom);
+
+    // 2. White cylindrical structural columns at all four corners (aligning cleanly over Ground Floor columns)
+    const frontColZ = frontZ - dirZ * 0.42;
+    const backColZ = backZ + dirZ * 0.36;
+    [-1, 1].forEach((side) => {
+      const cxCol = spec.cx + side * (hw - 0.48);
+      const cF = cylAt(parent, 0.32, 0.32, hWall, cxCol, yMid, frontColZ, archMats.stuccoWhite, true, true, 20);
+      const cB = cylAt(parent, 0.28, 0.28, hWall, cxCol, yMid, backColZ, archMats.stuccoWhite, true, true, 18);
+      picks.push(cF, cB);
+    });
+
+    // 3. Curved front glass corners (NW & NE, r = 2.4m) + continuous clear front glass wall
+    const eastCurveCx = spec.cx + hw - 0.11 - cornerR;
+    const westCurveCx = spec.cx - hw + 0.11 + cornerR;
+    const frontCurveCz = frontZ - dirZ * cornerR;
+
+    const neArc = new THREE.Mesh(
+      new THREE.CylinderGeometry(cornerR, cornerR, curveH, 18, 1, true, Math.PI * 0.5, Math.PI * 0.5),
+      clearGlass
+    );
+    neArc.position.set(eastCurveCx, yMid, frontCurveCz);
+    parent.add(neArc);
+    picks.push(neArc);
+
+    const nwArc = new THREE.Mesh(
+      new THREE.CylinderGeometry(cornerR, cornerR, curveH, 18, 1, true, Math.PI, Math.PI * 0.5),
+      clearGlass
+    );
+    nwArc.position.set(westCurveCx, yMid, frontCurveCz);
+    parent.add(nwArc);
+    picks.push(nwArc);
+
+    const frontSpanW = spec.w - cornerR * 2 - 0.22;
+    const frontGlass = boxAt(parent, frontSpanW, curveH, 0.055, spec.cx, yMid, frontZ, clearGlass, false, false);
+    boxAt(parent, frontSpanW, 0.12, 0.14, spec.cx, yFloor + SLAB_THICK * 0.5 + 0.06, frontZ, archMats.stuccoWhite, false, true);
+    boxAt(parent, frontSpanW, 0.12, 0.14, spec.cx, yFloor + spec.floorH - 0.18, frontZ, archMats.stuccoWhite, false, false);
+    picks.push(frontGlass);
+
+    // 4. East flank (+X): crisp white gallery wall supporting artworks & living green wall strips
+    const eastWx = spec.cx + hw - WALL_THICK * 0.5;
+    const eastLen = spec.d - cornerR - 0.35;
+    const eastCz = spec.cz - dirZ * (cornerR * 0.5);
+    const eastWall = boxAt(parent, WALL_THICK, hWall * 0.84, eastLen, eastWx, yFloor + SLAB_THICK * 0.5 + hWall * 0.42, eastCz, archMats.stuccoWhite, true, true, 0.02);
+    const eastTrans = boxAt(parent, 0.06, hWall * 0.14, eastLen, eastWx, yFloor + SLAB_THICK * 0.5 + hWall * 0.91, eastCz, clearGlass, false, false);
+    picks.push(eastWall, eastTrans);
+
+    // 5. West flank (-X): Clear atrium glass up front + solid kitchenette rear corner wall
+    const westWx = spec.cx - hw + WALL_THICK * 0.5;
+    const westFrontLen = 9.0;
+    const westFrontCz = frontZ - dirZ * (cornerR + westFrontLen * 0.5);
+    const westGlass = boxAt(parent, 0.055, curveH, westFrontLen, westWx, yMid, westFrontCz, clearGlass, false, false);
+    boxAt(parent, WALL_THICK * 0.7, 0.12, westFrontLen, westWx, yFloor + SLAB_THICK * 0.5 + 0.06, westFrontCz, archMats.stuccoWhite, false, true);
+    const westRearLen = spec.d - cornerR - westFrontLen - 0.2;
+    const westRearCz = backZ + dirZ * (westRearLen * 0.5);
+    const westRear = boxAt(parent, WALL_THICK, hWall * 0.84, westRearLen, westWx, yFloor + SLAB_THICK * 0.5 + hWall * 0.42, westRearCz, archMats.stuccoWhite, true, true, 0.02);
+    picks.push(westGlass, westRear);
+    return;
+  }
 
   // Back wall solid base + transom glazing for clear architectural framing
   const backLower = boxAt(parent, spec.w - 0.8, hWall * 0.54, WALL_THICK, spec.cx, yFloor + SLAB_THICK * 0.5 + hWall * 0.27, backZ, wallMat, true, true, 0.03);
@@ -630,10 +858,11 @@ export function buildDistrictBuildings(
         });
       } else if (style === 'blade') {
         // Cantilevered sculptural white rounded floor plate projecting toward doorSide + cedar soffit (Reference Image 3)
-        const slab = new THREE.Mesh(
-          getRoundedSlabGeo(spec.w + 1.8, spec.d + 2.0, 2.1, 0.3, 0.07),
-          archMats.stuccoWhite
-        );
+        const bladeSlabGeo =
+          spec.id === 'travel' && lv >= 1
+            ? getRoundedSlabWithVoidGeo(spec.w + 1.8, spec.d + 2.0, 2.1, 0.3, 10.25, 13.25, 0.37, 4.17, 0.07)
+            : getRoundedSlabGeo(spec.w + 1.8, spec.d + 2.0, 2.1, 0.3, 0.07);
+        const slab = new THREE.Mesh(bladeSlabGeo, archMats.stuccoWhite);
         slab.position.set(spec.cx, yFloor - 0.02, spec.cz + dirZ * 0.42);
         slab.castShadow = true;
         slab.receiveShadow = true;
@@ -655,10 +884,28 @@ export function buildDistrictBuildings(
         lg.add(balGlass);
       } else if (style === 'stone_pergola') {
         // Deep cantilevered timber-soffit eaves + glass terrace + lush planters (Reference Image 4)
-        const slab = new THREE.Mesh(
-          getRoundedSlabGeo(spec.w + 2.2, spec.d + 2.2, 1.8, 0.3, 0.06),
-          archMats.bullnoseConcrete
-        );
+        // For Real Estate: L1 retains NW atrium overlook void + stairwell shaft; L2..L4 cut the continuous G->L4 stairwell shaft
+        const slabGeo =
+          spec.id === 'realestate' && lv === 1
+            ? getRoundedSlabWithVoidsGeo(
+                spec.w + 2.2,
+                spec.d + 2.2,
+                1.8,
+                0.3,
+                [
+                  [-12.1, -0.6, -8.45, -1.8],
+                  [-12.25, -9.25, -0.05, 3.75],
+                ],
+                0.06
+              )
+            : spec.id === 'realestate' && lv >= 2
+              ? getRoundedSlabWithVoidGeo(spec.w + 2.2, spec.d + 2.2, 1.8, 0.3, -12.25, -9.25, -0.05, 3.75, 0.06)
+              : spec.id === 'tourism' && lv >= 1
+                ? getRoundedSlabWithVoidGeo(spec.w + 2.2, spec.d + 2.2, 1.8, 0.3, 11.22, 14.28, 4.15, 7.95, 0.06)
+                : spec.id === 'restaurant' && lv >= 1
+                  ? getRoundedSlabWithVoidGeo(spec.w + 2.2, spec.d + 2.2, 1.8, 0.3, -9.52, -6.48, 2.85, 6.65, 0.06)
+                  : getRoundedSlabGeo(spec.w + 2.2, spec.d + 2.2, 1.8, 0.3, 0.06);
+        const slab = new THREE.Mesh(slabGeo, archMats.bullnoseConcrete);
         slab.position.set(spec.cx, yFloor - 0.02, spec.cz);
         slab.castShadow = true;
         slab.receiveShadow = true;
@@ -679,7 +926,7 @@ export function buildDistrictBuildings(
         balGlass.position.set(spec.cx, yFloor + 0.12, spec.cz);
         lg.add(balGlass);
 
-        if (lv % 2 === 1) {
+        if (lv % 2 === 1 && !(spec.id === 'realestate' && lv === 1)) {
           buildPlanterTrough(
             lg,
             spec.cx - spec.w * 0.25,
@@ -703,10 +950,11 @@ export function buildDistrictBuildings(
         }
       } else {
         // 'shed_seam': Sleek rounded-corner slab wrapped by dark standing-seam ribbed architectural fascia (Reference Image 1)
-        const slab = new THREE.Mesh(
-          getRoundedSlabGeo(spec.w + 1.0, spec.d + 1.0, 1.4, 0.28, 0.05),
-          slabFloorMat
-        );
+        const seamSlabGeo =
+          spec.id === 'logistics' && lv >= 1
+            ? getRoundedSlabWithVoidGeo(spec.w + 1.0, spec.d + 1.0, 1.4, 0.28, -14.32, -11.28, 4.15, 7.95, 0.05)
+            : getRoundedSlabGeo(spec.w + 1.0, spec.d + 1.0, 1.4, 0.28, 0.05);
+        const slab = new THREE.Mesh(seamSlabGeo, slabFloorMat);
         slab.position.set(spec.cx, yFloor, spec.cz);
         slab.castShadow = true;
         slab.receiveShadow = true;
@@ -721,18 +969,44 @@ export function buildDistrictBuildings(
         lg.add(seamBand);
       }
 
-      // Ceiling slab & recessed linear lighting
-      const cSlab = new THREE.Mesh(
-        getRoundedSlabGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, 0.02),
-        M.white
-      );
+      // Ceiling slab & recessed linear lighting (Real Estate lv=0..3 keep stairwell shaft open; lv=0 also keeps NW atrium overlook)
+      const cSlabGeo =
+        spec.id === 'realestate' && lv === 0
+          ? getRoundedSlabWithVoidsGeo(
+              spec.w - 0.2,
+              spec.d - 0.2,
+              1.5,
+              0.16,
+              [
+                [-12.1, -0.6, -8.45, -1.8],
+                [-12.25, -9.25, -0.05, 3.75],
+              ],
+              0.02
+            )
+          : (spec.id === 'realestate' && lv >= 1 && lv < spec.floors - 1)
+            ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, -12.25, -9.25, -0.05, 3.75, 0.02)
+            : spec.id === 'travel' && lv < spec.floors - 1
+              ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, 10.25, 13.25, -0.05, 3.75, 0.02)
+              : spec.id === 'tourism' && lv < spec.floors - 1
+                ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, 11.22, 14.28, 4.15, 7.95, 0.02)
+                : spec.id === 'logistics' && lv < spec.floors - 1
+                  ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, -14.32, -11.28, 4.15, 7.95, 0.02)
+                  : spec.id === 'restaurant' && lv < spec.floors - 1
+                    ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, -9.52, -6.48, 2.85, 6.65, 0.02)
+                    : getRoundedSlabGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, 0.02);
+      const cSlab = new THREE.Mesh(cSlabGeo, M.white);
       cSlab.position.set(spec.cx, ceilY, spec.cz);
       cg.add(cSlab);
       pickMeshes.push(cSlab);
       const lxSpan = Math.max(4, spec.w - 8);
-      [-spec.d * 0.22, spec.d * 0.22].forEach((dz) => {
-        ceilingLinearLight(cg, spec.cx, ceilY - 0.08, spec.cz + dz, lxSpan, 0.26, M);
-      });
+      if (spec.id === 'realestate' && lv === 0) {
+        ceilingLinearLight(cg, spec.cx, ceilY - 0.08, spec.cz + spec.d * 0.22, lxSpan, 0.26, M);
+        ceilingLinearLight(cg, spec.cx + 5.8, ceilY - 0.08, spec.cz - spec.d * 0.22, 10.5, 0.26, M);
+      } else {
+        [-spec.d * 0.22, spec.d * 0.22].forEach((dz) => {
+          ceilingLinearLight(cg, spec.cx, ceilY - 0.08, spec.cz + dz, lxSpan, 0.26, M);
+        });
+      }
 
       buildPerimeterWalls(lg, spec, lv, buildingGlass, wallMat, frameDarkMat, archMats, style, true, pickMeshes);
 
@@ -746,6 +1020,14 @@ export function buildDistrictBuildings(
         light.position.set(spec.cx, floorSurfaceY + 3.1, spec.cz);
         lg.add(light);
         warmLights.push(light);
+      } else if (
+        (spec.id === 'realestate' && lv >= 1 && lv <= 4) ||
+        (spec.id === 'travel' && lv >= 1 && lv <= 3) ||
+        (spec.id === 'tourism' && lv >= 1 && lv <= 3) ||
+        (spec.id === 'logistics' && lv >= 1 && lv <= 3) ||
+        (spec.id === 'restaurant' && lv >= 1 && lv <= 3)
+      ) {
+        // Real Estate L1-L4, Skyline Travel L1-L3, Kenya Safari & Tourism L1-L3, SwiftPort Logistics L1-L3, and Savanna Bistro L1-L3 are custom-built below
       } else {
         // Upper floors populated cleanly with glass partition accents, desks, chairs, shelves & live monitors
         const deskXs = spec.w >= 30 ? [-10, 0, 10] : [-4.8, 4.8];
@@ -786,22 +1068,26 @@ export function buildDistrictBuildings(
     const signOutset =
       spec.id === 'travel'
         ? 3.56
-        : style === 'tower'
-          ? 1.32
-          : style === 'blade'
-            ? 1.48
-            : style === 'stone_pergola'
-              ? 3.56
-              : 3.46;
+        : spec.id === 'realestate'
+          ? 2.98
+          : style === 'tower'
+            ? 1.32
+            : style === 'blade'
+              ? 1.48
+              : style === 'stone_pergola'
+                ? 3.56
+                : 3.46;
     const signZ = spec.cz + dirZ * (spec.d * 0.5 + signOutset);
     const signY =
       spec.id === 'travel'
         ? spec.groundY + spec.floorH + 0.58
-        : style === 'shed_seam'
+        : spec.id === 'realestate'
           ? spec.groundY + spec.floorH + 0.16
-          : style === 'stone_pergola'
-            ? spec.groundY + spec.floorH + 0.34
-            : spec.groundY + spec.floorH + 0.24;
+          : style === 'shed_seam'
+            ? spec.groundY + spec.floorH + 0.16
+            : style === 'stone_pergola'
+              ? spec.groundY + spec.floorH + 0.34
+              : spec.groundY + spec.floorH + 0.24;
     const signW = Math.min(10.8, spec.w * 0.54);
     const signBox = boxAt(g0, signW, 1.24, 0.18, spec.doorX, signY, signZ, frameDarkMat, true, false, 0.04);
     const signTex = makeSignTexture(spec.name, spec.niche, spec.accent);
@@ -815,72 +1101,209 @@ export function buildDistrictBuildings(
     pickMeshes.push(signBox, signFace);
 
     if (spec.id === 'restaurant') {
-      // Savanna Bistro & Grill: Kitchen pass, brick pizza oven, espresso bar, dining tables & terrace awning
-      boxAt(g0, 9.6, 1.05, 1.2, spec.cx - 2.2, fy + 0.525, spec.cz - 7.0, bankStoneMat, true, true, 0.03);
-      boxAt(g0, 9.8, 0.08, 1.34, spec.cx - 2.2, fy + 1.06, spec.cz - 7.0, M.walnut, false, true, 0.02);
-      // Stainless exhaust hood above kitchen pass
-      boxAt(g0, 8.8, 0.62, 1.4, spec.cx - 2.2, fy + 2.65, spec.cz - 7.2, M.metal, true, false, 0.04);
-      // Brick wood-fired pizza oven + glowing hearth
-      cylAt(g0, 1.25, 1.35, 1.5, spec.cx - 8.2, fy + 0.75, spec.cz - 7.8, terracottaMat, true, true, 18);
-      const dome = new THREE.Mesh(
-        new THREE.SphereGeometry(1.24, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.5),
-        terracottaMat
-      );
-      dome.position.set(spec.cx - 8.2, fy + 1.5, spec.cz - 7.8);
-      g0.add(dome);
-      cylAt(g0, 0.22, 0.26, 1.4, spec.cx - 8.2, fy + 2.8, spec.cz - 7.8, M.metal, false, false, 12);
-      boxAt(g0, 0.68, 0.42, 0.16, spec.cx - 8.2, fy + 0.92, spec.cz - 6.52, new THREE.MeshBasicMaterial({ color: 0xff6b2b }), false, false);
+      // =========================================================================
+      // SAVANNA BISTRO & GRILL: BESPOKE CULINARY HOUSE (G - L3)
+      // =========================================================================
+      const bistroMosaicTex = makeCanvasTex('bistro_mosaic_floor', 256, 256, (g, W, H) => {
+        g.fillStyle = '#25211f';
+        g.fillRect(0, 0, W, H);
+        const step = 32;
+        for (let y = 0; y < H; y += step) {
+          for (let x = 0; x < W; x += step) {
+            const alt = ((x / step) + (y / step)) % 2 === 0;
+            g.fillStyle = alt ? '#2e2724' : '#3a2d27';
+            g.fillRect(x + 1, y + 1, step - 2, step - 2);
+            if (((x / step) % 4 === 0) && ((y / step) % 4 === 0)) {
+              g.fillStyle = '#b45309';
+              g.fillRect(x + 8, y + 8, step - 16, step - 16);
+            }
+          }
+        }
+        g.strokeStyle = 'rgba(212,163,74,0.22)';
+        g.lineWidth = 1.5;
+        g.strokeRect(1, 1, W - 2, H - 2);
+      });
+      bistroMosaicTex.wrapS = bistroMosaicTex.wrapT = THREE.RepeatWrapping;
+      bistroMosaicTex.repeat.set(6, 5);
+      bistroMosaicTex.colorSpace = THREE.SRGBColorSpace;
+      bistroMosaicTex.anisotropy = getMaxAnisotropy();
+      const bistroMosaicFloor = std({ map: bistroMosaicTex, roughness: 0.42, metalness: 0.08, envMapIntensity: 0.34 });
 
-      // Espresso & cocktail bar on east wall
-      boxAt(g0, 1.25, 1.06, 6.8, spec.cx + 8.6, fy + 0.53, spec.cz - 2.2, M.walnut, true, true, 0.03);
-      boxAt(g0, 0.52, 0.48, 0.75, spec.cx + 8.6, fy + 1.3, spec.cz - 3.0, M.chrome, false, false, 0.04);
+      const flutedTerracottaTex = makeCanvasTex('bistro_fluted_terracotta', 256, 128, (g, W, H) => {
+        g.fillStyle = '#9b4d38';
+        g.fillRect(0, 0, W, H);
+        for (let x = 0; x < W; x += 12) {
+          const gr = g.createLinearGradient(x, 0, x + 12, 0);
+          gr.addColorStop(0, '#743423');
+          gr.addColorStop(0.4, '#bd644a');
+          gr.addColorStop(0.85, '#8a402c');
+          gr.addColorStop(1, '#6c3020');
+          g.fillStyle = gr;
+          g.fillRect(x, 0, 12, H);
+        }
+      });
+      flutedTerracottaTex.wrapS = flutedTerracottaTex.wrapT = THREE.RepeatWrapping;
+      flutedTerracottaTex.repeat.set(3, 1);
+      flutedTerracottaTex.colorSpace = THREE.SRGBColorSpace;
+      const flutedTerracotta = std({ map: flutedTerracottaTex, roughness: 0.72, metalness: 0.04 });
 
-      // 4 indoor dining tables + chairs facing inward
-      const diningPts: Array<[number, number]> = [
-        [spec.cx - 5.2, spec.cz + 0.2],
-        [spec.cx + 2.6, spec.cz + 0.2],
-        [spec.cx - 5.2, spec.cz + 4.8],
-        [spec.cx + 2.6, spec.cz + 4.8],
-      ];
-      diningPts.forEach(([tx, tz], ti) => {
-        makeDiningTable(g0, tx, fy, tz, M, 0.72);
-        registerChair(0, tx - 1.15, fy, tz, Math.PI / 2, ti % 2 ? 1 : -1);
-        registerChair(0, tx + 1.15, fy, tz, -Math.PI / 2, ti % 2 ? -1 : 1);
+      const hammeredCopper = std({ color: 0xc86d44, roughness: 0.3, metalness: 0.84, envMapIntensity: 0.72 });
+      const agedBrass = std({ color: 0xd4a34a, roughness: 0.34, metalness: 0.82, envMapIntensity: 0.7 });
+      const charredIron = std({ color: 0x1b1e23, roughness: 0.52, metalness: 0.65, envMapIntensity: 0.45 });
+      const smokedOak = std({ color: 0x4a2f1d, roughness: 0.56, metalness: 0.04 });
+      const creamLinen = std({ color: 0xf3ece0, roughness: 0.88, metalness: 0.0 });
+      const bistroBurgundy = std({ color: 0x6e202c, roughness: 0.86, metalness: 0.02 });
+      const oliveVelvet = std({ color: 0x4e5d38, roughness: 0.86, metalness: 0.02 });
+      const amberEmberGlow = new THREE.MeshBasicMaterial({ color: 0xff7b29 });
+      const filamentBulbMat = new THREE.MeshBasicMaterial({ color: 0xffe4a1 });
+      const amberWineGlass = new THREE.MeshPhysicalMaterial({
+        color: 0xd99b4e,
+        roughness: 0.1,
+        metalness: 0.06,
+        transparent: true,
+        opacity: 0.26,
+        depthWrite: false,
+        side: THREE.DoubleSide,
       });
 
-      // Host reception podium + Kitchen pass monitor
-      makeDeskAt(g0, spec.cx + 5.2, fy, spec.cz + 6.4, 1.5, 0.85, M);
-      registerChair(0, spec.cx + 5.2, fy, spec.cz + 7.25, Math.PI, 1);
-      registerMonitor(0, 0, [spec.cx + 5.2, fy + 0.77, spec.cz + 6.25], 0, spec.cx + 5.2, spec.cz + 7.25, 'Maître D’ Host', 'Dining Hall & Reservations');
-      registerMonitor(0, 1, [spec.cx - 0.5, fy + 1.1, spec.cz - 6.85], Math.PI, spec.cx - 0.5, spec.cz - 8.1, 'Head Chef KDS', 'Open Wood-Fired Kitchen');
+      const addBistroSign = (parent: THREE.Object3D, title: string, x: number, y: number, z: number, rotY = 0) => {
+        const tex = makeCanvasTex(`bistro_sign_${title}`, 400, 74, (g, w, h) => {
+          g.fillStyle = '#1b1411';
+          g.fillRect(0, 0, w, h);
+          g.strokeStyle = '#d4a34a';
+          g.lineWidth = 3;
+          g.strokeRect(4, 4, w - 8, h - 8);
+          g.fillStyle = '#c86d44';
+          g.fillRect(10, 10, 8, h - 20);
+          g.fillStyle = '#fdf4e7';
+          g.font = '700 17px "Plus Jakarta Sans", sans-serif';
+          g.textAlign = 'center';
+          g.textBaseline = 'middle';
+          g.fillText(title, w * 0.52, h * 0.5);
+        });
+        tex.colorSpace = THREE.SRGBColorSpace;
+        const mesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(1.6, 0.3),
+          new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false })
+        );
+        mesh.position.set(x, y, z);
+        mesh.rotation.y = rotY;
+        parent.add(mesh);
+      };
 
-      // Animated Kitchen Menu / KDS wall board mounted inside on rear wall (clear of exhaust hood)
+      const addBistroCeilingRig = (parent: THREE.Object3D, ceilTopY: number, zRows: number[], xCols: number[]) => {
+        zRows.forEach((zr) => {
+          boxAt(parent, spec.w - 2.6, 0.14, 0.14, spec.cx, ceilTopY - 0.14, zr, charredIron, true, false);
+        });
+        xCols.forEach((xc) => {
+          zRows.forEach((zr) => {
+            cylAt(parent, 0.012, 0.012, 0.56, xc, ceilTopY - 0.44, zr, agedBrass, false, false, 6);
+            cylAt(parent, 0.11, 0.18, 0.09, xc, ceilTopY - 0.72, zr, hammeredCopper, true, false, 14);
+            const globe = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 10), filamentBulbMat);
+            globe.position.set(xc, ceilTopY - 0.78, zr);
+            parent.add(globe);
+          });
+        });
+      };
+
+      // Hero 1: Multi-Part Sculpted Wood-Fired Copper & Terracotta Pizza Hearth (8 parts)
+      const addCopperPizzaHearth = (parent: THREE.Object3D, x: number, y: number, z: number) => {
+        const hg = new THREE.Group();
+        hg.position.set(x, y, z);
+        cylAt(hg, 1.24, 1.32, 0.88, 0, 0.44, 0, bankStoneMat, true, true, 18);
+        // Firewood alcove & stacked logs
+        boxAt(hg, 0.72, 0.46, 0.14, 0, 0.25, 1.22, charredIron, false, false);
+        [-0.14, 0, 0.14].forEach((lx) => cylAt(hg, 0.06, 0.06, 0.42, lx, 0.22, 1.24, smokedOak, false, false, 8));
+        // Stone hearth ledge & brass rim
+        cylAt(hg, 1.34, 1.3, 0.09, 0, 0.92, 0, creamLinen, true, true, 20);
+        // Dome cladding & arched hearth mouth + glowing fire bed
+        const dome = new THREE.Mesh(new THREE.SphereGeometry(1.18, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), flutedTerracotta);
+        dome.position.set(0, 0.96, 0);
+        dome.castShadow = true;
+        hg.add(dome);
+        boxAt(hg, 0.86, 0.54, 0.26, 0, 1.22, 1.06, charredIron, true, false, 0.02);
+        boxAt(hg, 0.64, 0.36, 0.16, 0, 1.18, 1.12, amberEmberGlow, false, false);
+        // Copper flue collar & chimney pipe
+        cylAt(hg, 0.32, 0.38, 0.22, 0, 2.08, 0, hammeredCopper, true, false, 16);
+        cylAt(hg, 0.2, 0.22, 1.35, 0, 2.82, 0, charredIron, true, false, 14);
+        parent.add(hg);
+      };
+
+      // Hero 2: Multi-Part Artisan Copper Drum Coffee Roaster (7 parts)
+      const addCoffeeRoaster = (parent: THREE.Object3D, x: number, y: number, z: number) => {
+        const rg = new THREE.Group();
+        rg.position.set(x, y, z);
+        boxAt(rg, 1.35, 0.72, 1.05, 0, 0.36, 0, charredIron, true, true, 0.03);
+        // Horizontal copper roasting drum + brass end rings
+        const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 1.05, 18), hammeredCopper);
+        drum.rotation.z = Math.PI / 2;
+        drum.position.set(0, 1.05, -0.1);
+        drum.castShadow = true;
+        rg.add(drum);
+        [-0.5, 0.5].forEach((dx) => {
+          const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.41, 0.41, 0.06, 18), agedBrass);
+          ring.rotation.z = Math.PI / 2;
+          ring.position.set(dx, 1.05, -0.1);
+          rg.add(ring);
+        });
+        // Brass bean hopper funnel on top & cooling sieve basin in front
+        cylAt(rg, 0.32, 0.1, 0.44, 0, 1.62, -0.1, agedBrass, true, false, 16);
+        cylAt(rg, 0.48, 0.48, 0.24, 0, 0.78, 0.62, hammeredCopper, true, true, 20);
+        cylAt(rg, 0.43, 0.43, 0.04, 0, 0.91, 0.62, smokedOak, false, false, 18);
+        cylAt(rg, 0.09, 0.1, 1.75, -0.45, 1.9, -0.35, charredIron, true, false, 12);
+        parent.add(rg);
+      };
+
+      // Hero 3: Illuminated Amber-Glass & Hammered-Copper Wine Vault Rack
+      const addWineRack = (parent: THREE.Object3D, x: number, y: number, z: number, len: number, rotY = 0) => {
+        const wg = new THREE.Group();
+        wg.position.set(x, y, z);
+        wg.rotation.y = rotY;
+        boxAt(wg, len, 2.45, 0.46, 0, 1.225, 0, smokedOak, true, true, 0.02);
+        [0.48, 1.05, 1.62, 2.15].forEach((sy) => {
+          boxAt(wg, len - 0.16, 0.05, 0.42, 0, sy, 0.02, agedBrass, false, false);
+          for (let bx = -len * 0.42; bx <= len * 0.42; bx += 0.34) {
+            cylAt(wg, 0.045, 0.045, 0.28, bx, sy + 0.17, 0.04, M.dark, false, false, 8);
+            boxAt(wg, 0.06, 0.07, 0.02, bx, sy + 0.16, 0.1, amberEmberGlow, false, false);
+          }
+        });
+        parent.add(wg);
+      };
+
+      // Non-overlapping mosaic floor tile strips around SW stairwell void (-9.52..-6.48 x +2.85..+6.65)
+      const addUpperBistroFloor = (parent: THREE.Object3D, floorY: number) => {
+        boxAt(parent, 16.0, 0.018, 17.2, spec.cx + 1.6, floorY + 0.009, spec.cz, bistroMosaicFloor, false, true);
+        boxAt(parent, 3.2, 0.018, 11.42, spec.cx - 8.0, floorY + 0.009, spec.cz - 2.89, bistroMosaicFloor, false, true);
+        boxAt(parent, 3.2, 0.018, 1.92, spec.cx - 8.0, floorY + 0.009, spec.cz + 7.64, bistroMosaicFloor, false, true);
+      };
+
+      // Shared Bistro Screens (Live Kitchen KDS & Vintage Terroir / Tapas Tasting Board)
       const kdsScreen = createCustomBoardScreen(screenReg, 640, 220, (g, w, h, t) => {
-        g.fillStyle = '#120d0a';
+        g.fillStyle = '#140f0c';
         g.fillRect(0, 0, w, h);
-        g.fillStyle = '#f59e0b';
+        g.fillStyle = '#c86d44';
         g.fillRect(0, 0, w, 34);
-        g.fillStyle = '#120d0a';
-        g.font = '800 18px "Plus Jakarta Sans", sans-serif';
+        g.fillStyle = '#fff9f0';
+        g.font = '800 17px "Plus Jakarta Sans", sans-serif';
         g.textAlign = 'left';
         g.textBaseline = 'middle';
-        g.fillText('SAVANNA BISTRO & GRILL · LIVE KITCHEN KDS & MENU', 16, 17);
+        g.fillText('SAVANNA BISTRO & GRILL · WOOD-FIRED HEARTH & KITCHEN KDS', 16, 17);
         const specials = [
-          ['Wood-Fired Ribeye', '390°C Hearth', 'KES 3,400'],
-          ['Swahili Red Snapper', 'Coconut Lime', 'KES 2,850'],
-          ['Nyeri AA Cold Brew', 'Single Origin', 'KES 620'],
+          ['Wood-Fired Wagyu Ribeye', '390°C Oak Hearth', 'KES 3,850'],
+          ['Lamu Red Snapper', 'Saffron Coconut Glaze', 'KES 2,950'],
+          ['Nyeri Peaberry Espresso', 'Single-Estate Roast', 'KES 650'],
         ];
         specials.forEach((sp, i) => {
-          const y = 58 + i * 50;
-          g.fillStyle = i === Math.floor(t / 3) % 3 ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.06)';
+          const y = 56 + i * 50;
+          g.fillStyle = i === Math.floor(t / 3) % 3 ? 'rgba(200,109,68,0.28)' : 'rgba(255,255,255,0.06)';
           rr(g, 16, y, w - 32, 42, 6);
           g.fill();
-          g.fillStyle = '#fff';
-          g.font = '700 17px sans-serif';
+          g.fillStyle = '#fef3c7';
+          g.font = '700 16px sans-serif';
           g.fillText(sp[0], 28, y + 21);
           g.fillStyle = '#cbd5e1';
           g.font = '500 15px sans-serif';
-          g.fillText(sp[1], 280, y + 21);
+          g.fillText(sp[1], 295, y + 21);
           g.fillStyle = '#fbbf24';
           g.textAlign = 'right';
           g.font = '700 16px monospace';
@@ -888,13 +1311,96 @@ export function buildDistrictBuildings(
           g.textAlign = 'left';
         });
       });
-      boxAt(g0, 5.8, 2.15, 0.14, spec.cx + 5.8, fy + 2.25, spec.cz - 8.7, frameDarkMat, false, false);
-      const kdsMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 1.92), kdsScreen.mat);
-      kdsMesh.position.set(spec.cx + 5.8, fy + 2.25, spec.cz - 8.62);
+
+      const cellarScreen = createCustomBoardScreen(screenReg, 520, 260, (g, w, h, t) => {
+        g.fillStyle = '#18100d';
+        g.fillRect(0, 0, w, h);
+        g.fillStyle = '#d4a34a';
+        g.fillRect(0, 0, w, 36);
+        g.fillStyle = '#18100d';
+        g.font = '800 16px "Plus Jakarta Sans", sans-serif';
+        g.textAlign = 'left';
+        g.textBaseline = 'middle';
+        g.fillText('CELLAR RESERVE · ROASTERY & TASTING FLIGHT TELEMETRY', 14, 18);
+        const vintages = [
+          ['Rift Valley Reserve Syrah', '14.5°C Vault · 84% Hum', '96 PTS'],
+          ['Stellenbosch Cabernet 2018', 'Tasting Flight Pairing', 'DECANTED'],
+          ['Kirinyaga AA Honey Roast', 'Batch #42 · Medium-Dark', 'LIVE ROAST'],
+          ['Chef’s 7-Course Degustation', '19:30 Seating · Table 01', 'CONFIRMED'],
+        ];
+        vintages.forEach((v, i) => {
+          const y = 52 + i * 48;
+          g.fillStyle = i === Math.floor(t / 2.8) % 4 ? 'rgba(212,163,74,0.22)' : 'rgba(255,255,255,0.05)';
+          rr(g, 14, y, w - 28, 40, 5);
+          g.fill();
+          g.fillStyle = '#fffbeb';
+          g.font = '700 14px sans-serif';
+          g.fillText(v[0], 24, y + 20);
+          g.fillStyle = '#d6d3d1';
+          g.font = '500 13px sans-serif';
+          g.fillText(v[1], 240, y + 20);
+          g.fillStyle = '#f59e0b';
+          g.textAlign = 'right';
+          g.font = '700 13px monospace';
+          g.fillText(v[2], w - 24, y + 20);
+          g.textAlign = 'left';
+        });
+      });
+
+      // -------------------------------------------------------------------------
+      // FLOOR 0 (G): Wood-Fired Open Kitchen, Copper Hearth, Cocktail Bar & Dining Hall
+      // -------------------------------------------------------------------------
+      boxAt(g0, 19.2, 0.018, 17.2, spec.cx, fy + 0.009, spec.cz, bistroMosaicFloor, false, true);
+      addBistroCeilingRig(levelCeilings[0], spec.groundY + spec.floorH - 0.12, [spec.cz - 4.2, spec.cz + 1.8], [spec.cx - 4.0, spec.cx + 2.2, spec.cx + 6.8]);
+
+      // NW: Sculpted Copper & Terracotta Wood-Fired Hearth Oven (cx - 8.0, cz - 7.0)
+      addCopperPizzaHearth(g0, spec.cx - 8.0, fy, spec.cz - 7.0);
+
+      // North Center: Open Charcoal Grill & Fluted Terracotta Kitchen Pass (cx - 1.4, cz - 6.4)
+      boxAt(g0, 6.8, 1.04, 1.15, spec.cx - 1.4, fy + 0.52, spec.cz - 6.4, flutedTerracotta, true, true, 0.03);
+      boxAt(g0, 7.0, 0.08, 1.28, spec.cx - 1.4, fy + 1.06, spec.cz - 6.4, smokedOak, false, true, 0.02);
+      boxAt(g0, 6.4, 0.58, 1.28, spec.cx - 1.4, fy + 2.68, spec.cz - 6.5, hammeredCopper, true, false, 0.04);
+      boxAt(g0, 5.6, 0.04, 0.12, spec.cx - 1.4, fy + 2.38, spec.cz - 6.0, amberEmberGlow, false, false);
+
+      // East Wall: Copper & Walnut Cocktail Bar + Overhead Glassware Rack + 3 Bar Stools (cx + 7.8, cz - 2.2)
+      boxAt(g0, 1.2, 1.05, 6.2, spec.cx + 7.8, fy + 0.525, spec.cz - 2.2, flutedTerracotta, true, true, 0.03);
+      boxAt(g0, 1.34, 0.07, 6.36, spec.cx + 7.8, fy + 1.07, spec.cz - 2.2, creamLinen, false, true, 0.02);
+      boxAt(g0, 0.52, 0.48, 0.85, spec.cx + 7.8, fy + 1.32, spec.cz - 3.2, hammeredCopper, false, false, 0.03);
+      boxAt(g0, 1.1, 0.08, 5.4, spec.cx + 7.8, fy + 2.65, spec.cz - 2.2, charredIron, true, false);
+      [-4.0, -2.2, -0.4].forEach((bz) => {
+        cylAt(g0, 0.2, 0.2, 0.09, spec.cx + 6.75, fy + 0.72, spec.cz + bz, bistroBurgundy, true, true, 16);
+        cylAt(g0, 0.035, 0.035, 0.68, spec.cx + 6.75, fy + 0.34, spec.cz + bz, agedBrass, false, false, 10);
+        cylAt(g0, 0.17, 0.2, 0.04, spec.cx + 6.75, fy + 0.02, spec.cz + bz, charredIron, false, true, 14);
+      });
+
+      // 4 Indoor Dining Tables clear of SW Stairwell Core (dx -9.55..-6.45, dz +1.50..+6.70)
+      const diningPts: Array<[number, number]> = [
+        [spec.cx - 3.6, spec.cz - 1.6],
+        [spec.cx + 2.2, spec.cz - 1.6],
+        [spec.cx - 3.6, spec.cz + 3.2],
+        [spec.cx + 2.2, spec.cz + 3.2],
+      ];
+      diningPts.forEach(([tx, tz], ti) => {
+        makeDiningTable(g0, tx, fy, tz, M, 0.68);
+        registerChair(0, tx - 1.1, fy, tz, Math.PI / 2, ti % 2 ? 1 : -1);
+        registerChair(0, tx + 1.1, fy, tz, -Math.PI / 2, ti % 2 ? -1 : 1);
+      });
+
+      // Host Reception Podium + Open Kitchen KDS Monitor
+      makeDeskAt(g0, spec.cx + 4.8, fy, spec.cz + 6.4, 1.5, 0.85, M);
+      registerChair(0, spec.cx + 4.8, fy, spec.cz + 7.25, Math.PI, 1);
+      registerMonitor(0, 0, [spec.cx + 4.8, fy + 0.77, spec.cz + 6.25], 0, spec.cx + 4.8, spec.cz + 7.25, 'Maître D’ Host', 'Dining Hall & Reservations');
+      registerMonitor(0, 1, [spec.cx - 0.5, fy + 1.1, spec.cz - 6.35], Math.PI, spec.cx - 0.5, spec.cz - 7.7, 'Head Chef KDS', 'Open Wood-Fired Kitchen');
+
+      // Live Kitchen KDS Menu Board on North Wall
+      boxAt(g0, 5.4, 2.05, 0.14, spec.cx + 5.6, fy + 2.25, spec.cz - 8.7, charredIron, false, false);
+      const kdsMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.1, 1.84), kdsScreen.mat);
+      kdsMesh.position.set(spec.cx + 5.6, fy + 2.25, spec.cz - 8.62);
       g0.add(kdsMesh);
       kdsScreen.setMesh(kdsMesh);
+      plant(g0, spec.cx + 8.6, fy, spec.cz + 7.4, 1.15, 1411, M, 'olive');
 
-      // Exterior vine-draped timber pergola porte-cochère on ashlar stone piers + 2 outdoor bistro tables (Reference Image 4)
+      // Exterior vine-draped timber pergola porte-cochère on ashlar stone piers + 2 outdoor bistro tables
       buildVinePergolaCanopy(
         g0,
         spec.doorX,
@@ -910,6 +1416,383 @@ export function buildDistrictBuildings(
       buildTropicalPalm(g0, spec.cx - spec.w * 0.44, spec.groundY, spec.doorZ + 2.8, 3.8, 412, M, archMats);
       makeDiningTable(g0, spec.cx - 5.2, spec.groundY, spec.cz + 12.1, M, 0.56);
       makeDiningTable(g0, spec.cx + 5.2, spec.groundY, spec.cz + 12.1, M, 0.56);
+
+      // -------------------------------------------------------------------------
+      // FLOOR 1 (L1): Artisan Coffee Roastery, Tapas Bar & Velvet Banquette Hall
+      // -------------------------------------------------------------------------
+      const rg1 = levelGroups[1];
+      if (rg1) {
+        const rfy1 = spec.groundY + spec.floorH + SLAB_THICK * 0.5;
+        const r1Light = new THREE.PointLight(0xffdfb8, 1.24, 24);
+        r1Light.position.set(spec.cx, rfy1 + 3.05, spec.cz);
+        rg1.add(r1Light);
+        warmLights.push(r1Light);
+
+        addUpperBistroFloor(rg1, rfy1);
+        addBistroCeilingRig(levelCeilings[1], spec.groundY + 2 * spec.floorH - 0.12, [spec.cz - 4.0, spec.cz + 3.6], [spec.cx - 4.0, spec.cx + 4.8]);
+
+        let r1MonIdx = 0;
+
+        // NW Artisan Copper Coffee Drum Roaster + Roasting Q-Grader Pod
+        addCoffeeRoaster(rg1, spec.cx - 7.8, rfy1, spec.cz - 6.4);
+        makeDeskAt(rg1, spec.cx - 4.2, rfy1, spec.cz - 4.8, 2.4, 1.05, M);
+        registerChair(1, spec.cx - 4.2, rfy1, spec.cz - 5.72, 0, 1);
+        registerMonitor(1, r1MonIdx++, [spec.cx - 4.2, rfy1 + 0.77, spec.cz - 4.95], Math.PI, spec.cx - 4.2, spec.cz - 5.72, 'Head Coffee Roaster & Q-Grader · L1', 'Artisan Coffee Roastery');
+        [spec.cx - 4.85, spec.cx - 3.55].forEach((vx) => {
+          const gc = armchair(rg1, vx, rfy1, spec.cz - 3.65, Math.PI, oliveVelvet, M);
+          gc.scale.set(0.72, 0.86, 0.72);
+        });
+
+        // Fluted Terracotta & Brass Feature Divider between Roastery & Tapas Hall
+        boxAt(rg1, 0.22, 2.55, 5.2, spec.cx - 1.2, rfy1 + 1.275, spec.cz - 4.4, flutedTerracotta, true, true, 0.02);
+        boxAt(rg1, 0.26, 0.08, 5.26, spec.cx - 1.2, rfy1 + 2.56, spec.cz - 4.4, agedBrass, false, false);
+        boxAt(rg1, 0.08, 1.45, 3.0, spec.cx - 1.06, rfy1 + 1.55, spec.cz - 4.4, charredIron, false, false);
+        const l1DivTv = new THREE.Mesh(new THREE.PlaneGeometry(2.85, 1.32), cellarScreen.mat);
+        l1DivTv.position.set(spec.cx - 1.01, rfy1 + 1.55, spec.cz - 4.4);
+        l1DivTv.rotation.y = Math.PI / 2;
+        rg1.add(l1DivTv);
+
+        // NE Tapas & Mezze Bar + Pastry Vitrine + 3 Oxblood Stools
+        boxAt(rg1, 4.8, 1.02, 1.0, spec.cx + 6.4, rfy1 + 0.51, spec.cz - 6.4, flutedTerracotta, true, true, 0.02);
+        boxAt(rg1, 4.92, 0.06, 1.1, spec.cx + 6.4, rfy1 + 1.04, spec.cz - 6.4, creamLinen, false, true, 0.02);
+        boxAt(rg1, 1.4, 0.56, 0.72, spec.cx + 5.2, rfy1 + 1.35, spec.cz - 6.4, amberWineGlass, false, false);
+        [4.8, 6.4, 8.0].forEach((bx) => {
+          cylAt(rg1, 0.2, 0.2, 0.09, spec.cx + bx, rfy1 + 0.72, spec.cz - 5.3, bistroBurgundy, true, true, 16);
+          cylAt(rg1, 0.035, 0.035, 0.68, spec.cx + bx, rfy1 + 0.34, spec.cz - 5.3, agedBrass, false, false, 10);
+          cylAt(rg1, 0.17, 0.2, 0.04, spec.cx + bx, rfy1 + 0.02, spec.cz - 5.3, charredIron, false, true, 14);
+        });
+
+        // East Pastry & Tapas Chef Desk + South Sommelier Podium Desk
+        makeDeskAt(rg1, spec.cx + 7.2, rfy1, spec.cz - 1.8, 2.2, 1.0, M);
+        registerChair(1, spec.cx + 7.2, rfy1, spec.cz - 0.9, Math.PI, -1);
+        registerMonitor(1, r1MonIdx++, [spec.cx + 7.2, rfy1 + 0.77, spec.cz - 1.95], 0, spec.cx + 7.2, spec.cz - 0.9, 'Executive Pastry & Tapas Chef · L1', 'Tapas & Pastry Kitchen');
+
+        makeDeskAt(rg1, spec.cx - 2.6, rfy1, spec.cz + 4.7, 2.0, 0.95, M);
+        registerChair(1, spec.cx - 2.6, rfy1, spec.cz + 5.6, Math.PI, 1);
+        registerMonitor(1, r1MonIdx++, [spec.cx - 2.6, rfy1 + 0.77, spec.cz + 4.55], 0, spec.cx - 2.6, spec.cz + 5.6, 'Tapas Sommelier & Mixology Lead · L1', 'Mezzanine Cocktail Lounge');
+
+        // Mezzanine Velvet Bistro Banquette Tables (SE & Center-East)
+        [
+          [spec.cx + 1.2, spec.cz + 0.6],
+          [spec.cx + 6.2, spec.cz + 4.8],
+        ].forEach(([tx, tz], ti) => {
+          makeDiningTable(rg1, tx, rfy1, tz, M, 0.68);
+          const chL = armchair(rg1, tx - 1.08, rfy1, tz, Math.PI / 2, ti === 0 ? bistroBurgundy : oliveVelvet, M);
+          chL.scale.set(0.7, 0.86, 0.7);
+          const chR = armchair(rg1, tx + 1.08, rfy1, tz, -Math.PI / 2, ti === 0 ? oliveVelvet : bistroBurgundy, M);
+          chR.scale.set(0.7, 0.86, 0.7);
+        });
+        boxAt(rg1, 0.08, 1.85, 3.8, spec.cx + 9.54, rfy1 + 1.88, spec.cz + 4.8, charredIron, false, false);
+        const l1EastTv = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 1.65), kdsScreen.mat);
+        l1EastTv.position.set(spec.cx + 9.48, rfy1 + 1.88, spec.cz + 4.8);
+        l1EastTv.rotation.y = -Math.PI / 2;
+        rg1.add(l1EastTv);
+        plant(rg1, spec.cx + 8.6, rfy1, spec.cz + 7.4, 1.15, 1412, M, 'olive');
+      }
+
+      // -------------------------------------------------------------------------
+      // FLOOR 2 (L2): Climate-Controlled Amber Glass Wine Vault & Chef's Tasting Gallery
+      // -------------------------------------------------------------------------
+      const rg2 = levelGroups[2];
+      if (rg2) {
+        const rfy2 = spec.groundY + 2 * spec.floorH + SLAB_THICK * 0.5;
+        const r2Light = new THREE.PointLight(0xffe4c2, 1.26, 24);
+        r2Light.position.set(spec.cx, rfy2 + 3.05, spec.cz);
+        rg2.add(r2Light);
+        warmLights.push(r2Light);
+
+        addUpperBistroFloor(rg2, rfy2);
+        addBistroCeilingRig(levelCeilings[2], spec.groundY + 3 * spec.floorH - 0.12, [spec.cz - 4.0, spec.cz + 3.6], [spec.cx - 6.0, spec.cx + 5.2]);
+
+        let r2MonIdx = 0;
+
+        // NW Walk-In Amber-Glass Wine Vault (dx -9.4..-3.2, dz -8.6..-0.6, open East portal dz -3.2..-1.4)
+        boxAt(rg2, 6.2, 2.75, 0.08, spec.cx - 6.3, rfy2 + 1.375, spec.cz - 0.6, amberWineGlass, false, false);
+        boxAt(rg2, 0.08, 2.75, 5.4, spec.cx - 3.2, rfy2 + 1.375, spec.cz - 5.9, amberWineGlass, false, false);
+        boxAt(rg2, 0.08, 2.75, 0.8, spec.cx - 3.2, rfy2 + 1.375, spec.cz - 1.0, amberWineGlass, false, false);
+        boxAt(rg2, 0.12, 0.12, 8.0, spec.cx - 3.2, rfy2 + 2.76, spec.cz - 4.6, charredIron, true, false);
+        boxAt(rg2, 6.2, 0.12, 0.12, spec.cx - 6.3, rfy2 + 2.76, spec.cz - 0.6, charredIron, true, false);
+        addBistroSign(rg2, 'CLIMATE WINE VAULT · 14.5°C', spec.cx - 3.1, rfy2 + 2.52, spec.cz - 2.3, Math.PI / 2);
+
+        addWineRack(rg2, spec.cx - 6.3, rfy2, spec.cz - 8.2, 5.2, 0);
+        addWineRack(rg2, spec.cx - 9.1, rfy2, spec.cz - 4.6, 5.2, Math.PI / 2);
+        // Marble Decanting Island inside Vault (cx - 6.4, cz - 4.6)
+        boxAt(rg2, 2.1, 0.92, 1.05, spec.cx - 6.4, rfy2 + 0.46, spec.cz - 4.6, smokedOak, true, true, 0.02);
+        boxAt(rg2, 2.2, 0.06, 1.14, spec.cx - 6.4, rfy2 + 0.95, spec.cz - 4.6, creamLinen, false, true, 0.02);
+        cylAt(rg2, 0.12, 0.16, 0.28, spec.cx - 6.6, rfy2 + 1.12, spec.cz - 4.6, hammeredCopper, false, false, 14);
+        cylAt(rg2, 0.1, 0.14, 0.24, spec.cx - 6.0, rfy2 + 1.1, spec.cz - 4.6, agedBrass, false, false, 12);
+
+        // East-North: Grand 8-Seat Chef's Interactive Degustation Table (cx + 5.2, cz - 3.6)
+        const ctX = spec.cx + 5.2;
+        const ctZ = spec.cz - 3.6;
+        boxAt(rg2, 2.35, 0.08, 5.4, ctX, rfy2 + 0.75, ctZ, smokedOak, true, true, 0.03);
+        [-1.75, 1.75].forEach((tz) => boxAt(rg2, 1.25, 0.68, 0.22, ctX, rfy2 + 0.34, ctZ + tz, hammeredCopper, true, true, 0.02));
+        registerChair(2, ctX, rfy2, ctZ - 3.35, 0, 1);
+        registerMonitor(2, r2MonIdx++, [ctX, rfy2 + 0.8, ctZ - 2.45], Math.PI, ctX, ctZ - 3.35, 'Cellar Master & Head Sommelier · L2', 'Chef’s Tasting Gallery');
+        registerChair(2, ctX - 1.85, rfy2, ctZ - 0.8, Math.PI / 2, -1);
+        registerMonitor(2, r2MonIdx++, [ctX - 0.98, rfy2 + 0.8, ctZ - 0.8], -Math.PI / 2, ctX - 1.85, ctZ - 0.8, 'Chef’s Table Culinary Director · L2', 'Chef’s Tasting Gallery');
+        officeChair(rg2, ctX, rfy2, ctZ + 3.35, Math.PI, M);
+        [-1.8, 0.8, 2.0].forEach((czo) => officeChair(rg2, ctX - 1.85, rfy2, ctZ + czo, Math.PI / 2, M));
+        [-1.8, -0.5, 0.8, 2.0].forEach((czo) => officeChair(rg2, ctX + 1.85, rfy2, ctZ + czo, -Math.PI / 2, M));
+
+        // South-Center: Aged Charcuterie & Artisanal Fromage Glass Cabinet (cx - 2.6, cz + 6.8)
+        boxAt(rg2, 3.0, 1.85, 0.82, spec.cx - 2.6, rfy2 + 0.925, spec.cz + 6.8, smokedOak, true, true, 0.02);
+        boxAt(rg2, 2.75, 1.15, 0.14, spec.cx - 2.6, rfy2 + 1.12, spec.cz + 6.4, amberWineGlass, false, false);
+
+        // South-East Sommelier Velvet Lounge + Terroir Screen + Olive Trees
+        const l2Sofa = sofaWide(rg2, spec.cx + 7.2, rfy2, spec.cz + 4.8, -Math.PI / 2, oliveVelvet, M);
+        l2Sofa.scale.set(0.76, 0.92, 0.82);
+        cylAt(rg2, 0.44, 0.44, 0.04, spec.cx + 5.2, rfy2 + 0.44, spec.cz + 4.8, creamLinen, true, true, 20);
+        cylAt(rg2, 0.24, 0.28, 0.42, spec.cx + 5.2, rfy2 + 0.21, spec.cz + 4.8, hammeredCopper, true, true, 16);
+        const l2Arm1 = armchair(rg2, spec.cx + 3.8, rfy2, spec.cz + 3.9, Math.PI * 0.35, bistroBurgundy, M);
+        l2Arm1.scale.set(0.72, 0.88, 0.72);
+        const l2Arm2 = armchair(rg2, spec.cx + 3.8, rfy2, spec.cz + 5.7, Math.PI * 0.65, bistroBurgundy, M);
+        l2Arm2.scale.set(0.72, 0.88, 0.72);
+        boxAt(rg2, 0.08, 1.85, 3.8, spec.cx + 9.54, rfy2 + 1.88, spec.cz + 4.8, charredIron, false, false);
+        const l2EastTv = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 1.65), cellarScreen.mat);
+        l2EastTv.position.set(spec.cx + 9.48, rfy2 + 1.88, spec.cz + 4.8);
+        l2EastTv.rotation.y = -Math.PI / 2;
+        rg2.add(l2EastTv);
+        plant(rg2, spec.cx + 8.6, rfy2, spec.cz - 7.6, 1.15, 1413, M, 'olive');
+        plant(rg2, spec.cx + 8.6, rfy2, spec.cz + 7.6, 1.15, 1414, M, 'ficus');
+      }
+
+      // -------------------------------------------------------------------------
+      // FLOOR 3 (L3): Private Sky-Grill Boardroom, Culinary CEO Studio & Head Offices
+      // -------------------------------------------------------------------------
+      const rg3 = levelGroups[3];
+      if (rg3) {
+        const rfy3 = spec.groundY + 3 * spec.floorH + SLAB_THICK * 0.5;
+        const r3Light = new THREE.PointLight(0xffe7cb, 1.3, 25);
+        r3Light.position.set(spec.cx, rfy3 + 3.1, spec.cz);
+        rg3.add(r3Light);
+        warmLights.push(r3Light);
+
+        addUpperBistroFloor(rg3, rfy3);
+        addBistroCeilingRig(levelCeilings[3], spec.groundY + 4 * spec.floorH - 0.12, [spec.cz - 4.0, spec.cz + 3.6], [spec.cx - 4.8, spec.cx + 5.8]);
+
+        let r3MonIdx = 0;
+
+        // 1. EAST WING (dx +2.2..+9.4): Private Savanna Boardroom & Wine-Tasting Dining Room (portal dz -1.6..+0.2)
+        const brWallX = spec.cx + 2.2;
+        boxAt(rg3, 0.08, 2.95, 6.8, brWallX, rfy3 + 1.475, spec.cz - 5.0, amberWineGlass, false, false);
+        boxAt(rg3, 0.08, 2.95, 8.2, brWallX, rfy3 + 1.475, spec.cz + 4.3, amberWineGlass, false, false);
+        boxAt(rg3, 0.12, 0.12, 16.8, brWallX, rfy3 + 2.96, spec.cz, charredIron, true, false);
+        [-8.4, -1.6, 0.2, 4.2, 8.4].forEach((mz) => boxAt(rg3, 0.12, 2.96, 0.12, brWallX, rfy3 + 1.48, spec.cz + mz, agedBrass, true, false));
+        addBistroSign(rg3, 'PRIVATE DINING BOARDROOM', brWallX - 0.09, rfy3 + 2.66, spec.cz - 0.7, -Math.PI / 2);
+
+        const brX = spec.cx + 5.8;
+        const brZ = spec.cz + 0.0;
+        boxAt(rg3, 2.1, 0.08, 6.2, brX, rfy3 + 0.75, brZ, smokedOak, true, true, 0.03);
+        boxAt(rg3, 2.16, 0.04, 6.26, brX, rfy3 + 0.71, brZ, agedBrass, true, true, 0.01);
+        [-1.9, 1.9].forEach((pz) => boxAt(rg3, 1.15, 0.68, 0.24, brX, rfy3 + 0.34, brZ + pz, hammeredCopper, true, true, 0.02));
+        registerChair(3, brX, rfy3, brZ - 3.75, 0, 1);
+        registerMonitor(3, r3MonIdx++, [brX, rfy3 + 0.8, brZ - 2.85], Math.PI, brX, brZ - 3.75, 'Hospitality Group Director · L3', 'Private Dining Boardroom');
+        registerChair(3, brX - 1.65, rfy3, brZ - 1.2, Math.PI / 2, -1);
+        registerMonitor(3, r3MonIdx++, [brX - 0.85, rfy3 + 0.8, brZ - 1.2], -Math.PI / 2, brX - 1.65, brZ - 1.2, 'VP Culinary & Beverage · L3', 'Private Dining Boardroom');
+        officeChair(rg3, brX, rfy3, brZ + 3.75, Math.PI, M);
+        [-2.4, 0.2, 1.6].forEach((czo) => officeChair(rg3, brX - 1.65, rfy3, brZ + czo, Math.PI / 2, M));
+        [-2.4, -1.0, 0.4, 1.8].forEach((czo) => officeChair(rg3, brX + 1.65, rfy3, brZ + czo, -Math.PI / 2, M));
+        boxAt(rg3, 0.08, 1.95, 4.4, spec.cx + 9.54, rfy3 + 1.9, brZ, charredIron, false, false);
+        const l3BrTv = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.75), cellarScreen.mat);
+        l3BrTv.position.set(spec.cx + 9.48, rfy3 + 1.9, brZ);
+        l3BrTv.rotation.y = -Math.PI / 2;
+        rg3.add(l3BrTv);
+        plant(rg3, spec.cx + 8.6, rfy3, spec.cz - 7.4, 1.15, 1415, M, 'olive');
+        plant(rg3, spec.cx + 8.6, rfy3, spec.cz + 7.4, 1.15, 1416, M, 'ficus');
+
+        // 2. NW CORNER (dx -9.4..-2.4, dz -8.4..-2.4): Founder & Culinary CEO Penthouse Studio (portal dx -5.2..-3.6)
+        boxAt(rg3, 4.2, 2.95, 0.08, spec.cx - 7.3, rfy3 + 1.475, spec.cz - 2.4, amberWineGlass, false, false);
+        boxAt(rg3, 1.2, 2.95, 0.08, spec.cx - 3.0, rfy3 + 1.475, spec.cz - 2.4, amberWineGlass, false, false);
+        boxAt(rg3, 7.0, 0.12, 0.12, spec.cx - 5.9, rfy3 + 2.96, spec.cz - 2.4, charredIron, true, false);
+        boxAt(rg3, 0.08, 2.95, 6.0, spec.cx - 2.4, rfy3 + 1.475, spec.cz - 5.4, amberWineGlass, false, false);
+        [-9.4, -5.2, -3.6, -2.4].forEach((px) => boxAt(rg3, 0.12, 2.96, 0.12, spec.cx + px, rfy3 + 1.48, spec.cz - 2.4, agedBrass, true, false));
+        addBistroSign(rg3, 'CULINARY CEO STUDIO', spec.cx - 7.2, rfy3 + 2.66, spec.cz - 2.3, 0);
+
+        addWineRack(rg3, spec.cx - 5.9, rfy3, spec.cz - 8.2, 4.6, 0);
+        const ceoBsX = spec.cx - 5.9;
+        boxAt(rg3, 2.5, 0.065, 1.08, ceoBsX, rfy3 + 0.74, spec.cz - 5.6, smokedOak, true, true, 0.02);
+        boxAt(rg3, 2.34, 0.72, 0.14, ceoBsX, rfy3 + 0.36, spec.cz - 5.18, hammeredCopper, true, true, 0.01);
+        registerChair(3, ceoBsX, rfy3, spec.cz - 6.52, 0, 1);
+        registerMonitor(3, r3MonIdx++, [ceoBsX, rfy3 + 0.77, spec.cz - 5.74], Math.PI, ceoBsX, spec.cz - 6.52, 'Founder & Culinary CEO · L3', 'Culinary CEO Studio');
+        [ceoBsX - 0.75, ceoBsX + 0.75].forEach((gx) => {
+          const gc = armchair(rg3, gx, rfy3, spec.cz - 4.35, Math.PI, bistroBurgundy, M);
+          gc.scale.set(0.72, 0.86, 0.72);
+        });
+
+        // 3. SOUTH-CENTER (dx -4.2..+1.8, dz +2.8..+8.4): Head of Events & Culinary Ops Office (portal dx -2.2..-0.6)
+        boxAt(rg3, 2.0, 2.95, 0.08, spec.cx - 3.2, rfy3 + 1.475, spec.cz + 2.8, amberWineGlass, false, false);
+        boxAt(rg3, 2.4, 2.95, 0.08, spec.cx + 0.6, rfy3 + 1.475, spec.cz + 2.8, amberWineGlass, false, false);
+        boxAt(rg3, 6.0, 0.12, 0.12, spec.cx - 1.2, rfy3 + 2.96, spec.cz + 2.8, charredIron, true, false);
+        boxAt(rg3, 0.08, 2.95, 5.6, spec.cx - 4.2, rfy3 + 1.475, spec.cz + 5.6, amberWineGlass, false, false);
+        [-4.2, -2.2, -0.6, 1.8].forEach((px) => boxAt(rg3, 0.12, 2.96, 0.12, spec.cx + px, rfy3 + 1.48, spec.cz + 2.8, agedBrass, true, false));
+        addBistroSign(rg3, 'HEAD OF EVENTS & OPS', spec.cx - 1.2, rfy3 + 2.66, spec.cz + 2.7, Math.PI);
+
+        const evX = spec.cx - 1.2;
+        boxAt(rg3, 2.4, 0.06, 1.04, evX, rfy3 + 0.74, spec.cz + 5.6, smokedOak, true, true, 0.02);
+        [-1.0, 1.0].forEach((lx) => boxAt(rg3, 0.08, 0.72, 0.84, evX + lx, rfy3 + 0.36, spec.cz + 5.6, charredIron, true, true, 0.01));
+        registerChair(3, evX, rfy3, spec.cz + 6.52, Math.PI, -1);
+        registerMonitor(3, r3MonIdx++, [evX, rfy3 + 0.77, spec.cz + 5.74], 0, evX, spec.cz + 6.52, 'Head of Events & Culinary Ops · L3', 'Head of Events Office');
+        [evX - 0.75, evX + 0.75].forEach((vx) => {
+          const vc = armchair(rg3, vx, rfy3, spec.cz + 4.35, 0, oliveVelvet, M);
+          vc.scale.set(0.72, 0.86, 0.72);
+        });
+
+        // 4. CENTRAL MEZZANINE: Private Dining Concierge Reception & Brass Martini Lounge
+        const recX = spec.cx - 0.1;
+        boxAt(rg3, 2.0, 0.06, 0.92, recX, rfy3 + 0.74, spec.cz - 6.2, creamLinen, true, true, 0.02);
+        boxAt(rg3, 2.04, 0.9, 0.14, recX, rfy3 + 0.45, spec.cz - 5.76, flutedTerracotta, true, true, 0.02);
+        registerChair(3, recX, rfy3, spec.cz - 7.1, 0, 1);
+        registerMonitor(3, r3MonIdx++, [recX, rfy3 + 0.77, spec.cz - 6.32], Math.PI, recX, spec.cz - 7.1, 'VIP Private Dining Concierge · L3', 'Sky-Grill Concierge');
+
+        const mSofa = sofaWide(rg3, spec.cx + 1.0, rfy3, spec.cz - 1.2, -Math.PI / 2, oliveVelvet, M);
+        mSofa.scale.set(0.74, 0.9, 0.8);
+        cylAt(rg3, 0.42, 0.42, 0.04, spec.cx - 0.3, rfy3 + 0.44, spec.cz - 1.2, creamLinen, true, true, 20);
+        cylAt(rg3, 0.22, 0.26, 0.42, spec.cx - 0.3, rfy3 + 0.21, spec.cz - 1.2, hammeredCopper, true, true, 16);
+        const mArm1 = armchair(rg3, spec.cx - 1.4, rfy3, spec.cz - 2.0, Math.PI * 0.35, bistroBurgundy, M);
+        mArm1.scale.set(0.7, 0.86, 0.7);
+        const mArm2 = armchair(rg3, spec.cx - 1.4, rfy3, spec.cz - 0.4, Math.PI * 0.65, bistroBurgundy, M);
+        mArm2.scale.set(0.7, 0.86, 0.7);
+        plant(rg3, spec.cx - 5.4, rfy3, spec.cz + 7.4, 1.1, 1417, M, 'olive');
+      }
+
+      // -------------------------------------------------------------------------
+      // CONTINUOUS SW IRON & HAMMERED-COPPER BISTRO STAIRWELL CORE (G -> L3)
+      // -------------------------------------------------------------------------
+      const bsXWest = spec.cx - 9.55;
+      const bsXEast = spec.cx - 6.45;
+      const bsXMid = spec.cx - 8.0;
+      const bsZNorth = spec.cz + 1.5;
+      const bsZSouth = spec.cz + 6.7;
+      const bsW = bsXEast - bsXWest;
+      const bsD = bsZSouth - bsZNorth;
+      const bsCx = (bsXWest + bsXEast) * 0.5;
+      const bsCz = (bsZNorth + bsZSouth) * 0.5;
+      const bsBridgeZ = spec.cz + 2.85;
+      const bsHalfStartZ = spec.cz + 5.45;
+      const bsSigns = ['HEARTH STAIRS · G → L1', 'STAIRS · L1 ↔ L2', 'STAIRS · L2 ↔ L3', 'STAIRS · L3 SKY GRILL'];
+
+      const addBistroRail = (parent: THREE.Object3D, x: number, y0: number, z0: number, y1: number, z1: number) => {
+        const p0 = new THREE.Vector3(x, y0 + 0.94, z0);
+        const p1 = new THREE.Vector3(x, y1 + 0.94, z1);
+        const len = p0.distanceTo(p1);
+        const dir = new THREE.Vector3().subVectors(p1, p0).normalize();
+        const mid = new THREE.Vector3().addVectors(p0, p1).multiplyScalar(0.5);
+        const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, len, 10), agedBrass);
+        rail.position.copy(mid);
+        rail.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+        parent.add(rail);
+        [0.15, 0.5, 0.85].forEach((t) => {
+          const py = THREE.MathUtils.lerp(y0, y1, t);
+          const pz = THREE.MathUtils.lerp(z0, z1, t);
+          cylAt(parent, 0.015, 0.015, 0.94, x, py + 0.47, pz, charredIron, false, false, 8);
+        });
+      };
+
+      for (let lv = 0; lv < spec.floors; lv++) {
+        const rgS = levelGroups[lv];
+        if (!rgS) continue;
+        const fyS = spec.groundY + lv * spec.floorH + SLAB_THICK * 0.5;
+        const wallH = spec.floorH - SLAB_THICK - 0.04;
+
+        // North vestibule landing finish & warm brass threshold bar
+        boxAt(rgS, 3.0, 0.018, 1.32, bsCx, fyS + 0.009, spec.cz + 2.18, bistroMosaicFloor, false, true);
+        boxAt(rgS, 0.14, 0.018, 1.24, bsXEast, fyS + 0.012, spec.cz + 2.2, agedBrass, false, false);
+
+        // West, North & South charred-iron & terracotta base + amber-glass shaft walls
+        boxAt(rgS, 0.1, 0.24, bsD, bsXWest, fyS + 0.12, bsCz, hammeredCopper, true, true);
+        boxAt(rgS, 0.05, wallH - 0.3, bsD, bsXWest, fyS + 0.24 + (wallH - 0.3) * 0.5, bsCz, amberWineGlass, false, false);
+        boxAt(rgS, 0.12, 0.12, bsD, bsXWest, fyS + wallH - 0.02, bsCz, charredIron, false, false);
+        [bsZNorth, spec.cz + 4.1, bsZSouth].forEach((mz) => boxAt(rgS, 0.1, wallH, 0.1, bsXWest, fyS + wallH * 0.5, mz, agedBrass, true, false));
+        [bsZNorth, bsZSouth].forEach((wz) => {
+          boxAt(rgS, bsW, 0.24, 0.1, bsCx, fyS + 0.12, wz, hammeredCopper, true, true);
+          boxAt(rgS, bsW, wallH - 0.3, 0.05, bsCx, fyS + 0.24 + (wallH - 0.3) * 0.5, wz, amberWineGlass, false, false);
+          boxAt(rgS, bsW, 0.12, 0.12, bsCx, fyS + wallH - 0.02, wz, charredIron, false, false);
+          boxAt(rgS, 0.1, wallH, 0.1, bsXMid, fyS + wallH * 0.5, wz, agedBrass, true, false);
+        });
+
+        // East glass shaft wall south of doorway (dz = +2.82..+6.70 -> 3.88m)
+        boxAt(rgS, 0.12, 0.36, 3.88, bsXEast, fyS + 0.18, spec.cz + 4.76, flutedTerracotta, true, true);
+        boxAt(rgS, 0.05, wallH - 0.42, 3.88, bsXEast, fyS + 0.36 + (wallH - 0.42) * 0.5, spec.cz + 4.76, amberWineGlass, false, false);
+        boxAt(rgS, 0.12, 0.12, 3.88, bsXEast, fyS + wallH - 0.02, spec.cz + 4.76, charredIron, false, false);
+        boxAt(rgS, 0.1, wallH, 0.1, bsXEast, fyS + wallH * 0.5, spec.cz + 4.76, agedBrass, true, false);
+        boxAt(rgS, 0.1, wallH, 0.1, bsXEast, fyS + wallH * 0.5, bsZSouth, agedBrass, true, false);
+
+        // Framed open Brass-and-Iron Stairwell Door on East shaft face (dx = -6.45, dz = +1.56..+2.82)
+        const doorZ = spec.cz + 2.19;
+        const doorH = 2.48;
+        [spec.cz + 1.56, spec.cz + 2.82].forEach((jz) => {
+          boxAt(rgS, 0.15, wallH, 0.11, bsXEast, fyS + wallH * 0.5, jz, agedBrass, true, false, 0.01);
+        });
+        boxAt(rgS, 0.15, 0.12, 1.38, bsXEast, fyS + doorH + 0.06, doorZ, charredIron, true, false, 0.01);
+        const transomH = Math.max(0.3, wallH - doorH - 0.16);
+        boxAt(rgS, 0.05, transomH, 1.2, bsXEast, fyS + doorH + 0.12 + transomH * 0.5, doorZ, amberWineGlass, false, false);
+
+        // Swung-open smoked-oak & brass wine-cellar style door leaf
+        const doorLeaf = new THREE.Group();
+        doorLeaf.position.set(bsXEast + 0.02, fyS, spec.cz + 2.78);
+        doorLeaf.rotation.y = -2.22;
+        boxAt(doorLeaf, 0.055, doorH - 0.04, 0.09, 0, (doorH - 0.04) * 0.5 + 0.02, -0.045, smokedOak, true, false);
+        boxAt(doorLeaf, 0.055, doorH - 0.04, 0.09, 0, (doorH - 0.04) * 0.5 + 0.02, -1.08, smokedOak, true, false);
+        boxAt(doorLeaf, 0.055, 0.14, 1.12, 0, 0.09, -0.56, hammeredCopper, true, false);
+        boxAt(doorLeaf, 0.055, 0.12, 1.12, 0, doorH - 0.08, -0.56, hammeredCopper, true, false);
+        boxAt(doorLeaf, 0.028, doorH - 0.3, 0.96, 0, doorH * 0.5, -0.56, amberWineGlass, false, false);
+        cylAt(doorLeaf, 0.014, 0.014, 0.86, -0.055, 1.15, -0.98, agedBrass, false, false, 10);
+        cylAt(doorLeaf, 0.014, 0.014, 0.86, 0.055, 1.15, -0.98, agedBrass, false, false, 10);
+        rgS.add(doorLeaf);
+        addBistroSign(rgS, bsSigns[lv] ?? `STAIRS · L${lv}`, bsXEast + 0.1, fyS + doorH + 0.36, doorZ, Math.PI / 2);
+
+        // Two-Flight Switchback Charred-Iron & Smoked-Oak Stairs (G->L1, L1->L2, L2->L3)
+        if (lv < spec.floors - 1) {
+          const steps = 8;
+          const runLen = bsHalfStartZ - bsBridgeZ;
+          const stepDepth = runLen / steps;
+          const halfRise = spec.floorH * 0.5;
+          const stepRise = halfRise / steps;
+          const yMidLv = fyS + halfRise;
+          const yTopLv = fyS + spec.floorH;
+
+          // Flight 1 (West lane dx = -8.77, climbs Southward +2.85 -> +5.45)
+          for (let st = 0; st < steps; st++) {
+            const ty = fyS + (st + 0.5) * stepRise;
+            const tz = bsBridgeZ + (st + 0.5) * stepDepth;
+            boxAt(rgS, 1.32, stepRise, stepDepth + 0.03, spec.cx - 8.77, ty, tz, charredIron, true, true, 0.008);
+            boxAt(rgS, 1.35, 0.045, stepDepth + 0.04, spec.cx - 8.77, ty + stepRise * 0.5 + 0.01, tz, smokedOak, false, true, 0.008);
+            boxAt(rgS, 1.35, 0.016, 0.035, spec.cx - 8.77, ty + stepRise * 0.5 + 0.028, tz - stepDepth * 0.45, agedBrass, false, false);
+          }
+
+          // South Half Landing (y = fyS + 2.10)
+          boxAt(rgS, 2.94, 0.16, 1.22, bsCx, yMidLv - 0.07, spec.cz + 6.06, charredIron, true, true, 0.015);
+          boxAt(rgS, 2.9, 0.04, 1.18, bsCx, yMidLv + 0.02, spec.cz + 6.06, smokedOak, false, true, 0.01);
+
+          // Flight 2 (East lane dx = -7.23, climbs Northward +5.45 -> +2.85)
+          for (let st = 0; st < steps; st++) {
+            const ty = yMidLv + (st + 0.5) * stepRise;
+            const tz = bsHalfStartZ - (st + 0.5) * stepDepth;
+            boxAt(rgS, 1.32, stepRise * 0.55, stepDepth + 0.03, spec.cx - 7.23, ty + stepRise * 0.22, tz, charredIron, true, true, 0.008);
+            boxAt(rgS, 1.35, 0.045, stepDepth + 0.04, spec.cx - 7.23, ty + stepRise * 0.5 + 0.01, tz, smokedOak, false, true, 0.008);
+            boxAt(rgS, 1.35, 0.016, 0.035, spec.cx - 7.23, ty + stepRise * 0.5 + 0.028, tz + stepDepth * 0.45, agedBrass, false, false);
+          }
+
+          addBistroRail(rgS, spec.cx - 9.42, fyS, bsBridgeZ, yMidLv, bsHalfStartZ);
+          addBistroRail(rgS, spec.cx - 8.08, fyS, bsBridgeZ, yMidLv, bsHalfStartZ);
+          addBistroRail(rgS, spec.cx - 7.92, yMidLv, bsHalfStartZ, yTopLv, bsBridgeZ);
+          addBistroRail(rgS, spec.cx - 6.58, yMidLv, bsHalfStartZ, yTopLv, bsBridgeZ);
+        }
+
+        // Shaft balustrades (ground under-stair guard + upper-floor drop guardrails)
+        if (lv === 0) {
+          boxAt(rgS, 1.44, 1.45, 0.06, spec.cx - 7.23, fyS + 0.725, bsBridgeZ, amberWineGlass, false, false);
+          boxAt(rgS, 0.06, 1.04, 2.6, bsXMid, fyS + 0.52, spec.cz + 4.15, amberWineGlass, false, false);
+        } else {
+          boxAt(rgS, 0.06, 1.04, 3.8, bsXMid, fyS + 0.52, spec.cz + 4.75, amberWineGlass, false, false);
+          boxAt(rgS, 0.05, 1.04, 3.8, spec.cx - 9.48, fyS + 0.52, spec.cz + 4.75, amberWineGlass, false, false);
+          boxAt(rgS, 2.94, 1.04, 0.05, bsCx, fyS + 0.52, spec.cz + 6.64, amberWineGlass, false, false);
+          if (lv === spec.floors - 1) {
+            boxAt(rgS, 1.46, 1.04, 0.06, spec.cx - 8.77, fyS + 0.52, bsBridgeZ, amberWineGlass, false, false);
+          }
+        }
+      }
     } else if (spec.id === 'dealership') {
       // Cantilevered forecourt showroom canopy with cedar soffit (Reference Image 1)
       const foreCanopy = new THREE.Mesh(
@@ -1196,7 +2079,11 @@ export function buildDistrictBuildings(
       g0.add(obMesh);
       obBoard.setMesh(obMesh);
     } else if (spec.id === 'travel') {
-      // Sculpted sloped cantilevered aviation wing canopy with cedar soffit (facing north street)
+      // =========================================================================
+      // SKYLINE TRAVEL & AVIATION: Bespoke Whole-Building Aviation Atelier (G -> L3)
+      // =========================================================================
+
+      // 1. North Cantilevered Wing Canopy & Cedar Soffit
       const travelCanopy = new THREE.Mesh(
         getSlopedRoofBladeGeo(15.2, 3.8, 0.12, 0.34, 0.56, 0.78, 0.04),
         archMats.stuccoWhite
@@ -1216,86 +2103,941 @@ export function buildDistrictBuildings(
         cylAt(g0, 0.15, 0.17, spec.floorH + 0.42, spec.doorX + px, spec.groundY + (spec.floorH + 0.42) * 0.5, spec.doorZ - 2.95, archMats.bronzeMullion, true, true, 14);
       });
 
-      // Suspended rotating 3D globe in main lobby
-      const globeMat = new THREE.MeshStandardMaterial({
-        map: globeTex,
-        roughness: 0.35,
-        metalness: 0.1,
+      // Signature Aviation Material Palette (unique to Skyline Travel & Aviation)
+      const titaniumMat = std({ color: 0xc5cdd6, roughness: 0.32, metalness: 0.65, envMapIntensity: 0.7 });
+      const navyJetMat = std({ color: 0x132238, roughness: 0.58, metalness: 0.18 });
+      const birchSlatMat = std({
+        map: mkTileTex(M.textures.woodTex, 2, 2),
+        normalMap: mkTileTex(M.textures.woodNormal, 2, 2),
+        normalScale: new THREE.Vector2(0.35, 0.35),
+        color: 0xd9c7ad,
+        roughness: 0.56,
       });
-      const globe = new THREE.Mesh(new THREE.SphereGeometry(1.18, 28, 20), globeMat);
-      globe.position.set(spec.cx, fy + 2.35, spec.cz - 2.0);
+      const skyUpholstery = std({ color: 0x2563eb, roughness: 0.76 });
+      const cobaltLightUpholstery = std({ color: 0x3b82f6, roughness: 0.74 });
+      const amberFlightAccent = std({ color: 0xe67e22, roughness: 0.44, metalness: 0.18 });
+      const cabinGlass = new THREE.MeshPhysicalMaterial({
+        color: 0xd6eefc,
+        roughness: 0.06,
+        metalness: 0.06,
+        transparent: true,
+        opacity: 0.26,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+
+      const travelCarpetTex = makeCanvasTex('travel_navy_runway_carpet', 256, 256, (g, W, H) => {
+        g.fillStyle = '#182538';
+        g.fillRect(0, 0, W, H);
+        g.fillStyle = '#1e2f47';
+        for (let y = 0; y < H; y += 16) {
+          g.fillRect(0, y, W, 6);
+        }
+        g.strokeStyle = 'rgba(56,189,248,0.16)';
+        g.lineWidth = 2;
+        g.beginPath();
+        g.moveTo(0, 128);
+        g.lineTo(W, 128);
+        g.stroke();
+      });
+      travelCarpetTex.wrapS = travelCarpetTex.wrapT = THREE.RepeatWrapping;
+      travelCarpetTex.repeat.set(5, 5);
+      const travelNavyCarpet = std({ map: travelCarpetTex, roughness: 0.94, metalness: 0.02 });
+
+      const terrazzoTileTex = makeCanvasTex('travel_pearl_terrazzo', 256, 256, (g, W, H) => {
+        g.fillStyle = '#ebe8e1';
+        g.fillRect(0, 0, W, H);
+        for (let i = 0; i < 110; i++) {
+          const sx = ((i * 73) % 240) + 8;
+          const sy = ((i * 137) % 240) + 8;
+          g.fillStyle = i % 3 === 0 ? '#64748b' : i % 3 === 1 ? '#38bdf8' : '#c9bfa8';
+          g.fillRect(sx, sy, 3 + (i % 4), 2 + (i % 3));
+        }
+      });
+      terrazzoTileTex.wrapS = terrazzoTileTex.wrapT = THREE.RepeatWrapping;
+      terrazzoTileTex.repeat.set(6, 6);
+      const travelPearlTerrazzo = std({ map: terrazzoTileTex, roughness: 0.36, metalness: 0.06 });
+
+      // Aviation Architectural Helpers
+      const addTravelPlaque = (parent: THREE.Object3D, title: string, x: number, y: number, z: number, rotY = 0) => {
+        const tex = makeCanvasTex(`travel_plaque_${title}`, 380, 76, (g, w, h) => {
+          g.fillStyle = '#0f1c2e';
+          rr(g, 2, 2, w - 4, h - 4, 10);
+          g.fill();
+          g.strokeStyle = '#38bdf8';
+          g.lineWidth = 2.5;
+          rr(g, 5, 5, w - 10, h - 10, 8);
+          g.stroke();
+          g.fillStyle = '#38bdf8';
+          g.fillRect(16, 16, 6, h - 32);
+          g.fillStyle = '#f8fafc';
+          g.font = '800 19px "Plus Jakarta Sans", sans-serif';
+          g.textAlign = 'left';
+          g.textBaseline = 'middle';
+          g.fillText(title, 34, h * 0.5);
+        });
+        const mesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(1.48, 0.3),
+          new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false })
+        );
+        mesh.position.set(x, y, z);
+        mesh.rotation.y = rotY;
+        parent.add(mesh);
+      };
+
+      // Sculpted Swept Airfoil Ceiling Baffles for Aviation Levels
+      const addAirfoilCeilingRibs = (parent: THREE.Object3D, baseCeilY: number, zPositions: number[]) => {
+        const ribShape = new THREE.Shape();
+        ribShape.moveTo(-7.2, 0.14);
+        ribShape.quadraticCurveTo(0, -0.08, 7.2, 0.14);
+        ribShape.lineTo(7.2, 0.24);
+        ribShape.quadraticCurveTo(0, 0.04, -7.2, 0.24);
+        ribShape.closePath();
+        const ribGeo = new THREE.ExtrudeGeometry(ribShape, {
+          depth: 0.18,
+          bevelEnabled: true,
+          bevelThickness: 0.015,
+          bevelSize: 0.015,
+          bevelSegments: 2,
+          curveSegments: 14,
+        });
+        ribGeo.translate(0, 0, -0.09);
+        zPositions.forEach((zPos) => {
+          const m = new THREE.Mesh(ribGeo, M.white);
+          m.position.set(spec.cx - 1.2, baseCeilY - 0.34, zPos);
+          parent.add(m);
+        });
+      };
+
+      // Rounded Aircraft-Cabin Porthole Window Partition Wall (ExtrudeGeometry)
+      const addCabinWindowWall = (
+        parent: THREE.Object3D,
+        x: number,
+        y: number,
+        z: number,
+        len: number,
+        h: number,
+        winCount: number,
+        rotY = 0
+      ) => {
+        const shape = new THREE.Shape();
+        const hl = len * 0.5;
+        shape.moveTo(-hl, 0);
+        shape.lineTo(hl, 0);
+        shape.lineTo(hl, h);
+        shape.lineTo(-hl, h);
+        shape.closePath();
+
+        const spacing = len / (winCount + 0.4);
+        for (let i = 0; i < winCount; i++) {
+          const wx = -hl + spacing * (i + 0.7);
+          const wy = h * 0.54;
+          const ww = 0.26;
+          const wh = 0.42;
+          const r = 0.14;
+          const hole = new THREE.Path();
+          hole.moveTo(wx - ww + r, wy - wh);
+          hole.lineTo(wx + ww - r, wy - wh);
+          hole.absarc(wx + ww - r, wy - wh + r, r, -Math.PI / 2, 0, false);
+          hole.lineTo(wx + ww, wy + wh - r);
+          hole.absarc(wx + ww - r, wy + wh - r, r, 0, Math.PI / 2, false);
+          hole.lineTo(wx - ww + r, wy + wh);
+          hole.absarc(wx - ww + r, wy + wh - r, r, Math.PI / 2, Math.PI, false);
+          hole.lineTo(wx - ww, wy - wh + r);
+          hole.absarc(wx - ww + r, wy - wh + r, r, Math.PI, Math.PI * 1.5, false);
+          shape.holes.push(hole);
+        }
+
+        const wallGeo = new THREE.ExtrudeGeometry(shape, {
+          depth: 0.16,
+          bevelEnabled: true,
+          bevelThickness: 0.015,
+          bevelSize: 0.015,
+          bevelSegments: 2,
+          curveSegments: 10,
+        });
+        wallGeo.translate(0, 0, -0.08);
+        const wallMesh = new THREE.Mesh(wallGeo, M.white);
+        wallMesh.position.set(x, y, z);
+        wallMesh.rotation.y = rotY;
+        wallMesh.castShadow = true;
+        wallMesh.receiveShadow = true;
+        parent.add(wallMesh);
+
+        // Glazed strip sandwiched inside the porthole cutouts
+        const glassPane = new THREE.Mesh(new THREE.BoxGeometry(len - 0.3, h * 0.45, 0.04), cabinGlass);
+        glassPane.position.set(x, y + h * 0.54, z);
+        glassPane.rotation.y = rotY;
+        parent.add(glassPane);
+      };
+
+      // Multi-part Composite Swept-Wing Private Jet Scale Model (Group of 10 distinct parts)
+      const buildJetScaleModel = (
+        parent: THREE.Object3D,
+        x: number,
+        y: number,
+        z: number,
+        sc: number,
+        rotY: number,
+        pitchRad = -0.18
+      ) => {
+        const g = new THREE.Group();
+        g.position.set(x, y, z);
+        g.rotation.y = rotY;
+        g.scale.setScalar(sc);
+
+        // Titanium display pedestal
+        cylAt(g, 0.56, 0.68, 0.14, 0, 0.07, 0, navyJetMat, true, true, 22);
+        cylAt(g, 0.055, 0.09, 1.48, 0, 0.78, 0, titaniumMat, true, false, 12);
+
+        const aircraft = new THREE.Group();
+        aircraft.position.set(0, 1.56, 0);
+        aircraft.rotation.x = pitchRad;
+        // Fuselage body & nosecone
+        const fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.15, 1.95, 16), M.white);
+        fuse.rotation.x = Math.PI / 2;
+        fuse.castShadow = true;
+        aircraft.add(fuse);
+        const nose = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.52, 16), M.white);
+        nose.rotation.x = Math.PI / 2;
+        nose.position.z = 1.23;
+        aircraft.add(nose);
+        // Dark cockpit windshield visor & cobalt livery belly stripe
+        const visor = new THREE.Mesh(new THREE.CylinderGeometry(0.165, 0.165, 0.24, 14, 1, false, -0.9, 1.8), navyJetMat);
+        visor.rotation.x = Math.PI / 2;
+        visor.position.set(0, 0.03, 0.96);
+        aircraft.add(visor);
+        boxAt(aircraft, 0.33, 0.04, 1.75, 0, -0.04, 0, skyUpholstery, false, false);
+        // Swept main wings (left & right)
+        [-1, 1].forEach((s) => {
+          const wing = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.035, 0.42), titaniumMat);
+          wing.position.set(s * 0.64, -0.04, -0.05);
+          wing.rotation.y = s * -0.44;
+          wing.rotation.z = s * 0.06;
+          wing.castShadow = true;
+          aircraft.add(wing);
+          // Winglet tip
+          const wtip = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.22, 0.18), skyUpholstery);
+          wtip.position.set(s * 1.16, 0.08, -0.3);
+          aircraft.add(wtip);
+          // Rear fuselage-mounted twin jet nacelles
+          const eng = new THREE.Mesh(new THREE.CylinderGeometry(0.072, 0.062, 0.44, 12), titaniumMat);
+          eng.rotation.x = Math.PI / 2;
+          eng.position.set(s * 0.24, 0.07, -0.62);
+          aircraft.add(eng);
+        });
+        // Swept vertical tail fin + horizontal T-tail
+        const vTail = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.52, 0.44), skyUpholstery);
+        vTail.position.set(0, 0.32, -0.84);
+        vTail.rotation.x = -0.38;
+        aircraft.add(vTail);
+        const hTail = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.03, 0.22), M.white);
+        hTail.position.set(0, 0.52, -0.98);
+        aircraft.add(hTail);
+
+        g.add(aircraft);
+        parent.add(g);
+        return aircraft;
+      };
+
+      // Reusable aviation screens (for L1/L2/L3 walls & cabins)
+      const radarScreen = createCustomBoardScreen(screenReg, 560, 260, (g, w, h, t) => {
+        g.fillStyle = '#071322';
+        g.fillRect(0, 0, w, h);
+        g.fillStyle = '#0e2440';
+        g.fillRect(0, 0, w, 34);
+        g.fillStyle = '#38bdf8';
+        g.fillRect(0, 0, 8, 34);
+        g.fillStyle = '#f8fafc';
+        g.font = '800 15px "Plus Jakarta Sans", sans-serif';
+        g.textAlign = 'left';
+        g.textBaseline = 'middle';
+        g.fillText('SKYLINE OCC · LIVE GLOBAL FLIGHT RADAR & METAR TELEMETRY', 18, 17);
+
+        // Stylized dark continent outlines + glowing great-circle flight arcs
+        g.fillStyle = '#152d47';
+        [
+          [90, 95, 48, 32],
+          [265, 130, 56, 62],
+          [258, 72, 42, 22],
+          [390, 96, 84, 42],
+          [460, 185, 38, 22],
+        ].forEach(([cxo, cyo, rx, ry]) => {
+          g.beginPath();
+          g.ellipse(cxo, cyo, rx, ry, 0.15, 0, Math.PI * 2);
+          g.fill();
+        });
+        g.strokeStyle = '#38bdf8';
+        g.lineWidth = 2;
+        [
+          [275, 145, 250, 70],
+          [275, 145, 345, 118],
+          [275, 145, 95, 92],
+          [275, 145, 430, 128],
+        ].forEach(([x0, y0, x1, y1], ai) => {
+          g.beginPath();
+          g.moveTo(x0, y0);
+          g.quadraticCurveTo((x0 + x1) * 0.5, Math.min(y0, y1) - 36, x1, y1);
+          g.stroke();
+          const u = ((t * 0.25 + ai * 0.27) % 1);
+          const qx = (1 - u) * (1 - u) * x0 + 2 * (1 - u) * u * ((x0 + x1) * 0.5) + u * u * x1;
+          const qy = (1 - u) * (1 - u) * y0 + 2 * (1 - u) * u * (Math.min(y0, y1) - 36) + u * u * y1;
+          g.fillStyle = '#facc15';
+          g.beginPath();
+          g.arc(qx, qy, 4.5, 0, Math.PI * 2);
+          g.fill();
+        });
+        g.fillStyle = '#7dd3fc';
+        g.font = '700 12px monospace';
+        g.fillText('NBO HKJK 22°C · CAVOK · RWY 06 ACTIVE · 14 CHARTER LEGS AIRBORNE', 18, h - 18);
+      });
+
+      const allianceScreen = createCustomBoardScreen(screenReg, 520, 260, (g, w, h, t) => {
+        g.fillStyle = '#091526';
+        g.fillRect(0, 0, w, h);
+        g.fillStyle = '#142b47';
+        g.fillRect(0, 0, w, 38);
+        g.fillStyle = '#e67e22';
+        g.fillRect(0, 0, 8, 38);
+        g.fillStyle = '#ffffff';
+        g.font = '800 16px "Plus Jakarta Sans", sans-serif';
+        g.textAlign = 'left';
+        g.textBaseline = 'middle';
+        g.fillText('SKYLINE AVIATION ALLIANCES · CHARTER & ROUTE NETWORK', 18, 19);
+        const cards = [
+          ['FLEET DISPATCH', '18 Aircraft', '99.4% OTP'],
+          ['CORRIDOR PAX', '42.8K / Qtr', '+18.5% YoY'],
+          ['GLOBAL HUBS', 'NBO · DXB · LHR', '24/7 Slots'],
+        ];
+        cards.forEach((c, ci) => {
+          const x = 18 + ci * 165;
+          g.fillStyle = '#112238';
+          rr(g, x, 54, 152, 74, 8);
+          g.fill();
+          g.fillStyle = '#7dd3fc';
+          g.font = '600 11px sans-serif';
+          g.fillText(c[0], x + 10, 72);
+          g.fillStyle = '#ffffff';
+          g.font = '800 18px sans-serif';
+          g.fillText(c[1], x + 10, 96);
+          g.fillStyle = '#4ade80';
+          g.font = '700 11px monospace';
+          g.fillText(c[2], x + 10, 116);
+        });
+        const phase = Math.sin(t * 1.6) * 6;
+        g.fillStyle = '#112238';
+        rr(g, 18, 142, w - 36, 102, 8);
+        g.fill();
+        ['NBO-LHR', 'NBO-DXB', 'WIL-MRE', 'NBO-ZNZ', 'NBO-JNB'].forEach((lbl, bi) => {
+          const bx = 36 + bi * 92;
+          const bh = 42 + (bi % 3) * 14 + (bi % 2 === 0 ? phase : -phase);
+          g.fillStyle = bi === 1 ? '#e67e22' : '#38bdf8';
+          rr(g, bx, 224 - bh, 48, bh, 4);
+          g.fill();
+          g.fillStyle = '#cbd5e1';
+          g.font = '600 11px monospace';
+          g.textAlign = 'center';
+          g.fillText(lbl, bx + 24, 236);
+        });
+        g.textAlign = 'left';
+      });
+
+      // -------------------------------------------------------------------------
+      // FLOOR 0 (lv === 0): Departures Atrium, Compass Rotunda, Curved Check-In & Jet Gallery
+      // -------------------------------------------------------------------------
+      boxAt(g0, 27.4, 0.018, 17.4, spec.cx, fy + 0.009, spec.cz, travelPearlTerrazzo, false, true);
+      // Aviation navy runway carpet strip under center & ticketing bays
+      boxAt(g0, 10.6, 0.02, 5.8, spec.cx - 7.7, fy + 0.014, spec.cz + 4.4, travelNavyCarpet, false, true);
+      boxAt(g0, 5.8, 0.02, 6.2, spec.cx + 6.2, fy + 0.014, spec.cz + 0.8, travelNavyCarpet, false, true);
+      // Swept airfoil ceiling baffles across ground concourse
+      addAirfoilCeilingRibs(levelCeilings[0], spec.groundY + spec.floorH - 0.14, [spec.cz - 4.8, spec.cz, spec.cz + 4.8]);
+
+      // Center North Compass-Rose Medallion & Rotating Armillary World Globe
+      const globeX = spec.cx;
+      const globeZ = spec.cz - 2.2;
+      cylAt(g0, 2.35, 2.35, 0.016, globeX, fy + 0.016, globeZ, navyJetMat, false, true, 32);
+      cylAt(g0, 1.95, 1.95, 0.018, globeX, fy + 0.018, globeZ, travelPearlTerrazzo, false, true, 32);
+      boxAt(g0, 4.1, 0.02, 0.08, globeX, fy + 0.022, globeZ, M.brass, false, false);
+      boxAt(g0, 0.08, 0.02, 4.1, globeX, fy + 0.022, globeZ, M.brass, false, false);
+      const globeMat = new THREE.MeshStandardMaterial({ map: globeTex, roughness: 0.34, metalness: 0.1 });
+      const globe = new THREE.Mesh(new THREE.SphereGeometry(1.16, 28, 20), globeMat);
+      globe.position.set(globeX, fy + 2.35, globeZ);
       globe.rotation.z = 0.22;
       g0.add(globe);
-      cylAt(g0, 0.05, 0.05, 1.1, spec.cx, fy + 3.4, spec.cz - 2.0, M.brass, false, false, 10);
-      cylAt(g0, 0.9, 1.05, 0.18, spec.cx, fy + 0.09, spec.cz - 2.0, M.dark, false, true, 24);
+      const orbitalRing = new THREE.Mesh(new THREE.TorusGeometry(1.38, 0.032, 10, 40), M.brass);
+      orbitalRing.position.set(globeX, fy + 2.35, globeZ);
+      orbitalRing.rotation.set(Math.PI * 0.34, 0.4, 0);
+      g0.add(orbitalRing);
+      cylAt(g0, 0.05, 0.05, 1.1, globeX, fy + 3.4, globeZ, M.brass, false, false, 10);
+      cylAt(g0, 0.9, 1.05, 0.22, globeX, fy + 0.11, globeZ, navyJetMat, true, true, 24);
       rotatingProps.push({ obj: globe, speed: 0.38, axis: 'y' });
+      rotatingProps.push({ obj: orbitalRing, speed: -0.22, axis: 'y' });
 
-      // Bi-level Check-In Counter: customer luggage ledge (1.06m) + rear agent desk (0.78m)
-      boxAt(g0, 8.6, 1.04, 0.52, spec.cx - 6.8, fy + 0.52, spec.cz + 2.86, M.white, true, true, 0.04);
-      boxAt(g0, 8.8, 0.07, 0.6, spec.cx - 6.8, fy + 1.06, spec.cz + 2.86, accentMat, false, false);
-      boxAt(g0, 8.6, 0.06, 0.94, spec.cx - 6.8, fy + 0.75, spec.cz + 3.59, M.walnut, true, true, 0.02);
-      [-10.9, -6.8, -2.7].forEach((lx) => {
-        boxAt(g0, 0.14, 0.72, 0.78, spec.cx + lx, fy + 0.36, spec.cz + 3.54, M.white, true, true, 0.01);
+      // West Wing: Aerodynamic Curved-End Ticketing & Visa Concierge Island + 3 Agents
+      const chkX = spec.cx - 7.7;
+      boxAt(g0, 8.8, 1.04, 0.56, chkX, fy + 0.52, spec.cz + 2.75, titaniumMat, true, true, 0.06);
+      boxAt(g0, 9.0, 0.07, 0.64, chkX, fy + 1.06, spec.cz + 2.75, navyJetMat, false, false, 0.02);
+      boxAt(g0, 8.6, 0.04, 0.04, chkX, fy + 0.52, spec.cz + 2.46, new THREE.MeshBasicMaterial({ color: 0x38bdf8 }), false, false);
+      boxAt(g0, 8.8, 0.06, 0.92, chkX, fy + 0.75, spec.cz + 3.5, birchSlatMat, true, true, 0.02);
+      [-11.8, -7.7, -3.6].forEach((lx) => {
+        boxAt(g0, 0.14, 0.72, 0.78, spec.cx + lx, fy + 0.36, spec.cz + 3.45, titaniumMat, true, true, 0.01);
       });
-      [-9.0, -4.6].forEach((ox, i) => {
-        registerChair(0, spec.cx + ox, fy, spec.cz + 4.35, Math.PI, i === 0 ? 1 : -1);
+      // Three recessed luggage weigh-in pads on front floor
+      [-10.3, -7.7, -5.1].forEach((ox, i) => {
+        boxAt(g0, 1.05, 0.04, 0.65, spec.cx + ox, fy + 0.025, spec.cz + 2.1, titaniumMat, false, true);
+        registerChair(0, spec.cx + ox, fy, spec.cz + 4.35, Math.PI, i % 2 === 0 ? 1 : -1);
         registerMonitor(
           0,
           i,
-          [spec.cx + ox, fy + 0.78, spec.cz + 3.63],
+          [spec.cx + ox, fy + 0.78, spec.cz + 3.56],
           0,
           spec.cx + ox,
           spec.cz + 4.35,
-          `Flight & Visa Agent ${i + 1}`,
+          i === 2 ? 'Corporate Ticketing Lead' : `Flight & Visa Agent ${i + 1}`,
           'Check-In & Ticketing Counter'
         );
       });
+      addTravelPlaque(g0, 'CHECK-IN · BAGGAGE · VISA DESKS', chkX, fy + 2.6, spec.cz + 2.75, Math.PI);
+      // 3 NW Self-Check-In Boarding Pass Kiosks along front-right glass
+      [
+        [spec.cx - 11.4, spec.cz - 5.2, Math.PI * 0.28],
+        [spec.cx - 9.5, spec.cz - 5.9, Math.PI * 0.22],
+        [spec.cx - 7.6, spec.cz - 6.3, Math.PI * 0.15],
+      ].forEach(([kx, kz, krot]) => {
+        const kg = new THREE.Group();
+        kg.position.set(kx, fy, kz);
+        kg.rotation.y = krot;
+        boxAt(kg, 0.56, 1.38, 0.42, 0, 0.69, 0, titaniumMat, true, true, 0.04);
+        boxAt(kg, 0.44, 0.34, 0.04, 0, 1.18, 0.22, new THREE.MeshBasicMaterial({ color: 0x38bdf8 }), false, false);
+        boxAt(kg, 0.58, 0.08, 0.44, 0, 1.4, 0, amberFlightAccent, false, false);
+        g0.add(kg);
+      });
+      // Rear luggage & travel brochure credenza along West South wall
+      boxAt(g0, 6.2, 0.88, 0.68, chkX, fy + 0.44, spec.cz + 7.9, birchSlatMat, true, true, 0.02);
 
-      // Terminal waiting seating & side lounge
-      sofaWide(g0, spec.cx + 7.2, fy, spec.cz + 1.5, Math.PI, M.fabricBlue, M);
-      sofaWide(g0, spec.cx + 7.2, fy, spec.cz - 1.5, 0, M.fabricBlue, M);
+      // East Wing (dx +3.2..+9.4): Sculpted Executive Jet Scale Model + Charter Lounge Nook
+      const jetModelTop = buildJetScaleModel(g0, spec.cx + 6.4, fy, spec.cz - 4.8, 1.08, -Math.PI * 0.72);
+      rotatingProps.push({ obj: jetModelTop, speed: 0.24, axis: 'y' });
+      const gcSofa1 = sofaWide(g0, spec.cx + 6.2, fy, spec.cz + 2.2, Math.PI, skyUpholstery, M);
+      gcSofa1.scale.set(0.82, 0.94, 0.84);
+      const gcSofa2 = sofaWide(g0, spec.cx + 6.2, fy, spec.cz - 0.6, 0, M.fabricCognac, M);
+      gcSofa2.scale.set(0.82, 0.94, 0.84);
+      cylAt(g0, 0.52, 0.52, 0.045, spec.cx + 6.2, fy + 0.42, spec.cz + 0.8, titaniumMat, true, true, 22);
+      cylAt(g0, 0.08, 0.14, 0.4, spec.cx + 6.2, fy + 0.2, spec.cz + 0.8, navyJetMat, false, true, 14);
+      plant(g0, spec.cx + 8.6, fy, spec.cz - 6.8, 1.25, 1201, M, 'olive');
+      plant(g0, spec.cx + 8.6, fy, spec.cz + 6.9, 1.25, 1202, M, 'ficus');
 
-      // Live JKIA Departures Board facing north entrance (-Z)
-      const flBoard = createCustomBoardScreen(screenReg, 680, 230, (g, w, h, t) => {
+      // South Feature Wall: Fuselage Cabin Window Art Panels + Live JKIA Departures Board
+      addCabinWindowWall(g0, spec.cx - 8.6, fy, spec.cz + 8.32, 5.2, 3.05, 4, 0);
+      addCabinWindowWall(g0, spec.cx + 6.4, fy, spec.cz + 8.32, 4.4, 3.05, 3, 0);
+      const flBoard = createCustomBoardScreen(screenReg, 720, 240, (g, w, h, t) => {
         g.fillStyle = '#07111e';
         g.fillRect(0, 0, w, h);
         g.fillStyle = '#38bdf8';
-        g.fillRect(0, 0, w, 34);
+        g.fillRect(0, 0, w, 36);
         g.fillStyle = '#07111e';
-        g.font = '800 18px sans-serif';
+        g.font = '800 18px "Plus Jakarta Sans", sans-serif';
         g.textAlign = 'left';
         g.textBaseline = 'middle';
-        g.fillText('SKYLINE TRAVEL · LIVE NBO (JKIA) DEPARTURES BOARD', 16, 17);
+        g.fillText('SKYLINE TRAVEL & AVIATION · LIVE NBO (JKIA) DEPARTURES', 16, 18);
         const flights = [
-          ['KQ 100', 'LONDON LHR', '23:15', 'ON TIME'],
-          ['EK 722', 'DUBAI DXB', '22:45', 'CHECK-IN'],
-          ['SA 185', 'JOHANNESBURG', '16:20', 'BOARDING'],
-          ['PW 712', 'ZANZIBAR ZNZ', '14:10', 'CONFIRMED'],
+          ['KQ 100', 'LONDON LHR', '23:15', 'GATE 04 · ON TIME'],
+          ['EK 722', 'DUBAI DXB', '22:45', 'GATE 02 · CHECK-IN'],
+          ['SA 185', 'JOHANNESBURG', '16:20', 'GATE 01 · BOARDING'],
+          ['SKY 408', 'MARA CHOPPER', '14:10', 'CHARTER · READY'],
         ];
         flights.forEach((f, i) => {
-          const y = 52 + i * 42;
-          g.fillStyle = 'rgba(56,189,248,0.1)';
-          rr(g, 14, y, w - 28, 36, 5);
+          const y = 54 + i * 44;
+          g.fillStyle = i === Math.floor(t / 2.5) % 4 ? 'rgba(56,189,248,0.2)' : 'rgba(56,189,248,0.08)';
+          rr(g, 14, y, w - 28, 38, 6);
           g.fill();
           g.fillStyle = '#7dd3fc';
           g.font = '700 16px monospace';
-          g.fillText(f[0], 26, y + 18);
+          g.fillText(f[0], 26, y + 19);
           g.fillStyle = '#f8fafc';
           g.font = '700 16px sans-serif';
-          g.fillText(f[1], 140, y + 18);
+          g.fillText(f[1], 140, y + 19);
           g.fillStyle = '#cbd5e1';
           g.font = '600 16px monospace';
-          g.fillText(f[2], 410, y + 18);
+          g.fillText(f[2], 395, y + 19);
           g.fillStyle = i === Math.floor(t / 2.5) % 4 ? '#facc15' : '#4ade80';
-          g.fillText(f[3], 520, y + 18);
+          g.fillText(f[3], 490, y + 19);
         });
       });
-      boxAt(g0, 7.6, 2.4, 0.14, spec.cx, fy + 2.35, spec.cz + 8.7, frameDarkMat, false, false);
-      const flMesh = new THREE.Mesh(new THREE.PlaneGeometry(7.3, 2.15), flBoard.mat);
-      flMesh.position.set(spec.cx, fy + 2.35, spec.cz + 8.62);
+      boxAt(g0, 7.6, 2.45, 0.14, spec.cx - 0.8, fy + 2.35, spec.cz + 8.65, frameDarkMat, false, false);
+      const flMesh = new THREE.Mesh(new THREE.PlaneGeometry(7.3, 2.2), flBoard.mat);
+      flMesh.position.set(spec.cx - 0.8, fy + 2.35, spec.cz + 8.57);
       flMesh.rotation.y = Math.PI;
       g0.add(flMesh);
       flBoard.setMesh(flMesh);
+
+      // -------------------------------------------------------------------------
+      // FLOOR 1 (lv === 1): Private Jet Charter Atelier & Embassy Visa Concierge Suites
+      // -------------------------------------------------------------------------
+      const tg1 = levelGroups[1];
+      if (tg1) {
+        const tfy1 = spec.groundY + spec.floorH + SLAB_THICK * 0.5;
+        const t1Fill = new THREE.PointLight(0xf4f8ff, 1.18, 25);
+        t1Fill.position.set(spec.cx, tfy1 + 3.1, spec.cz);
+        tg1.add(t1Fill);
+        warmLights.push(t1Fill);
+
+        // Non-overlapping flooring clearing East stair void (+10.25..+13.25 x -0.05..+3.75)
+        boxAt(tg1, 27.0, 0.018, 8.45, spec.cx, tfy1 + 0.009, spec.cz - 4.375, travelPearlTerrazzo, false, true);
+        boxAt(tg1, 23.6, 0.018, 4.2, spec.cx - 1.7, tfy1 + 0.009, spec.cz + 1.9, travelPearlTerrazzo, false, true);
+        boxAt(tg1, 27.0, 0.018, 4.7, spec.cx, tfy1 + 0.009, spec.cz + 6.25, travelPearlTerrazzo, false, true);
+        boxAt(tg1, 8.6, 0.02, 14.4, spec.cx - 8.6, tfy1 + 0.014, spec.cz + 0.2, travelNavyCarpet, false, true);
+        boxAt(tg1, 5.4, 0.02, 5.4, spec.cx + 0.2, tfy1 + 0.014, spec.cz - 4.2, travelNavyCarpet, false, true);
+        addAirfoilCeilingRibs(levelCeilings[1], spec.groundY + 2 * spec.floorH - 0.14, [spec.cz - 4.8, spec.cz + 4.8]);
+
+        let t1MonIdx = 0;
+        // West Wing: Aircraft Cabin-Window Acoustic Partition + 2 Flight Charter Pods
+        addCabinWindowWall(tg1, spec.cx - 3.6, tfy1, spec.cz - 4.3, 6.2, 2.75, 4, Math.PI / 2);
+        addCabinWindowWall(tg1, spec.cx - 3.6, tfy1, spec.cz + 4.0, 7.2, 2.75, 5, Math.PI / 2);
+        addTravelPlaque(tg1, 'PRIVATE JET CHARTER ATELIER', spec.cx - 3.5, tfy1 + 2.48, spec.cz - 0.4, Math.PI / 2);
+
+        const l1PodNorth = spec.cz - 4.2;
+        const l1PodSouth = spec.cz + 3.0;
+        const pod1X = spec.cx - 8.6;
+        [l1PodNorth, l1PodSouth].forEach((pz, pi) => {
+          makeDeskAt(tg1, pod1X, tfy1, pz, 3.2, 1.35, M);
+          boxAt(tg1, 3.05, 0.3, 0.06, pod1X, tfy1 + 0.92, pz, skyUpholstery, false, false);
+          boxAt(tg1, 2.8, 0.05, 0.12, pod1X, tfy1 + 2.68, pz, titaniumMat, false, false);
+          boxAt(tg1, 2.68, 0.02, 0.07, pod1X, tfy1 + 2.65, pz, new THREE.MeshBasicMaterial({ color: 0xfff3d6 }), false, false);
+          if (pi === 0) {
+            registerChair(1, pod1X - 0.8, tfy1, pz - 1.05, 0, 1);
+            registerMonitor(1, t1MonIdx++, [pod1X - 0.8, tfy1 + 0.77, pz - 0.25], Math.PI, pod1X - 0.8, pz - 1.05, 'Private Charter Director · L1', 'Charter Flight Atelier');
+            officeChair(tg1, pod1X + 0.8, tfy1, pz - 1.05, 0, M);
+            monitor(tg1, pod1X + 0.8, tfy1 + 0.77, pz - 0.25, true, Math.PI, M);
+            officeChair(tg1, pod1X - 0.8, tfy1, pz + 1.05, Math.PI, M);
+            monitor(tg1, pod1X - 0.8, tfy1 + 0.77, pz + 0.25, true, 0, M);
+            officeChair(tg1, pod1X + 0.8, tfy1, pz + 1.05, Math.PI, M);
+            monitor(tg1, pod1X + 0.8, tfy1 + 0.77, pz + 0.25, true, 0, M);
+          } else {
+            registerChair(1, pod1X + 0.8, tfy1, pz + 1.05, Math.PI, -1);
+            registerMonitor(1, t1MonIdx++, [pod1X + 0.8, tfy1 + 0.77, pz + 0.25], 0, pod1X + 0.8, pz + 1.05, 'Group Aviation Coordinator · L1', 'Charter Flight Atelier');
+            officeChair(tg1, pod1X - 0.8, tfy1, pz - 1.05, 0, M);
+            monitor(tg1, pod1X - 0.8, tfy1 + 0.77, pz - 0.25, true, Math.PI, M);
+            officeChair(tg1, pod1X + 0.8, tfy1, pz - 1.05, 0, M);
+            monitor(tg1, pod1X + 0.8, tfy1 + 0.77, pz - 0.25, true, Math.PI, M);
+            officeChair(tg1, pod1X - 0.8, tfy1, pz + 1.05, Math.PI, M);
+            monitor(tg1, pod1X - 0.8, tfy1 + 0.77, pz + 0.25, true, 0, M);
+          }
+        });
+        // West wall fleet matrix screen
+        boxAt(tg1, 0.1, 1.9, 4.4, spec.cx - 13.7, tfy1 + 1.75, spec.cz - 0.6, frameDarkMat, false, false);
+        const l1WestTv = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.74), allianceScreen.mat);
+        l1WestTv.position.set(spec.cx - 13.63, tfy1 + 1.75, spec.cz - 0.6);
+        l1WestTv.rotation.y = Math.PI / 2;
+        tg1.add(l1WestTv);
+        plant(tg1, spec.cx - 12.2, tfy1, spec.cz - 7.1, 1.25, 1203, M, 'olive');
+
+        // Center Zone: Embassy Visa Consultation Booth & Registered Visa Desk
+        cylAt(tg1, 0.78, 0.78, 0.05, spec.cx + 0.2, tfy1 + 0.74, spec.cz - 4.2, birchSlatMat, true, true, 24);
+        cylAt(tg1, 0.14, 0.22, 0.72, spec.cx + 0.2, tfy1 + 0.36, spec.cz - 4.2, titaniumMat, true, true, 14);
+        [
+          [-0.95, 0, Math.PI / 2],
+          [0.95, 0, -Math.PI / 2],
+          [0, 0.95, Math.PI],
+        ].forEach(([ox, oz, rot]) => {
+          const ch = armchair(tg1, spec.cx + 0.2 + ox, tfy1, spec.cz - 4.2 + oz, rot, skyUpholstery, M);
+          ch.scale.set(0.74, 0.88, 0.74);
+        });
+        makeDeskAt(tg1, spec.cx + 0.2, tfy1, spec.cz + 4.4, 2.6, 1.05, M);
+        registerChair(1, spec.cx + 0.2, tfy1, spec.cz + 5.35, Math.PI, 1);
+        registerMonitor(1, t1MonIdx++, [spec.cx + 0.2, tfy1 + 0.77, spec.cz + 4.55], 0, spec.cx + 0.2, spec.cz + 5.35, 'Senior Visa Specialist · L1', 'Embassy & Visa Concierge');
+        [spec.cx - 0.55, spec.cx + 0.95].forEach((vx) => {
+          const vc = armchair(tg1, vx, tfy1, spec.cz + 3.2, 0, M.fabricCognac, M);
+          vc.scale.set(0.74, 0.88, 0.74);
+        });
+
+        // East Gallery: Route Map Display, Coffee Credenza & Lounge Bench (clear of East stairwell)
+        boxAt(tg1, 4.4, 1.9, 0.1, spec.cx + 6.8, tfy1 + 1.85, spec.cz + 8.55, frameDarkMat, false, false);
+        const l1RouteTv = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.74), radarScreen.mat);
+        l1RouteTv.position.set(spec.cx + 6.8, tfy1 + 1.85, spec.cz + 8.48);
+        l1RouteTv.rotation.y = Math.PI;
+        tg1.add(l1RouteTv);
+        boxAt(tg1, 3.2, 0.88, 0.72, spec.cx + 6.8, tfy1 + 0.44, spec.cz + 7.2, titaniumMat, true, true, 0.02);
+        boxAt(tg1, 0.68, 0.46, 0.48, spec.cx + 6.8, tfy1 + 1.12, spec.cz + 7.2, M.dark, true, false, 0.02);
+        const l1Bench = sofaWide(tg1, spec.cx + 6.8, tfy1, spec.cz - 4.8, 0, navyJetMat, M);
+        l1Bench.scale.set(0.84, 0.92, 0.84);
+        plant(tg1, spec.cx + 12.0, tfy1, spec.cz - 7.1, 1.25, 1204, M, 'ficus');
+        plant(tg1, spec.cx + 12.0, tfy1, spec.cz + 7.1, 1.2, 1205, M, 'olive');
+      }
+
+      // -------------------------------------------------------------------------
+      // FLOOR 2 (lv === 2): First-Class Cabin Experience Showroom & Live Dispatch Bridge
+      // -------------------------------------------------------------------------
+      const tg2 = levelGroups[2];
+      if (tg2) {
+        const tfy2 = spec.groundY + 2 * spec.floorH + SLAB_THICK * 0.5;
+        const t2Fill = new THREE.PointLight(0xf6f9ff, 1.22, 25);
+        t2Fill.position.set(spec.cx, tfy2 + 3.1, spec.cz);
+        tg2.add(t2Fill);
+        warmLights.push(t2Fill);
+
+        boxAt(tg2, 27.0, 0.018, 8.45, spec.cx, tfy2 + 0.009, spec.cz - 4.375, travelPearlTerrazzo, false, true);
+        boxAt(tg2, 23.6, 0.018, 4.2, spec.cx - 1.7, tfy2 + 0.009, spec.cz + 1.9, travelPearlTerrazzo, false, true);
+        boxAt(tg2, 27.0, 0.018, 4.7, spec.cx, tfy2 + 0.009, spec.cz + 6.25, travelPearlTerrazzo, false, true);
+        boxAt(tg2, 9.8, 0.02, 10.6, spec.cx - 8.2, tfy2 + 0.014, spec.cz - 2.6, travelNavyCarpet, false, true);
+        boxAt(tg2, 5.2, 0.02, 6.8, spec.cx + 6.8, tfy2 + 0.014, spec.cz - 4.8, travelNavyCarpet, false, true);
+        addAirfoilCeilingRibs(levelCeilings[2], spec.groundY + 3 * spec.floorH - 0.14, [spec.cz - 4.8, spec.cz + 4.8]);
+
+        let t2MonIdx = 0;
+
+        // West Wing: 3 Private First-Class Aircraft Suite Pods (reclined cognac sleeper seats, curved privacy shells & personal screens)
+        const addFirstClassPod = (px: number, pz: number, rotY: number) => {
+          const pod = new THREE.Group();
+          pod.position.set(px, tfy2, pz);
+          pod.rotation.y = rotY;
+          // Curved privacy shell back + two side wings
+          boxAt(pod, 2.25, 1.48, 0.14, 0, 0.74, -1.15, navyJetMat, true, true, 0.04);
+          boxAt(pod, 0.14, 1.48, 2.25, -1.08, 0.74, -0.05, birchSlatMat, true, true, 0.03);
+          boxAt(pod, 0.14, 1.48, 1.45, 1.08, 0.74, -0.45, birchSlatMat, true, true, 0.03);
+          boxAt(pod, 2.22, 0.05, 0.18, 0, 1.5, -1.15, M.brass, false, false);
+          // Flat-bed cognac lounger + ottoman + personal OLED entertainment screen
+          const fcSeat = armchair(pod, -0.15, 0, -0.35, 0, M.fabricCognac, M);
+          fcSeat.scale.set(0.95, 0.88, 1.08);
+          boxAt(pod, 0.68, 0.36, 0.54, -0.15, 0.18, 0.72, M.fabricCognac, true, true, 0.04);
+          boxAt(pod, 0.85, 0.48, 0.06, -0.15, 1.05, 1.02, new THREE.MeshBasicMaterial({ color: 0x38bdf8 }), false, false);
+          cylAt(pod, 0.24, 0.24, 0.04, 0.68, 0.62, -0.25, titaniumMat, false, false, 14);
+          tg2.add(pod);
+        };
+        addFirstClassPod(spec.cx - 10.6, spec.cz - 5.2, Math.PI / 2);
+        addFirstClassPod(spec.cx - 10.6, spec.cz - 0.8, Math.PI / 2);
+        addFirstClassPod(spec.cx - 5.2, spec.cz - 3.0, -Math.PI / 2);
+        addTravelPlaque(tg2, 'FIRST-CLASS CABIN SHOWROOM', spec.cx - 8.2, tfy2 + 2.55, spec.cz - 8.1, 0);
+
+        // SW In-Flight Champagne & Espresso Tasting Bar + 4 Barstools
+        boxAt(tg2, 4.4, 0.92, 0.85, spec.cx - 8.2, tfy2 + 0.46, spec.cz + 8.15, navyJetMat, true, true, 0.02);
+        boxAt(tg2, 4.2, 1.02, 0.88, spec.cx - 8.2, tfy2 + 0.51, spec.cz + 5.75, titaniumMat, true, true, 0.04);
+        boxAt(tg2, 4.3, 0.06, 0.96, spec.cx - 8.2, tfy2 + 1.05, spec.cz + 5.75, birchSlatMat, false, true, 0.02);
+        [-1.35, -0.45, 0.45, 1.35].forEach((ox) => {
+          cylAt(tg2, 0.2, 0.2, 0.09, spec.cx - 8.2 + ox, tfy2 + 0.68, spec.cz + 4.75, cobaltLightUpholstery, true, true, 16);
+          cylAt(tg2, 0.035, 0.035, 0.66, spec.cx - 8.2 + ox, tfy2 + 0.33, spec.cz + 4.75, titaniumMat, false, false, 10);
+          cylAt(tg2, 0.17, 0.2, 0.04, spec.cx - 8.2 + ox, tfy2 + 0.02, spec.cz + 4.75, M.dark, false, true, 14);
+        });
+
+        // Center Bridge: Twin Wing-Shaped Air-Traffic & Operations Command Desks + Panoramic Radar Wall
+        makeDeskAt(tg2, spec.cx + 0.8, tfy2, spec.cz - 3.6, 2.8, 1.15, M);
+        registerChair(2, spec.cx + 0.8, tfy2, spec.cz - 4.55, 0, 1);
+        registerMonitor(2, t2MonIdx++, [spec.cx + 0.8, tfy2 + 0.77, spec.cz - 3.75], Math.PI, spec.cx + 0.8, spec.cz - 4.55, 'Flight Dispatch Controller · L2', 'Operations Control Bridge');
+
+        makeDeskAt(tg2, spec.cx + 0.8, tfy2, spec.cz + 1.8, 2.8, 1.15, M);
+        registerChair(2, spec.cx + 0.8, tfy2, spec.cz + 2.75, Math.PI, -1);
+        registerMonitor(2, t2MonIdx++, [spec.cx + 0.8, tfy2 + 0.77, spec.cz + 1.95], 0, spec.cx + 0.8, spec.cz + 2.75, 'Cabin Experience Curator · L2', 'Operations Control Bridge');
+
+        boxAt(tg2, 5.4, 2.2, 0.12, spec.cx + 0.8, tfy2 + 2.0, spec.cz + 8.6, frameDarkMat, false, false);
+        const l2RadarTv = new THREE.Mesh(new THREE.PlaneGeometry(5.15, 2.0), radarScreen.mat);
+        l2RadarTv.position.set(spec.cx + 0.8, tfy2 + 2.0, spec.cz + 8.53);
+        l2RadarTv.rotation.y = Math.PI;
+        tg2.add(l2RadarTv);
+
+        // East Panorama Observation Lounge & South Quiet Rest Alcove
+        const l2Obs1 = armchair(tg2, spec.cx + 5.8, tfy2, spec.cz - 5.2, Math.PI * 0.82, cobaltLightUpholstery, M);
+        l2Obs1.scale.set(0.76, 0.9, 0.76);
+        const l2Obs2 = armchair(tg2, spec.cx + 7.8, tfy2, spec.cz - 5.2, -Math.PI * 0.82, cobaltLightUpholstery, M);
+        l2Obs2.scale.set(0.76, 0.9, 0.76);
+        cylAt(tg2, 0.42, 0.42, 0.04, spec.cx + 6.8, tfy2 + 0.44, spec.cz - 5.2, titaniumMat, true, true, 18);
+        const l2RestSofa = sofaWide(tg2, spec.cx + 6.8, tfy2, spec.cz + 6.8, Math.PI, navyJetMat, M);
+        l2RestSofa.scale.set(0.86, 0.94, 0.86);
+        plant(tg2, spec.cx + 11.8, tfy2, spec.cz - 7.0, 1.25, 1206, M, 'olive');
+        plant(tg2, spec.cx + 11.8, tfy2, spec.cz + 7.0, 1.25, 1207, M, 'ficus');
+      }
+
+      // -------------------------------------------------------------------------
+      // FLOOR 3 (lv === 3): Executive Aviation Command, Alliances Boardroom, CEO & Head Office
+      // -------------------------------------------------------------------------
+      const tg3 = levelGroups[3];
+      if (tg3) {
+        const tfy3 = spec.groundY + 3 * spec.floorH + SLAB_THICK * 0.5;
+        const t3Fill = new THREE.PointLight(0xf6f9ff, 1.28, 26);
+        t3Fill.position.set(spec.cx, tfy3 + 3.15, spec.cz);
+        tg3.add(t3Fill);
+        warmLights.push(t3Fill);
+
+        boxAt(tg3, 27.0, 0.018, 8.45, spec.cx, tfy3 + 0.009, spec.cz - 4.375, travelPearlTerrazzo, false, true);
+        boxAt(tg3, 23.6, 0.018, 4.2, spec.cx - 1.7, tfy3 + 0.009, spec.cz + 1.9, travelPearlTerrazzo, false, true);
+        boxAt(tg3, 27.0, 0.018, 4.7, spec.cx, tfy3 + 0.009, spec.cz + 6.25, travelPearlTerrazzo, false, true);
+        boxAt(tg3, 7.6, 0.02, 10.6, spec.cx - 8.4, tfy3 + 0.014, spec.cz + 0.2, travelNavyCarpet, false, true);
+        boxAt(tg3, 5.8, 0.02, 4.6, spec.cx + 0.8, tfy3 + 0.014, spec.cz + 5.4, travelNavyCarpet, false, true);
+        boxAt(tg3, 4.2, 0.02, 3.6, spec.cx + 0.8, tfy3 + 0.014, spec.cz - 1.6, travelNavyCarpet, false, true);
+        addAirfoilCeilingRibs(levelCeilings[3], spec.groundY + 4 * spec.floorH - 0.14, [spec.cz - 4.6, spec.cz + 4.6]);
+
+        let t3MonIdx = 0;
+
+        // 1. WEST WING (dx -13.5..-3.2): Airline Alliances & Routes Boardroom (12-seat elliptical airfoil table)
+        const avBrWallX = spec.cx - 3.2;
+        boxAt(tg3, 0.08, 2.95, 4.6, avBrWallX, tfy3 + 1.475, spec.cz - 4.3, cabinGlass, false, false);
+        boxAt(tg3, 0.08, 2.95, 8.7, avBrWallX, tfy3 + 1.475, spec.cz + 4.15, cabinGlass, false, false);
+        boxAt(tg3, 0.14, 0.14, 15.1, avBrWallX, tfy3 + 2.95, spec.cz + 0.95, titaniumMat, true, false);
+        [-6.6, -2.0, -0.2, 2.4, 5.4, 8.5].forEach((mz) => {
+          boxAt(tg3, 0.14, 2.96, 0.14, avBrWallX, tfy3 + 1.48, spec.cz + mz, navyJetMat, true, false);
+        });
+        addTravelPlaque(tg3, 'ALLIANCE BOARDROOM', avBrWallX + 0.1, tfy3 + 2.66, spec.cz - 1.1, Math.PI / 2);
+
+        const avBrX = spec.cx - 8.4;
+        const avBrZ = spec.cz + 0.2;
+        // Elliptical satin-birch & navy inlay conference table (2.9m x 6.8m)
+        const ellShape = new THREE.Shape();
+        ellShape.absellipse(0, 0, 1.45, 3.4, 0, Math.PI * 2, false, 0);
+        const ellGeo = new THREE.ExtrudeGeometry(ellShape, { depth: 0.075, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 2, curveSegments: 24 });
+        ellGeo.rotateX(-Math.PI / 2);
+        const ellTop = new THREE.Mesh(ellGeo, birchSlatMat);
+        ellTop.position.set(avBrX, tfy3 + 0.71, avBrZ);
+        ellTop.castShadow = true;
+        ellTop.receiveShadow = true;
+        tg3.add(ellTop);
+        boxAt(tg3, 0.42, 0.015, 5.0, avBrX, tfy3 + 0.79, avBrZ, navyJetMat, false, false);
+        [-1.85, 1.85].forEach((pz) => {
+          cylAt(tg3, 0.38, 0.5, 0.7, avBrX, tfy3 + 0.35, avBrZ + pz, titaniumMat, true, true, 16);
+          // Circular halo titanium chandeliers
+          const halo = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.032, 10, 32), titaniumMat);
+          halo.rotation.x = Math.PI / 2;
+          halo.position.set(avBrX, tfy3 + 2.74, avBrZ + pz);
+          tg3.add(halo);
+          const haloGlow = new THREE.Mesh(new THREE.TorusGeometry(0.91, 0.016, 8, 28), new THREE.MeshBasicMaterial({ color: 0xe0f2fe }));
+          haloGlow.rotation.x = Math.PI / 2;
+          haloGlow.position.set(avBrX, tfy3 + 2.71, avBrZ + pz);
+          tg3.add(haloGlow);
+        });
+        registerChair(3, avBrX, tfy3, avBrZ - 3.85, 0, 1);
+        registerMonitor(3, t3MonIdx++, [avBrX, tfy3 + 0.79, avBrZ - 2.9], Math.PI, avBrX, avBrZ - 3.85, 'Airline Alliances Director · L3', 'Alliance Boardroom');
+        registerChair(3, avBrX + 2.1, tfy3, avBrZ - 1.4, -Math.PI / 2, -1);
+        registerMonitor(3, t3MonIdx++, [avBrX + 1.15, tfy3 + 0.79, avBrZ - 1.4], Math.PI / 2, avBrX + 2.1, avBrZ - 1.4, 'VP Flight Operations · L3', 'Alliance Boardroom');
+        officeChair(tg3, avBrX, tfy3, avBrZ + 3.85, Math.PI, M);
+        [-2.5, -0.2, 1.0, 2.2].forEach((czo) => officeChair(tg3, avBrX + 2.1, tfy3, avBrZ + czo, -Math.PI / 2, M));
+        [-2.5, -1.4, -0.2, 1.0, 2.2].forEach((czo) => officeChair(tg3, avBrX - 2.1, tfy3, avBrZ + czo, Math.PI / 2, M));
+
+        // West wall Alliance Network Screen & porthole flanking panels
+        boxAt(tg3, 0.1, 2.0, 4.8, spec.cx - 13.7, tfy3 + 1.88, avBrZ, frameDarkMat, false, false);
+        const l3BrTv = new THREE.Mesh(new THREE.PlaneGeometry(4.55, 1.82), allianceScreen.mat);
+        l3BrTv.position.set(spec.cx - 13.63, tfy3 + 1.88, avBrZ);
+        l3BrTv.rotation.y = Math.PI / 2;
+        tg3.add(l3BrTv);
+        plant(tg3, spec.cx - 12.2, tfy3, spec.cz - 7.1, 1.3, 1208, M, 'olive');
+        plant(tg3, spec.cx - 12.2, tfy3, spec.cz + 7.1, 1.25, 1209, M, 'ficus');
+
+        // 2. BACK CENTER (dx -2.8..+4.4, dz +2.2..+8.4): CEO & AVIATION COMMAND SUITE
+        const ceoAvX = spec.cx + 0.8;
+        const ceoAvFrontZ = spec.cz + 2.2;
+        boxAt(tg3, 2.4, 2.95, 0.08, spec.cx - 1.6, tfy3 + 1.475, ceoAvFrontZ, cabinGlass, false, false);
+        boxAt(tg3, 3.3, 2.95, 0.08, spec.cx + 2.75, tfy3 + 1.475, ceoAvFrontZ, cabinGlass, false, false);
+        boxAt(tg3, 7.25, 0.14, 0.14, ceoAvX, tfy3 + 2.95, ceoAvFrontZ, titaniumMat, true, false);
+        boxAt(tg3, 0.08, 2.95, 6.3, spec.cx + 4.4, tfy3 + 1.475, spec.cz + 5.35, cabinGlass, false, false);
+        [-2.8, -0.4, 1.1, 4.4].forEach((px) => {
+          boxAt(tg3, 0.14, 2.96, 0.14, spec.cx + px, tfy3 + 1.48, ceoAvFrontZ, navyJetMat, true, false);
+        });
+        addTravelPlaque(tg3, 'CEO · AVIATION COMMAND', spec.cx + 2.4, tfy3 + 2.66, ceoAvFrontZ - 0.09, Math.PI);
+
+        // CEO South aircraft-model trophy wall + backlit shelving
+        boxAt(tg3, 5.4, 2.9, 0.44, ceoAvX, tfy3 + 1.45, spec.cz + 8.36, navyJetMat, true, true, 0.02);
+        [0.85, 1.65, 2.38].forEach((sy) => {
+          boxAt(tg3, 4.8, 0.04, 0.36, ceoAvX, tfy3 + sy, spec.cz + 8.34, birchSlatMat, false, false);
+        });
+        buildJetScaleModel(tg3, spec.cx - 0.8, tfy3 + 1.67, spec.cz + 8.32, 0.32, Math.PI * 0.25, -0.1);
+        buildJetScaleModel(tg3, spec.cx + 2.4, tfy3 + 1.67, spec.cz + 8.32, 0.32, -Math.PI * 0.25, -0.1);
+
+        makeDeskAt(tg3, ceoAvX, tfy3, spec.cz + 5.75, 2.8, 1.12, M);
+        boxAt(tg3, 2.9, 0.05, 0.12, ceoAvX, tfy3 + 0.77, spec.cz + 5.2, titaniumMat, false, false);
+        registerChair(3, ceoAvX, tfy3, spec.cz + 6.72, Math.PI, -1);
+        registerMonitor(3, t3MonIdx++, [ceoAvX, tfy3 + 0.77, spec.cz + 5.88], 0, ceoAvX, spec.cz + 6.72, 'Chief Aviation Officer & CEO · L3', 'CEO Aviation Command');
+        [spec.cx + 0.05, spec.cx + 1.55].forEach((gx) => {
+          const gc = armchair(tg3, gx, tfy3, spec.cz + 4.4, 0, M.fabricCognac, M);
+          gc.scale.set(0.75, 0.88, 0.75);
+        });
+        plant(tg3, spec.cx + 3.7, tfy3, spec.cz + 7.5, 1.2, 1210, M, 'ficus');
+
+        // 3. SOUTH-EAST CORNER (dx +4.8..+13.5, dz +4.3..+8.4): HEAD OF FLEET, SAFETY & CHARTER OFFICE
+        const safetyZ = spec.cz + 4.3;
+        boxAt(tg3, 1.2, 2.95, 0.08, spec.cx + 5.4, tfy3 + 1.475, safetyZ, cabinGlass, false, false);
+        boxAt(tg3, 6.0, 2.95, 0.08, spec.cx + 10.5, tfy3 + 1.475, safetyZ, cabinGlass, false, false);
+        boxAt(tg3, 8.75, 0.14, 0.14, spec.cx + 9.15, tfy3 + 2.95, safetyZ, titaniumMat, true, false);
+        [4.8, 6.0, 7.5, 13.5].forEach((px) => {
+          boxAt(tg3, 0.14, 2.96, 0.14, spec.cx + px, tfy3 + 1.48, safetyZ, navyJetMat, true, false);
+        });
+        addTravelPlaque(tg3, 'HEAD OF FLEET & SAFETY', spec.cx + 10.4, tfy3 + 2.66, safetyZ - 0.09, Math.PI);
+
+        const safX = spec.cx + 9.2;
+        makeDeskAt(tg3, safX, tfy3, spec.cz + 6.4, 2.4, 1.05, M);
+        registerChair(3, safX, tfy3, spec.cz + 7.32, Math.PI, 1);
+        registerMonitor(3, t3MonIdx++, [safX, tfy3 + 0.77, spec.cz + 6.48], 0, safX, spec.cz + 7.32, 'Head of Fleet & Safety · L3', 'Fleet & Safety Office');
+        [safX - 0.75, safX + 0.75].forEach((vx) => {
+          const vc = armchair(tg3, vx, tfy3, spec.cz + 5.15, 0, skyUpholstery, M);
+          vc.scale.set(0.74, 0.88, 0.74);
+        });
+        boxAt(tg3, 2.1, 1.15, 0.08, safX, tfy3 + 1.85, spec.cz + 8.5, frameDarkMat, false, false);
+        const safTv = new THREE.Mesh(new THREE.PlaneGeometry(1.94, 1.02), radarScreen.mat);
+        safTv.position.set(safX, tfy3 + 1.85, spec.cz + 8.44);
+        safTv.rotation.y = Math.PI;
+        tg3.add(safTv);
+
+        // 4. FRONT CENTER & NORTH-EAST: Flight Concierge, Sky Lounge & Galley Espresso Bar (clear of East stair core)
+        makeDeskAt(tg3, ceoAvX, tfy3, spec.cz - 5.65, 2.2, 0.92, M);
+        boxAt(tg3, 2.24, 0.96, 0.14, ceoAvX, tfy3 + 0.48, spec.cz - 5.18, titaniumMat, true, true, 0.02);
+        registerChair(3, ceoAvX, tfy3, spec.cz - 6.55, 0, 1);
+        registerMonitor(3, t3MonIdx++, [ceoAvX, tfy3 + 0.77, spec.cz - 5.75], Math.PI, ceoAvX, spec.cz - 6.55, 'Executive Flight Concierge · L3', 'Sky-Deck Reception');
+
+        const skySofa = sofaWide(tg3, spec.cx - 0.75, tfy3, spec.cz - 1.6, Math.PI / 2, navyJetMat, M);
+        skySofa.scale.set(0.76, 0.92, 0.84);
+        cylAt(tg3, 0.5, 0.5, 0.04, spec.cx + 0.75, tfy3 + 0.41, spec.cz - 1.6, titaniumMat, true, true, 22);
+        cylAt(tg3, 0.08, 0.14, 0.39, spec.cx + 0.75, tfy3 + 0.2, spec.cz - 1.6, navyJetMat, false, true, 14);
+        const skyArm1 = armchair(tg3, spec.cx + 2.05, tfy3, spec.cz - 2.35, -Math.PI * 0.35, cobaltLightUpholstery, M);
+        skyArm1.scale.set(0.74, 0.88, 0.74);
+        const skyArm2 = armchair(tg3, spec.cx + 2.05, tfy3, spec.cz - 0.85, -Math.PI * 0.65, cobaltLightUpholstery, M);
+        skyArm2.scale.set(0.74, 0.88, 0.74);
+        plant(tg3, spec.cx + 3.6, tfy3, spec.cz + 1.2, 1.25, 1211, M, 'ficus');
+
+        // North-East Galley Espresso Bar (cx + 11.2, cz - 5.8, safely 4.5m north of stair doorway)
+        boxAt(tg3, 3.6, 0.94, 0.88, spec.cx + 11.2, tfy3 + 0.47, spec.cz - 5.8, navyJetMat, true, true, 0.03);
+        boxAt(tg3, 3.68, 0.06, 0.94, spec.cx + 11.2, tfy3 + 0.97, spec.cz - 5.8, titaniumMat, false, true, 0.01);
+        boxAt(tg3, 0.72, 0.48, 0.52, spec.cx + 11.2, tfy3 + 1.24, spec.cz - 5.8, M.dark, true, false, 0.02);
+        [spec.cx + 10.4, spec.cx + 12.0].forEach((sx) => {
+          cylAt(tg3, 0.2, 0.2, 0.09, sx, tfy3 + 0.68, spec.cz - 4.7, M.fabricCognac, true, true, 16);
+          cylAt(tg3, 0.035, 0.035, 0.66, sx, tfy3 + 0.33, spec.cz - 4.7, titaniumMat, false, false, 10);
+          cylAt(tg3, 0.17, 0.2, 0.04, sx, tfy3 + 0.02, spec.cz - 4.7, M.dark, false, true, 14);
+        });
+      }
+
+      // -------------------------------------------------------------------------
+      // CONTINUOUS EAST BOARDING STAIRWELL CORE (G -> L3) IN BRUSHED TITANIUM & BIRCH
+      // -------------------------------------------------------------------------
+      const avStairXWest = spec.cx + 10.22;
+      const avStairXEast = spec.cx + 13.32;
+      const avStairXMid = spec.cx + 11.75;
+      const avStairZNorth = spec.cz - 1.32;
+      const avStairZSouth = spec.cz + 3.82;
+      const avStairW = avStairXEast - avStairXWest;
+      const avStairD = avStairZSouth - avStairZNorth;
+      const avStairCx = (avStairXWest + avStairXEast) * 0.5;
+      const avStairCz = (avStairZNorth + avStairZSouth) * 0.5;
+      const avBridgeZ = spec.cz - 0.05;
+      const avHalfStartZ = spec.cz + 2.55;
+      const avStairSigns = ['BOARDING STAIRS · G → L1', 'STAIRS · L1 ↔ L2', 'STAIRS · L2 ↔ L3', 'STAIRS · L3 SKY COMMAND'];
+
+      const addAvRail = (parent: THREE.Object3D, x: number, y0: number, z0: number, y1: number, z1: number) => {
+        const p0 = new THREE.Vector3(x, y0 + 0.92, z0);
+        const p1 = new THREE.Vector3(x, y1 + 0.92, z1);
+        const len = p0.distanceTo(p1);
+        const dir = new THREE.Vector3().subVectors(p1, p0).normalize();
+        const mid = new THREE.Vector3().addVectors(p0, p1).multiplyScalar(0.5);
+        const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, len, 10), titaniumMat);
+        rail.position.copy(mid);
+        rail.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+        parent.add(rail);
+        [0.15, 0.5, 0.85].forEach((t) => {
+          const py = THREE.MathUtils.lerp(y0, y1, t);
+          const pz = THREE.MathUtils.lerp(z0, z1, t);
+          cylAt(parent, 0.014, 0.014, 0.92, x, py + 0.46, pz, titaniumMat, false, false, 8);
+        });
+      };
+
+      for (let lv = 0; lv < spec.floors; lv++) {
+        const lgS = levelGroups[lv];
+        if (!lgS) continue;
+        const fyS = spec.groundY + lv * spec.floorH + SLAB_THICK * 0.5;
+        const wallH = spec.floorH - SLAB_THICK - 0.04;
+
+        // North vestibule landing finish & cobalt-illuminated threshold strip
+        boxAt(lgS, 3.0, 0.018, 1.24, avStairCx, fyS + 0.009, spec.cz - 0.68, travelPearlTerrazzo, false, true);
+        boxAt(lgS, 0.14, 0.018, 1.2, avStairXWest, fyS + 0.012, spec.cz - 0.62, new THREE.MeshBasicMaterial({ color: 0x38bdf8 }), false, false);
+
+        // East, North & South glazed titanium shaft walls
+        boxAt(lgS, 0.1, 0.18, avStairD, avStairXEast, fyS + 0.09, avStairCz, navyJetMat, true, true);
+        boxAt(lgS, 0.05, wallH - 0.24, avStairD, avStairXEast, fyS + 0.18 + (wallH - 0.24) * 0.5, avStairCz, cabinGlass, false, false);
+        boxAt(lgS, 0.12, 0.12, avStairD, avStairXEast, fyS + wallH - 0.02, avStairCz, titaniumMat, false, false);
+        [avStairZNorth, spec.cz + 1.25, avStairZSouth].forEach((mz) => {
+          boxAt(lgS, 0.1, wallH, 0.1, avStairXEast, fyS + wallH * 0.5, mz, titaniumMat, true, false);
+        });
+        [avStairZNorth, avStairZSouth].forEach((wz) => {
+          boxAt(lgS, avStairW, 0.18, 0.1, avStairCx, fyS + 0.09, wz, navyJetMat, true, true);
+          boxAt(lgS, avStairW, wallH - 0.24, 0.05, avStairCx, fyS + 0.18 + (wallH - 0.24) * 0.5, wz, cabinGlass, false, false);
+          boxAt(lgS, avStairW, 0.12, 0.12, avStairCx, fyS + wallH - 0.02, wz, titaniumMat, false, false);
+          boxAt(lgS, 0.1, wallH, 0.1, avStairXMid, fyS + wallH * 0.5, wz, titaniumMat, true, false);
+        });
+
+        // West glass shaft wall south of doorway (dz = -0.02..+3.82 -> 3.84m)
+        boxAt(lgS, 0.12, 0.36, 3.84, avStairXWest, fyS + 0.18, spec.cz + 1.9, navyJetMat, true, true);
+        boxAt(lgS, 0.05, wallH - 0.42, 3.84, avStairXWest, fyS + 0.36 + (wallH - 0.42) * 0.5, spec.cz + 1.9, cabinGlass, false, false);
+        boxAt(lgS, 0.12, 0.12, 3.84, avStairXWest, fyS + wallH - 0.02, spec.cz + 1.9, titaniumMat, false, false);
+        boxAt(lgS, 0.1, wallH, 0.1, avStairXWest, fyS + wallH * 0.5, spec.cz + 1.9, titaniumMat, true, false);
+        boxAt(lgS, 0.1, wallH, 0.1, avStairXWest, fyS + wallH * 0.5, avStairZSouth, titaniumMat, true, false);
+
+        // Framed open Boarding Stairwell Door on West shaft face (dx = +10.22, dz = -1.25..+0.01)
+        const doorZ = spec.cz - 0.62;
+        const doorH = 2.42;
+        [spec.cz - 1.25, spec.cz + 0.01].forEach((jz) => {
+          boxAt(lgS, 0.15, wallH, 0.11, avStairXWest, fyS + wallH * 0.5, jz, titaniumMat, true, false, 0.01);
+        });
+        boxAt(lgS, 0.15, 0.12, 1.36, avStairXWest, fyS + doorH + 0.06, doorZ, navyJetMat, true, false, 0.01);
+        const transomH = Math.max(0.3, wallH - doorH - 0.16);
+        boxAt(lgS, 0.05, transomH, 1.18, avStairXWest, fyS + doorH + 0.12 + transomH * 0.5, doorZ, cabinGlass, false, false);
+
+        // Swung-open titanium-stile & glazed door leaf (hinged at South jamb, swung out -X/+Z against glass)
+        const doorLeaf = new THREE.Group();
+        doorLeaf.position.set(avStairXWest - 0.02, fyS, spec.cz - 0.04);
+        doorLeaf.rotation.y = 2.22;
+        boxAt(doorLeaf, 0.055, doorH - 0.04, 0.09, 0, (doorH - 0.04) * 0.5 + 0.02, -0.045, titaniumMat, true, false);
+        boxAt(doorLeaf, 0.055, doorH - 0.04, 0.09, 0, (doorH - 0.04) * 0.5 + 0.02, -1.08, titaniumMat, true, false);
+        boxAt(doorLeaf, 0.055, 0.14, 1.12, 0, 0.09, -0.56, navyJetMat, true, false);
+        boxAt(doorLeaf, 0.055, 0.12, 1.12, 0, doorH - 0.08, -0.56, navyJetMat, true, false);
+        boxAt(doorLeaf, 0.028, doorH - 0.3, 0.96, 0, doorH * 0.5, -0.56, cabinGlass, false, false);
+        cylAt(doorLeaf, 0.014, 0.014, 0.86, -0.055, 1.15, -0.98, M.brass, false, false, 10);
+        cylAt(doorLeaf, 0.014, 0.014, 0.86, 0.055, 1.15, -0.98, M.brass, false, false, 10);
+        lgS.add(doorLeaf);
+        addTravelPlaque(lgS, avStairSigns[lv] ?? `STAIRS · L${lv}`, avStairXWest - 0.1, fyS + doorH + 0.34, doorZ, -Math.PI / 2);
+
+        // Two-Flight Switchback Satin-Birch & Titanium Stairs (G->L1, L1->L2, L2->L3)
+        if (lv < spec.floors - 1) {
+          const steps = 8;
+          const runLen = avHalfStartZ - avBridgeZ;
+          const stepDepth = runLen / steps;
+          const halfRise = spec.floorH * 0.5;
+          const stepRise = halfRise / steps;
+          const yMidLv = fyS + halfRise;
+          const yTopLv = fyS + spec.floorH;
+
+          // Flight 1 (East lane dx = +12.50, climbs Southward -0.05 -> +2.55)
+          for (let st = 0; st < steps; st++) {
+            const ty = fyS + (st + 0.5) * stepRise;
+            const tz = avBridgeZ + (st + 0.5) * stepDepth;
+            boxAt(lgS, 1.32, stepRise, stepDepth + 0.03, spec.cx + 12.5, ty, tz, navyJetMat, true, true, 0.008);
+            boxAt(lgS, 1.35, 0.045, stepDepth + 0.04, spec.cx + 12.5, ty + stepRise * 0.5 + 0.01, tz, birchSlatMat, false, true, 0.008);
+            boxAt(lgS, 1.35, 0.016, 0.035, spec.cx + 12.5, ty + stepRise * 0.5 + 0.028, tz - stepDepth * 0.45, skyUpholstery, false, false);
+          }
+
+          // South Half Landing (y = fyS + 2.10)
+          boxAt(lgS, 2.94, 0.16, 1.22, avStairCx, yMidLv - 0.07, spec.cz + 3.16, navyJetMat, true, true, 0.015);
+          boxAt(lgS, 2.9, 0.04, 1.18, avStairCx, yMidLv + 0.02, spec.cz + 3.16, birchSlatMat, false, true, 0.01);
+
+          // Flight 2 (West lane dx = +10.98, climbs Northward +2.55 -> -0.05)
+          for (let st = 0; st < steps; st++) {
+            const ty = yMidLv + (st + 0.5) * stepRise;
+            const tz = avHalfStartZ - (st + 0.5) * stepDepth;
+            boxAt(lgS, 1.32, stepRise * 0.55, stepDepth + 0.03, spec.cx + 10.98, ty + stepRise * 0.22, tz, navyJetMat, true, true, 0.008);
+            boxAt(lgS, 1.35, 0.045, stepDepth + 0.04, spec.cx + 10.98, ty + stepRise * 0.5 + 0.01, tz, birchSlatMat, false, true, 0.008);
+            boxAt(lgS, 1.35, 0.016, 0.035, spec.cx + 10.98, ty + stepRise * 0.5 + 0.028, tz + stepDepth * 0.45, skyUpholstery, false, false);
+          }
+
+          addAvRail(lgS, spec.cx + 13.18, fyS, avBridgeZ, yMidLv, avHalfStartZ);
+          addAvRail(lgS, spec.cx + 11.82, fyS, avBridgeZ, yMidLv, avHalfStartZ);
+          addAvRail(lgS, spec.cx + 11.68, yMidLv, avHalfStartZ, yTopLv, avBridgeZ);
+          addAvRail(lgS, spec.cx + 10.32, yMidLv, avHalfStartZ, yTopLv, avBridgeZ);
+        }
+
+        // Shaft balustrades (ground under-stair guard + upper-floor drop guardrails)
+        if (lv === 0) {
+          boxAt(lgS, 1.44, 1.45, 0.06, spec.cx + 10.98, fyS + 0.725, avBridgeZ, cabinGlass, false, false);
+          boxAt(lgS, 0.06, 1.04, 2.6, avStairXMid, fyS + 0.52, spec.cz + 1.25, cabinGlass, false, false);
+        } else {
+          boxAt(lgS, 0.06, 1.04, 3.8, avStairXMid, fyS + 0.52, spec.cz + 1.85, cabinGlass, false, false);
+          boxAt(lgS, 0.05, 1.04, 3.8, spec.cx + 13.24, fyS + 0.52, spec.cz + 1.85, cabinGlass, false, false);
+          boxAt(lgS, 2.94, 1.04, 0.05, avStairCx, fyS + 0.52, spec.cz + 3.74, cabinGlass, false, false);
+          if (lv === spec.floors - 1) {
+            boxAt(lgS, 1.46, 1.04, 0.06, spec.cx + 12.5, fyS + 0.52, avBridgeZ, cabinGlass, false, false);
+          }
+        }
+      }
     } else if (spec.id === 'tourism') {
       // Vine-draped cedar pergola entrance porte-cochère on ashlar stone piers (facing north street)
       const tourPergola = new THREE.Group();
@@ -1316,79 +3058,983 @@ export function buildDistrictBuildings(
       g0.add(tourPergola);
       buildTropicalPalm(g0, spec.cx + spec.w * 0.44, spec.groundY, spec.doorZ - 2.6, 3.9, 620, M, archMats);
 
-      // 3D Topographical Kenya / Mt. Kenya & Mara Relief Map Table
-      const mapX = spec.cx - 5.8;
-      const mapZ = spec.cz - 0.8;
-      boxAt(g0, 4.4, 0.78, 2.8, mapX, fy + 0.39, mapZ, M.walnut, true, true, 0.04);
-      boxAt(g0, 4.0, 0.08, 2.4, mapX, fy + 0.8, mapZ, std({ color: 0x3b6e3c, roughness: 0.85 }), false, true);
-      // Terrain elevation tiers & snow-capped Mt. Kenya peak
-      boxAt(g0, 1.5, 0.16, 1.1, mapX - 0.6, fy + 0.88, mapZ - 0.3, std({ color: 0x628c45, roughness: 0.88 }), false, false, 0.04);
-      cylAt(g0, 0.12, 0.65, 0.42, mapX + 0.4, fy + 1.01, mapZ + 0.15, std({ color: 0x736857, roughness: 0.9 }), true, false, 7);
-      cylAt(g0, 0.01, 0.22, 0.16, mapX + 0.4, fy + 1.24, mapZ + 0.15, M.white, false, false, 7);
+      // -------------------------------------------------------------------------
+      // SAFARI ARCHITECTURE PROCEDURAL TEXTURES & BESPOKE PBR MATERIALS
+      // -------------------------------------------------------------------------
+      const safariSandstoneTex = makeCanvasTex('safari_sandstone_floor', 256, 256, (g, W, H) => {
+        g.fillStyle = '#d7c3a3';
+        g.fillRect(0, 0, W, H);
+        for (let i = 0; i < 160; i++) {
+          const sx = ((i * 67) % 244) + 6;
+          const sy = ((i * 113) % 244) + 6;
+          g.fillStyle = i % 3 === 0 ? 'rgba(166,120,76,0.16)' : i % 3 === 1 ? 'rgba(242,228,204,0.22)' : 'rgba(130,94,58,0.12)';
+          g.fillRect(sx, sy, 6 + (i % 8), 3 + (i % 5));
+        }
+        g.strokeStyle = 'rgba(122,95,66,0.28)';
+        g.lineWidth = 2;
+        [0, 128].forEach((p) => {
+          g.beginPath();
+          g.moveTo(p, 0);
+          g.lineTo(p, H);
+          g.stroke();
+          g.beginPath();
+          g.moveTo(0, p);
+          g.lineTo(W, p);
+          g.stroke();
+        });
+      });
+      safariSandstoneTex.wrapS = safariSandstoneTex.wrapT = THREE.RepeatWrapping;
+      safariSandstoneTex.repeat.set(7, 5);
+      const safariStoneFloor = std({ map: safariSandstoneTex, roughness: 0.72, metalness: 0.03 });
 
-      // Indoor Expedition 4x4 Safari SUV with full expedition rack, bullbar, snorkel & spare wheel
-      const jeep = makeCar(0x4b5c34, 'suv', { safari: true, plateText: 'SAFARI 4X4' });
-      jeep.position.set(spec.cx + 7.2, fy + 0.1, spec.cz - 1.0);
-      jeep.rotation.y = -0.55;
-      g0.add(jeep);
-      cylAt(g0, 2.8, 2.9, 0.1, spec.cx + 7.2, fy + 0.05, spec.cz - 1.0, bankStoneMat, false, true, 24);
+      const acaciaWoodTex = makeCanvasTex('safari_acacia_wood', 256, 256, (g, W, H) => {
+        const gr = g.createLinearGradient(0, 0, W, 0);
+        gr.addColorStop(0, '#8f592c');
+        gr.addColorStop(0.5, '#a86b38');
+        gr.addColorStop(1, '#7c4b23');
+        g.fillStyle = gr;
+        g.fillRect(0, 0, W, H);
+        g.strokeStyle = 'rgba(54,28,10,0.26)';
+        g.lineWidth = 1.6;
+        for (let x = 8; x < W; x += 14) {
+          g.beginPath();
+          g.moveTo(x, 0);
+          g.quadraticCurveTo(x + (x % 28 === 8 ? 5 : -5), H * 0.5, x, H);
+          g.stroke();
+        }
+      });
+      acaciaWoodTex.wrapS = acaciaWoodTex.wrapT = THREE.RepeatWrapping;
+      acaciaWoodTex.repeat.set(3, 2);
+      const safariAcaciaTimber = std({ map: acaciaWoodTex, roughness: 0.48, metalness: 0.04 });
 
-      // 2 Safari Planner Desks
-      [-5.5, 5.5].forEach((ox, i) => {
-        const dz = spec.cz + 5.2;
-        makeDeskAt(g0, spec.cx + ox, fy, dz, 2.5, 1.05, M);
-        registerChair(0, spec.cx + ox, fy, dz + 0.88, Math.PI, i === 0 ? 1 : -1);
-        registerMonitor(
-          0,
-          i,
-          [spec.cx + ox, fy + 0.77, dz - 0.15],
-          0,
-          spec.cx + ox,
-          dz + 0.88,
-          i === 0 ? 'Safari Expedition Planner' : 'Eco-Lodge Concierge',
-          'Safari Gallery & Expeditions'
-        );
+      const sisalWeaveTex = makeCanvasTex('safari_sisal_weave', 256, 256, (g, W, H) => {
+        g.fillStyle = '#c8b28e';
+        g.fillRect(0, 0, W, H);
+        g.fillStyle = 'rgba(138,104,64,0.22)';
+        for (let y = 0; y < H; y += 8) {
+          g.fillRect(0, y, W, 3);
+        }
+        for (let x = 0; x < W; x += 12) {
+          g.fillStyle = x % 24 === 0 ? 'rgba(92,66,38,0.16)' : 'rgba(235,218,188,0.18)';
+          g.fillRect(x, 0, 4, H);
+        }
+        // Maasai crimson & olive border stripe accents
+        g.fillStyle = '#8b2f21';
+        g.fillRect(0, 8, W, 10);
+        g.fillRect(0, H - 18, W, 10);
+        g.fillStyle = '#4e6830';
+        g.fillRect(0, 22, W, 5);
+        g.fillRect(0, H - 27, W, 5);
+      });
+      sisalWeaveTex.wrapS = sisalWeaveTex.wrapT = THREE.RepeatWrapping;
+      sisalWeaveTex.repeat.set(2, 2);
+      const safariSisalRug = std({ map: sisalWeaveTex, roughness: 0.94, metalness: 0.01 });
+
+      const wroughtBronze = std({ color: 0x2b231b, roughness: 0.34, metalness: 0.85 });
+      const safariCanvasMat = std({ color: 0xefe6d4, roughness: 0.91, metalness: 0.01, side: THREE.DoubleSide });
+      const terracottaClay = std({ color: 0xb45b36, roughness: 0.82, metalness: 0.03 });
+      const savannaOlive = std({ color: 0x4f6632, roughness: 0.86, metalness: 0.02 });
+      const wovenRattan = std({ color: 0xb88b52, roughness: 0.84, metalness: 0.02 });
+      const safariCopper = std({ color: 0xb96a38, roughness: 0.28, metalness: 0.88 });
+      const basaltRockMat = std({ color: 0x2c2b29, roughness: 0.86, metalness: 0.06 });
+      const safariGlass = new THREE.MeshPhysicalMaterial({
+        color: 0xdff2e4,
+        roughness: 0.08,
+        metalness: 0.06,
+        transparent: true,
+        opacity: 0.22,
+        depthWrite: false,
+        side: THREE.DoubleSide,
       });
 
-      // Live Safari Park Trail & Conservancy Board
-      const sfBoard = createCustomBoardScreen(screenReg, 680, 220, (g, w, h, t) => {
-        g.fillStyle = '#0e170e';
+      // Architectural Helpers exclusive to Kenya Safari & Tourism
+      const addSafariPlaque = (parent: THREE.Object3D, title: string, x: number, y: number, z: number, rotY = 0) => {
+        const tex = makeCanvasTex(`safari_plaque_${title}`, 380, 76, (g, w, h) => {
+          g.fillStyle = '#1e1914';
+          rr(g, 2, 2, w - 4, h - 4, 8);
+          g.fill();
+          g.strokeStyle = '#84cc16';
+          g.lineWidth = 2.5;
+          rr(g, 5, 5, w - 10, h - 10, 6);
+          g.stroke();
+          g.fillStyle = '#b45b36';
+          g.fillRect(14, 14, 7, h - 28);
+          g.fillStyle = '#f5eedc';
+          g.font = '800 18px "Plus Jakarta Sans", sans-serif';
+          g.textAlign = 'left';
+          g.textBaseline = 'middle';
+          g.fillText(title, 32, h * 0.5);
+        });
+        const mesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(1.48, 0.3),
+          new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false })
+        );
+        mesh.position.set(x, y, z);
+        mesh.rotation.y = rotY;
+        parent.add(mesh);
+      };
+
+      // Acacia Timber Pergola Ceiling Beams & Draped Canvas Sails
+      const addSafariTimberCeiling = (parent: THREE.Object3D, ceilTopY: number, zBays: number[], withCanvasSails = false) => {
+        zBays.forEach((zb) => {
+          boxAt(parent, spec.w - 3.0, 0.16, 0.22, spec.cx, ceilTopY - 0.16, zb, safariAcaciaTimber, true, false);
+        });
+        [-9.5, -3.2, 3.2, 9.5].forEach((xb) => {
+          boxAt(parent, 0.14, 0.1, spec.d - 2.6, spec.cx + xb, ceilTopY - 0.24, spec.cz, wroughtBronze, false, false);
+        });
+        if (withCanvasSails) {
+          [-6.2, 0.8].forEach((sx) => {
+            const sailShape = new THREE.Shape();
+            sailShape.moveTo(-4.8, 0.12);
+            sailShape.quadraticCurveTo(0, -0.34, 4.8, 0.12);
+            const sailPts = sailShape.getPoints(14);
+            const sailCurve = new THREE.CatmullRomCurve3(sailPts.map((p) => new THREE.Vector3(p.x, p.y, 0)));
+            const extrudeGeo = new THREE.PlaneGeometry(9.6, 4.8, 12, 1);
+            const pos = extrudeGeo.attributes.position;
+            for (let vi = 0; vi < pos.count; vi++) {
+              const px = pos.getX(vi);
+              const tNorm = (px + 4.8) / 9.6;
+              pos.setZ(vi, Math.sin(tNorm * Math.PI) * -0.28);
+            }
+            extrudeGeo.computeVertexNormals();
+            const sail = new THREE.Mesh(extrudeGeo, safariCanvasMat);
+            sail.rotation.x = Math.PI / 2;
+            sail.position.set(spec.cx + sx, ceilTopY - 0.28, spec.cz - 1.2);
+            parent.add(sail);
+            void sailCurve;
+          });
+        }
+      };
+
+      // Arched Terracotta Adobe & Vertical Acacia Louver Partition (ExtrudeGeometry)
+      const addArchedSafariWall = (
+        parent: THREE.Object3D,
+        x: number,
+        y: number,
+        z: number,
+        len: number,
+        h: number,
+        archCount: number,
+        rotY = 0
+      ) => {
+        const shape = new THREE.Shape();
+        const hl = len * 0.5;
+        shape.moveTo(-hl, 0);
+        shape.lineTo(hl, 0);
+        shape.lineTo(hl, h);
+        shape.lineTo(-hl, h);
+        shape.closePath();
+
+        const spacing = len / (archCount + 0.35);
+        for (let i = 0; i < archCount; i++) {
+          const ax = -hl + spacing * (i + 0.675);
+          const aw = 0.42;
+          const baseY = 0.62;
+          const topY = h - 0.62;
+          const hole = new THREE.Path();
+          hole.moveTo(ax - aw, baseY);
+          hole.lineTo(ax + aw, baseY);
+          hole.lineTo(ax + aw, topY);
+          hole.absarc(ax, topY, aw, 0, Math.PI, false);
+          hole.lineTo(ax - aw, baseY);
+          shape.holes.push(hole);
+        }
+
+        const wallGeo = new THREE.ExtrudeGeometry(shape, {
+          depth: 0.2,
+          bevelEnabled: true,
+          bevelThickness: 0.02,
+          bevelSize: 0.02,
+          bevelSegments: 2,
+          curveSegments: 12,
+        });
+        wallGeo.translate(0, 0, -0.1);
+        const wallMesh = new THREE.Mesh(wallGeo, terracottaClay);
+        wallMesh.position.set(x, y, z);
+        wallMesh.rotation.y = rotY;
+        wallMesh.castShadow = true;
+        wallMesh.receiveShadow = true;
+        parent.add(wallMesh);
+
+        // Vertical acacia timber louver fins centered in each arch
+        for (let i = 0; i < archCount; i++) {
+          const ax = -hl + spacing * (i + 0.675);
+          [-0.18, 0, 0.18].forEach((fo) => {
+            const fin = new THREE.Mesh(new THREE.BoxGeometry(0.045, h - 1.05, 0.08), safariAcaciaTimber);
+            const lx = ax + fo;
+            const sinR = Math.sin(rotY);
+            const cosR = Math.cos(rotY);
+            fin.position.set(x + lx * cosR, y + 0.62 + (h - 1.05) * 0.5, z - lx * sinR);
+            fin.rotation.y = rotY;
+            parent.add(fin);
+          });
+        }
+      };
+
+      // Sculpted Tiered Woven-Basket Bell Pendant Lamp (LatheGeometry)
+      const addWovenBellLamp = (parent: THREE.Object3D, x: number, yCeil: number, z: number, scale = 1) => {
+        const grp = new THREE.Group();
+        grp.position.set(x, yCeil, z);
+        grp.scale.setScalar(scale);
+        cylAt(grp, 0.012, 0.012, 0.72, 0, -0.36, 0, wroughtBronze, false, false, 8);
+        const pts = [
+          new THREE.Vector2(0.06, 0.42),
+          new THREE.Vector2(0.18, 0.34),
+          new THREE.Vector2(0.38, 0.14),
+          new THREE.Vector2(0.46, 0.0),
+          new THREE.Vector2(0.42, 0.0),
+          new THREE.Vector2(0.15, 0.32),
+        ];
+        const bell = new THREE.Mesh(new THREE.LatheGeometry(pts, 20), wovenRattan);
+        bell.position.y = -1.08;
+        bell.castShadow = true;
+        grp.add(bell);
+        const bulb = new THREE.Mesh(
+          new THREE.SphereGeometry(0.09, 12, 10),
+          new THREE.MeshBasicMaterial({ color: 0xffdf9e })
+        );
+        bulb.position.y = -0.98;
+        grp.add(bulb);
+        parent.add(grp);
+      };
+
+      // Multi-Part Sculpted Bronze Savannah Giraffe & Acacia Silhouette Sculpture (Group of 10 parts)
+      const addBronzeGiraffeSculpture = (parent: THREE.Object3D, x: number, y: number, z: number, sc = 1, rotY = 0) => {
+        const g = new THREE.Group();
+        g.position.set(x, y, z);
+        g.rotation.y = rotY;
+        g.scale.setScalar(sc);
+        // Dark basalt + acacia museum plinth
+        boxAt(g, 0.96, 0.78, 0.96, 0, 0.39, 0, basaltRockMat, true, true, 0.03);
+        boxAt(g, 1.04, 0.06, 1.04, 0, 0.81, 0, safariAcaciaTimber, false, true, 0.015);
+        // Sculpted bronze giraffe standing tall
+        const bronzeMat = std({ color: 0x7b562e, roughness: 0.28, metalness: 0.86 });
+        const fig = new THREE.Group();
+        fig.position.y = 0.84;
+        // 4 slender legs
+        [
+          [-0.1, 0.16],
+          [0.1, 0.16],
+          [-0.09, -0.18],
+          [0.09, -0.18],
+        ].forEach(([lx, lz]) => {
+          cylAt(fig, 0.022, 0.028, 0.56, lx, 0.28, lz, bronzeMat, true, false, 8);
+        });
+        // Torso
+        const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.32, 6, 12), bronzeMat);
+        torso.rotation.x = Math.PI / 2;
+        torso.position.set(0, 0.58, 0);
+        torso.castShadow = true;
+        fig.add(torso);
+        // Long graceful neck
+        const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.08, 0.68, 12), bronzeMat);
+        neck.position.set(0, 0.92, 0.24);
+        neck.rotation.x = 0.22;
+        neck.castShadow = true;
+        fig.add(neck);
+        // Head + ossicone horns
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.22), bronzeMat);
+        head.position.set(0, 1.24, 0.36);
+        head.rotation.x = 0.15;
+        fig.add(head);
+        [-0.025, 0.025].forEach((ox) => {
+          cylAt(fig, 0.01, 0.012, 0.08, ox, 1.32, 0.31, safariCopper, false, false, 6);
+        });
+        g.add(fig);
+        parent.add(g);
+      };
+
+      // Terracotta Amphora Urn with Tall Savannah Reeds
+      const addTerracottaUrn = (parent: THREE.Object3D, x: number, y: number, z: number) => {
+        const pts = [
+          new THREE.Vector2(0.01, 0),
+          new THREE.Vector2(0.18, 0.02),
+          new THREE.Vector2(0.28, 0.28),
+          new THREE.Vector2(0.24, 0.56),
+          new THREE.Vector2(0.14, 0.7),
+          new THREE.Vector2(0.19, 0.76),
+        ];
+        const urn = new THREE.Mesh(new THREE.LatheGeometry(pts, 18), terracottaClay);
+        urn.position.set(x, y, z);
+        urn.castShadow = true;
+        urn.receiveShadow = true;
+        parent.add(urn);
+        [-0.06, 0, 0.07].forEach((ro, ri) => {
+          const reed = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.014, 0.75 + ri * 0.12, 6), savannaOlive);
+          reed.position.set(x + ro, y + 0.96, z + (ri - 1) * 0.04);
+          reed.rotation.z = (ri - 1) * 0.16;
+          parent.add(reed);
+        });
+      };
+
+      // Reusable Dynamic Safari Telemetry Screens
+      const conservancyScreen = createCustomBoardScreen(screenReg, 680, 240, (g, w, h, t) => {
+        g.fillStyle = '#121810';
         g.fillRect(0, 0, w, h);
-        g.fillStyle = '#84cc16';
-        g.fillRect(0, 0, w, 34);
-        g.fillStyle = '#0e170e';
-        g.font = '800 18px sans-serif';
+        g.fillStyle = '#4f6632';
+        g.fillRect(0, 0, w, 38);
+        g.fillStyle = '#b45b36';
+        g.fillRect(0, 0, 10, 38);
+        g.fillStyle = '#f5eedc';
+        g.font = '800 17px "Plus Jakarta Sans", sans-serif';
         g.textAlign = 'left';
         g.textBaseline = 'middle';
-        g.fillText('KENYA SAFARI & TOURISM · CONSERVANCY & LODGE STATUS', 16, 17);
+        g.fillText('KENYA SAFARI & TOURISM · CONSERVANCY, MIGRATION & LODGE TELEMETRY', 20, 19);
         const parks = [
-          ['Maasai Mara Reserve', 'Migration Active', '91% Lodge Occ.'],
-          ['Amboseli & Kilimanjaro', 'Clear Peaks', '4x4 Ready'],
-          ['Mt. Kenya Highlands', 'Alpine Trails Open', 'Guides Briefed'],
+          ['Maasai Mara Reserve', 'Great Migration Crossing', '94% Camp Occ.'],
+          ['Amboseli & Kilimanjaro', 'Clear Peak Visibility', '6 Cruisers Out'],
+          ['Samburu & Laikipia', 'Wild Dog Tracking Open', 'Guides Briefed'],
+          ['Diani & Lamu Coast', 'Monsoon Calm · Dhow Ready', '88% Villa Occ.'],
         ];
         parks.forEach((p, i) => {
-          const y = 56 + i * 50;
-          g.fillStyle = i === Math.floor(t / 3.2) % 3 ? 'rgba(132,204,22,0.18)' : 'rgba(255,255,255,0.05)';
-          rr(g, 14, y, w - 28, 42, 6);
+          const y = 54 + i * 44;
+          g.fillStyle = i === Math.floor(t / 3.0) % 4 ? 'rgba(132,204,22,0.22)' : 'rgba(255,255,255,0.06)';
+          rr(g, 16, y, w - 32, 36, 6);
           g.fill();
           g.fillStyle = '#f8fafc';
-          g.font = '700 17px sans-serif';
-          g.fillText(p[0], 26, y + 21);
+          g.font = '700 15px sans-serif';
+          g.fillText(p[0], 28, y + 18);
           g.fillStyle = '#bef264';
-          g.font = '600 15px sans-serif';
-          g.fillText(p[1], 300, y + 21);
-          g.fillStyle = '#e2e8f0';
+          g.font = '600 14px sans-serif';
+          g.fillText(p[1], 295, y + 18);
+          g.fillStyle = '#fde68a';
           g.textAlign = 'right';
-          g.fillText(p[2], w - 26, y + 21);
+          g.fillText(p[2], w - 28, y + 18);
           g.textAlign = 'left';
         });
       });
-      boxAt(g0, 7.2, 2.3, 0.14, spec.cx, fy + 2.35, spec.cz + 8.7, frameDarkMat, false, false);
-      const sfMesh = new THREE.Mesh(new THREE.PlaneGeometry(6.9, 2.05), sfBoard.mat);
-      sfMesh.position.set(spec.cx, fy + 2.35, spec.cz + 8.62);
+
+      const migrationMapScreen = createCustomBoardScreen(screenReg, 520, 260, (g, w, h, t) => {
+        g.fillStyle = '#181410';
+        g.fillRect(0, 0, w, h);
+        g.fillStyle = '#2c231a';
+        g.fillRect(0, 0, w, 36);
+        g.fillStyle = '#84cc16';
+        g.fillRect(0, 0, 8, 36);
+        g.fillStyle = '#f5eedc';
+        g.font = '800 15px "Plus Jakarta Sans", sans-serif';
+        g.textAlign = 'left';
+        g.textBaseline = 'middle';
+        g.fillText('RIFT VALLEY EXPEDITION MATRIX · TRACKED 4X4 CONVOYS', 18, 18);
+        // Stylized Kenya savanna silhouette & circuit trails
+        g.fillStyle = '#2d3b20';
+        g.beginPath();
+        g.moveTo(110, 56);
+        g.lineTo(310, 48);
+        g.lineTo(410, 128);
+        g.lineTo(335, 224);
+        g.lineTo(145, 205);
+        g.closePath();
+        g.fill();
+        const nodes: Array<[number, number, string]> = [
+          [175, 165, 'MAASAI MARA'],
+          [265, 132, 'NAIVASHA'],
+          [295, 188, 'AMBOSELI'],
+          [282, 92, 'SAMBURU'],
+          [372, 206, 'DIANI COAST'],
+        ];
+        g.strokeStyle = '#d97706';
+        g.lineWidth = 2.5;
+        g.beginPath();
+        nodes.forEach(([nx, ny], ni) => (ni === 0 ? g.moveTo(nx, ny) : g.lineTo(nx, ny)));
+        g.stroke();
+        nodes.forEach(([nx, ny, lbl], ni) => {
+          const pulse = ni === Math.floor(t * 0.9) % nodes.length;
+          g.fillStyle = pulse ? '#facc15' : '#84cc16';
+          g.beginPath();
+          g.arc(nx, ny, pulse ? 6.5 : 4.5, 0, Math.PI * 2);
+          g.fill();
+          g.fillStyle = '#f5eedc';
+          g.font = '700 11px monospace';
+          g.fillText(lbl, nx + 10, ny + 3);
+        });
+      });
+
+      // -------------------------------------------------------------------------
+      // FLOOR 0 (G): Safari Arrival Pavilion, Kenya 3D Relief Table, 4x4 Cruiser & Bush Lounge
+      // -------------------------------------------------------------------------
+      boxAt(g0, 29.2, 0.018, 17.4, spec.cx, fy + 0.009, spec.cz, safariStoneFloor, false, true);
+      boxAt(g0, 5.4, 0.02, 5.8, spec.cx - 11.4, fy + 0.014, spec.cz + 1.8, safariSisalRug, false, true);
+      boxAt(g0, 11.6, 0.02, 4.0, spec.cx - 0.8, fy + 0.014, spec.cz + 5.6, safariSisalRug, false, true);
+      addSafariTimberCeiling(levelCeilings[0], spec.groundY + spec.floorH - 0.14, [spec.cz - 5.2, spec.cz - 1.2, spec.cz + 2.8, spec.cz + 6.4], true);
+
+      // Monumental 3D Topographical Kenya & Great Rift Valley Relief Table (cx - 5.2, cz - 1.2)
+      const mapX = spec.cx - 5.2;
+      const mapZ = spec.cz - 1.2;
+      boxAt(g0, 4.8, 0.8, 2.8, mapX, fy + 0.4, mapZ, safariAcaciaTimber, true, true, 0.05);
+      boxAt(g0, 4.92, 0.06, 2.92, mapX, fy + 0.81, mapZ, wroughtBronze, false, true, 0.02);
+      boxAt(g0, 4.4, 0.08, 2.4, mapX, fy + 0.85, mapZ, std({ color: 0x4b773c, roughness: 0.88 }), false, true);
+      // Great Rift Valley turquoise lake trench & stepped highland ridges + snow-capped Mt. Kenya
+      boxAt(g0, 0.48, 0.03, 1.9, mapX - 0.85, fy + 0.895, mapZ, std({ color: 0x1e88a8, roughness: 0.22 }), false, false);
+      boxAt(g0, 1.65, 0.16, 1.15, mapX - 0.4, fy + 0.96, mapZ - 0.35, std({ color: 0x6f9448, roughness: 0.88 }), false, false, 0.04);
+      cylAt(g0, 0.14, 0.72, 0.48, mapX + 0.65, fy + 1.12, mapZ + 0.15, basaltRockMat, true, false, 7);
+      cylAt(g0, 0.02, 0.26, 0.2, mapX + 0.65, fy + 1.38, mapZ + 0.15, M.white, false, false, 7);
+      addSafariPlaque(g0, 'MT. KENYA & RIFT RELIEF', mapX, fy + 0.42, mapZ + 1.44, 0);
+
+      // East-Front Raised Basalt Showcase Plinth + Expedition 4x4 Safari Cruiser
+      const jeep = makeCar(0x4b5c34, 'suv', { safari: true, plateText: 'MARA 4X4' });
+      jeep.position.set(spec.cx + 6.4, fy + 0.12, spec.cz - 2.8);
+      jeep.rotation.y = -0.62;
+      g0.add(jeep);
+      cylAt(g0, 2.75, 2.9, 0.12, spec.cx + 6.4, fy + 0.06, spec.cz - 2.8, basaltRockMat, false, true, 24);
+
+      // West Wing: Savannah Bush Camp Lounge, Sculpted Giraffe Pedestal & Terracotta Urns
+      addBronzeGiraffeSculpture(g0, spec.cx - 11.8, fy, spec.cz - 4.8, 1.0, 0.35);
+      const gSofa = sofaWide(g0, spec.cx - 12.6, fy, spec.cz + 1.8, Math.PI / 2, M.fabricCognac, M);
+      gSofa.scale.set(0.84, 0.92, 0.84);
+      const gArm1 = armchair(g0, spec.cx - 10.2, fy, spec.cz + 0.8, -Math.PI * 0.7, wovenRattan, M);
+      gArm1.scale.set(0.76, 0.88, 0.76);
+      const gArm2 = armchair(g0, spec.cx - 10.2, fy, spec.cz + 2.8, -Math.PI * 0.3, wovenRattan, M);
+      gArm2.scale.set(0.76, 0.88, 0.76);
+      cylAt(g0, 0.52, 0.56, 0.42, spec.cx - 11.2, fy + 0.21, spec.cz + 1.8, safariAcaciaTimber, true, true, 16);
+      addTerracottaUrn(g0, spec.cx - 13.6, fy, spec.cz - 6.8);
+      addTerracottaUrn(g0, spec.cx - 13.6, fy, spec.cz + 7.0);
+
+      // South Zone: 3 Hand-Crafted Acacia Safari Concierge Desks (dx -5.2, -0.8, +3.6)
+      [-5.2, -0.8, 3.6].forEach((ox, i) => {
+        const dz = spec.cz + 5.2;
+        boxAt(g0, 2.55, 0.065, 1.05, spec.cx + ox, fy + 0.75, dz, safariAcaciaTimber, true, true, 0.02);
+        boxAt(g0, 2.38, 0.72, 0.14, spec.cx + ox, fy + 0.36, dz - 0.38, terracottaClay, true, true, 0.01);
+        [-1.08, 1.08].forEach((lx) => {
+          boxAt(g0, 0.08, 0.72, 0.82, spec.cx + ox + lx, fy + 0.36, dz, wroughtBronze, true, true, 0.01);
+        });
+        registerChair(0, spec.cx + ox, fy, dz + 0.88, Math.PI, i % 2 === 0 ? 1 : -1);
+        registerMonitor(
+          0,
+          i,
+          [spec.cx + ox, fy + 0.79, dz - 0.15],
+          0,
+          spec.cx + ox,
+          dz + 0.88,
+          i === 0 ? 'Safari Expedition Planner' : i === 1 ? 'Eco-Lodge Concierge' : 'Conservancy & Bush-Flight Specialist',
+          'Safari Gallery & Expeditions'
+        );
+      });
+      plant(g0, spec.cx + 8.6, fy, spec.cz + 6.8, 1.25, 1301, M, 'olive');
+
+      // South Wall Live Kenya Wildlife & Conservancy Board (centered west of SE stairwell at cx - 0.8)
+      boxAt(g0, 7.2, 2.35, 0.14, spec.cx - 0.8, fy + 2.35, spec.cz + 8.7, wroughtBronze, false, false);
+      const sfMesh = new THREE.Mesh(new THREE.PlaneGeometry(6.9, 2.1), conservancyScreen.mat);
+      sfMesh.position.set(spec.cx - 0.8, fy + 2.35, spec.cz + 8.61);
       sfMesh.rotation.y = Math.PI;
       g0.add(sfMesh);
-      sfBoard.setMesh(sfMesh);
+      conservancyScreen.setMesh(sfMesh);
+
+      // -------------------------------------------------------------------------
+      // FLOOR 1 (L1): Maasai Mara Conservancy Studio, Outfitter & Storyteller Hearth
+      // -------------------------------------------------------------------------
+      const sg1 = levelGroups[1];
+      if (sg1) {
+        const sfy1 = spec.groundY + spec.floorH + SLAB_THICK * 0.5;
+        const s1Fill = new THREE.PointLight(0xffe9c8, 1.24, 26);
+        s1Fill.position.set(spec.cx, sfy1 + 3.1, spec.cz);
+        sg1.add(s1Fill);
+        warmLights.push(s1Fill);
+
+        // Non-overlapping flooring clearing SE stair void (+11.22..+14.28 x +4.15..+7.95)
+        boxAt(sg1, 29.2, 0.018, 12.85, spec.cx, sfy1 + 0.009, spec.cz - 2.275, safariStoneFloor, false, true);
+        boxAt(sg1, 25.8, 0.018, 4.55, spec.cx - 1.7, sfy1 + 0.009, spec.cz + 6.425, safariStoneFloor, false, true);
+        boxAt(sg1, 3.4, 0.018, 0.75, spec.cx + 12.9, sfy1 + 0.009, spec.cz + 8.325, safariStoneFloor, false, true);
+        boxAt(sg1, 8.6, 0.02, 13.4, spec.cx - 9.0, sfy1 + 0.014, spec.cz - 0.4, safariSisalRug, false, true);
+        boxAt(sg1, 5.2, 0.02, 4.8, spec.cx + 1.0, sfy1 + 0.014, spec.cz - 3.6, safariSisalRug, false, true);
+        addSafariTimberCeiling(levelCeilings[1], spec.groundY + 2 * spec.floorH - 0.14, [spec.cz - 4.8, spec.cz + 4.8]);
+
+        let s1MonIdx = 0;
+
+        // West Wing: Arched Terracotta & Acacia-Louver Partition (open archway dz -1.2..+0.6)
+        addArchedSafariWall(sg1, spec.cx - 3.5, sfy1, spec.cz - 4.6, 6.8, 2.75, 4, Math.PI / 2);
+        addArchedSafariWall(sg1, spec.cx - 3.5, sfy1, spec.cz + 4.3, 7.4, 2.75, 4, Math.PI / 2);
+        addSafariPlaque(sg1, 'MARA ITINERARY ATELIER', spec.cx - 3.35, sfy1 + 2.48, spec.cz - 0.3, Math.PI / 2);
+
+        const s1PodX = spec.cx - 9.0;
+        [spec.cz - 4.0, spec.cz + 3.2].forEach((pz, pi) => {
+          boxAt(sg1, 3.3, 0.06, 1.38, s1PodX, sfy1 + 0.74, pz, safariAcaciaTimber, true, true, 0.02);
+          [-1.4, 1.4].forEach((lx) => {
+            boxAt(sg1, 0.08, 0.72, 1.15, s1PodX + lx, sfy1 + 0.36, pz, wroughtBronze, true, true, 0.01);
+          });
+          boxAt(sg1, 3.1, 0.28, 0.05, s1PodX, sfy1 + 0.91, pz, savannaOlive, false, false);
+          addWovenBellLamp(sg1, s1PodX, spec.groundY + 2 * spec.floorH - 0.18, pz, 0.92);
+          if (pi === 0) {
+            registerChair(1, s1PodX - 0.8, sfy1, pz - 1.05, 0, 1);
+            registerMonitor(1, s1MonIdx++, [s1PodX - 0.8, sfy1 + 0.77, pz - 0.25], Math.PI, s1PodX - 0.8, pz - 1.05, 'Mara Itinerary Architect · L1', 'Maasai Mara Itinerary Studio');
+            officeChair(sg1, s1PodX + 0.8, sfy1, pz - 1.05, 0, M);
+            monitor(sg1, s1PodX + 0.8, sfy1 + 0.77, pz - 0.25, true, Math.PI, M);
+            officeChair(sg1, s1PodX - 0.8, sfy1, pz + 1.05, Math.PI, M);
+            monitor(sg1, s1PodX - 0.8, sfy1 + 0.77, pz + 0.25, true, 0, M);
+            officeChair(sg1, s1PodX + 0.8, sfy1, pz + 1.05, Math.PI, M);
+            monitor(sg1, s1PodX + 0.8, sfy1 + 0.77, pz + 0.25, true, 0, M);
+          } else {
+            registerChair(1, s1PodX + 0.8, sfy1, pz + 1.05, Math.PI, -1);
+            registerMonitor(1, s1MonIdx++, [s1PodX + 0.8, sfy1 + 0.77, pz + 0.25], 0, s1PodX + 0.8, pz + 1.05, 'Coastal & Island Specialist · L1', 'Maasai Mara Itinerary Studio');
+            officeChair(sg1, s1PodX - 0.8, sfy1, pz - 1.05, 0, M);
+            monitor(sg1, s1PodX - 0.8, sfy1 + 0.77, pz - 0.25, true, Math.PI, M);
+            officeChair(sg1, s1PodX + 0.8, sfy1, pz - 1.05, 0, M);
+            monitor(sg1, s1PodX + 0.8, sfy1 + 0.77, pz - 0.25, true, Math.PI, M);
+            officeChair(sg1, s1PodX - 0.8, sfy1, pz + 1.05, Math.PI, M);
+            monitor(sg1, s1PodX - 0.8, sfy1 + 0.77, pz + 0.25, true, 0, M);
+          }
+        });
+        // SW Safari Field Gear & Optics Outfitter Rack + West Trail Display
+        boxAt(sg1, 3.2, 2.15, 0.56, spec.cx - 12.2, sfy1 + 1.075, spec.cz + 7.9, safariAcaciaTimber, true, true, 0.02);
+        [-13.1, -12.2, -11.3].forEach((gx, gi) => {
+          boxAt(sg1, 0.44, 0.3, 0.34, spec.cx + gx, sfy1 + 1.08, spec.cz + 7.86, gi === 1 ? savannaOlive : M.fabricCognac, false, false, 0.04);
+          cylAt(sg1, 0.14, 0.18, 0.1, spec.cx + gx, sfy1 + 1.66, spec.cz + 7.86, safariCanvasMat, false, false, 14);
+        });
+        boxAt(sg1, 0.1, 1.95, 4.4, spec.cx - 14.65, sfy1 + 1.85, spec.cz - 0.4, wroughtBronze, false, false);
+        const s1WestTv = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.76), migrationMapScreen.mat);
+        s1WestTv.position.set(spec.cx - 14.58, sfy1 + 1.85, spec.cz - 0.4);
+        s1WestTv.rotation.y = Math.PI / 2;
+        sg1.add(s1WestTv);
+        addTerracottaUrn(sg1, spec.cx - 13.4, sfy1, spec.cz - 7.1);
+
+        // Center Zone: Circular Bushcraft Storytelling Hearth Table & Cartographer Desk
+        cylAt(sg1, 0.96, 0.96, 0.06, spec.cx + 1.0, sfy1 + 0.72, spec.cz - 3.6, safariAcaciaTimber, true, true, 24);
+        cylAt(sg1, 0.22, 0.34, 0.7, spec.cx + 1.0, sfy1 + 0.35, spec.cz - 3.6, wroughtBronze, true, true, 16);
+        cylAt(sg1, 0.26, 0.3, 0.12, spec.cx + 1.0, sfy1 + 0.81, spec.cz - 3.6, safariCopper, false, false, 16);
+        [
+          [-1.35, 0, Math.PI / 2],
+          [1.35, 0, -Math.PI / 2],
+          [0, -1.35, 0],
+          [0, 1.35, Math.PI],
+        ].forEach(([ox, oz, rot]) => {
+          const rc = armchair(sg1, spec.cx + 1.0 + ox, sfy1, spec.cz - 3.6 + oz, rot, wovenRattan, M);
+          rc.scale.set(0.72, 0.86, 0.72);
+        });
+
+        boxAt(sg1, 2.7, 0.06, 1.08, spec.cx + 1.0, sfy1 + 0.74, spec.cz + 4.4, safariAcaciaTimber, true, true, 0.02);
+        [-1.1, 1.1].forEach((lx) => {
+          boxAt(sg1, 0.08, 0.72, 0.88, spec.cx + 1.0 + lx, sfy1 + 0.36, spec.cz + 4.4, wroughtBronze, true, true, 0.01);
+        });
+        registerChair(1, spec.cx + 1.0, sfy1, spec.cz + 5.32, Math.PI, 1);
+        registerMonitor(1, s1MonIdx++, [spec.cx + 1.0, sfy1 + 0.77, spec.cz + 4.55], 0, spec.cx + 1.0, spec.cz + 5.32, 'Lead Safari Cartographer · L1', 'Cartography & Route Planning');
+        [spec.cx + 0.25, spec.cx + 1.75].forEach((vx) => {
+          const vc = armchair(sg1, vx, sfy1, spec.cz + 3.2, 0, savannaOlive, M);
+          vc.scale.set(0.74, 0.88, 0.74);
+        });
+
+        // East-North Wing: Kenyan Highlands Coffee & Chai Tasting Bar + Wildlife Screen
+        boxAt(sg1, 4.2, 0.96, 0.92, spec.cx + 9.4, sfy1 + 0.48, spec.cz - 5.2, terracottaClay, true, true, 0.03);
+        boxAt(sg1, 4.32, 0.06, 1.0, spec.cx + 9.4, sfy1 + 0.99, spec.cz - 5.2, safariAcaciaTimber, false, true, 0.02);
+        cylAt(sg1, 0.14, 0.18, 0.32, spec.cx + 8.6, sfy1 + 1.18, spec.cz - 5.2, safariCopper, false, false, 14);
+        cylAt(sg1, 0.12, 0.16, 0.28, spec.cx + 10.2, sfy1 + 1.16, spec.cz - 5.2, safariCopper, false, false, 14);
+        [-1.2, 0, 1.2].forEach((ox) => {
+          cylAt(sg1, 0.2, 0.2, 0.09, spec.cx + 9.4 + ox, sfy1 + 0.68, spec.cz - 4.1, M.fabricCognac, true, true, 16);
+          cylAt(sg1, 0.035, 0.035, 0.66, spec.cx + 9.4 + ox, sfy1 + 0.33, spec.cz - 4.1, wroughtBronze, false, false, 10);
+          cylAt(sg1, 0.17, 0.2, 0.04, spec.cx + 9.4 + ox, sfy1 + 0.02, spec.cz - 4.1, wroughtBronze, false, true, 14);
+        });
+        boxAt(sg1, 0.1, 1.9, 4.2, spec.cx + 14.65, sfy1 + 1.85, spec.cz - 3.6, wroughtBronze, false, false);
+        const s1EastTv = new THREE.Mesh(new THREE.PlaneGeometry(4.0, 1.72), conservancyScreen.mat);
+        s1EastTv.position.set(spec.cx + 14.58, sfy1 + 1.85, spec.cz - 3.6);
+        s1EastTv.rotation.y = -Math.PI / 2;
+        sg1.add(s1EastTv);
+        plant(sg1, spec.cx + 13.2, sfy1, spec.cz - 7.1, 1.25, 1302, M, 'ficus');
+        plant(sg1, spec.cx + 6.4, sfy1, spec.cz + 6.9, 1.2, 1303, M, 'olive');
+      }
+
+      // -------------------------------------------------------------------------
+      // FLOOR 2 (L2): Luxury Tented Eco-Lodge Showroom & Sustainable Material Atelier
+      // -------------------------------------------------------------------------
+      const sg2 = levelGroups[2];
+      if (sg2) {
+        const sfy2 = spec.groundY + 2 * spec.floorH + SLAB_THICK * 0.5;
+        const s2Fill = new THREE.PointLight(0xffe9c8, 1.26, 26);
+        s2Fill.position.set(spec.cx, sfy2 + 3.1, spec.cz);
+        sg2.add(s2Fill);
+        warmLights.push(s2Fill);
+
+        boxAt(sg2, 29.2, 0.018, 12.85, spec.cx, sfy2 + 0.009, spec.cz - 2.275, safariStoneFloor, false, true);
+        boxAt(sg2, 25.8, 0.018, 4.55, spec.cx - 1.7, sfy2 + 0.009, spec.cz + 6.425, safariStoneFloor, false, true);
+        boxAt(sg2, 3.4, 0.018, 0.75, spec.cx + 12.9, sfy2 + 0.009, spec.cz + 8.325, safariStoneFloor, false, true);
+        boxAt(sg2, 9.8, 0.02, 14.2, spec.cx - 8.8, sfy2 + 0.014, spec.cz - 0.2, safariSisalRug, false, true);
+        addSafariTimberCeiling(levelCeilings[2], spec.groundY + 3 * spec.floorH - 0.14, [spec.cz - 4.8, spec.cz + 4.8]);
+
+        let s2MonIdx = 0;
+
+        // West North: Full-Scale Luxury Canvas Tent Suite Mockup (cx - 8.8, cz - 4.4)
+        const tentX = spec.cx - 8.8;
+        const tentZ = spec.cz - 4.4;
+        boxAt(sg2, 4.6, 0.14, 3.8, tentX, sfy2 + 0.07, tentZ, safariAcaciaTimber, true, true, 0.03);
+        [
+          [-2.1, -1.7],
+          [2.1, -1.7],
+          [-2.1, 1.7],
+          [2.1, 1.7],
+        ].forEach(([px, pz]) => {
+          cylAt(sg2, 0.075, 0.09, 2.55, tentX + px, sfy2 + 1.34, tentZ + pz, safariAcaciaTimber, true, false, 10);
+        });
+        // Pitched safari canvas canopy roof over the mock tent suite
+        const tentRoofL = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.05, 2.35), safariCanvasMat);
+        tentRoofL.position.set(tentX, sfy2 + 2.86, tentZ - 0.96);
+        tentRoofL.rotation.x = 0.28;
+        sg2.add(tentRoofL);
+        const tentRoofR = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.05, 2.35), safariCanvasMat);
+        tentRoofR.position.set(tentX, sfy2 + 2.86, tentZ + 0.96);
+        tentRoofR.rotation.x = -0.28;
+        sg2.add(tentRoofR);
+        // Daybed & woven kitenge cushions inside tent suite
+        boxAt(sg2, 2.2, 0.42, 1.65, tentX - 0.6, sfy2 + 0.35, tentZ, safariAcaciaTimber, true, true, 0.03);
+        boxAt(sg2, 2.05, 0.18, 1.5, tentX - 0.6, sfy2 + 0.65, tentZ, safariCanvasMat, true, true, 0.03);
+        boxAt(sg2, 0.65, 0.06, 1.48, tentX + 0.05, sfy2 + 0.76, tentZ, terracottaClay, false, false);
+        cylAt(sg2, 0.22, 0.22, 0.45, tentX + 1.25, sfy2 + 0.36, tentZ + 0.45, wroughtBronze, true, true, 12);
+        cylAt(sg2, 0.08, 0.1, 0.24, tentX + 1.25, sfy2 + 0.7, tentZ + 0.45, safariCopper, false, false, 10);
+        addSafariPlaque(sg2, 'CANVAS SUITE VILLA MOCKUP', tentX, sfy2 + 2.45, tentZ - 1.9, Math.PI);
+
+        // West South: Rift-Valley Live-Edge Bush Dining & Sundowner Table (cx - 8.8, cz + 3.8)
+        const dineX = spec.cx - 8.8;
+        const dineZ = spec.cz + 3.8;
+        boxAt(sg2, 4.2, 0.075, 1.25, dineX, sfy2 + 0.74, dineZ, safariAcaciaTimber, true, true, 0.025);
+        [-1.55, 1.55].forEach((lx) => {
+          boxAt(sg2, 0.12, 0.72, 0.96, dineX + lx, sfy2 + 0.36, dineZ, wroughtBronze, true, true, 0.01);
+        });
+        [-1.35, 0, 1.35].forEach((ox) => {
+          cylAt(sg2, 0.14, 0.11, 0.02, dineX + ox, sfy2 + 0.79, dineZ - 0.32, M.white, false, false, 14);
+          cylAt(sg2, 0.14, 0.11, 0.02, dineX + ox, sfy2 + 0.79, dineZ + 0.32, M.white, false, false, 14);
+          const dch1 = armchair(sg2, dineX + ox, sfy2, dineZ - 0.98, 0, wovenRattan, M);
+          dch1.scale.set(0.68, 0.85, 0.68);
+          const dch2 = armchair(sg2, dineX + ox, sfy2, dineZ + 0.98, Math.PI, wovenRattan, M);
+          dch2.scale.set(0.68, 0.85, 0.68);
+        });
+        addWovenBellLamp(sg2, dineX - 1.1, spec.groundY + 3 * spec.floorH - 0.18, dineZ, 0.9);
+        addWovenBellLamp(sg2, dineX + 1.1, spec.groundY + 3 * spec.floorH - 0.18, dineZ, 0.9);
+
+        // Center Zone: Eco-Lodge Architectural Scale Model Table + 2 Specialist Desks + Material Swatch Stand
+        const lodgeModX = spec.cx + 1.0;
+        const lodgeModZ = spec.cz - 3.6;
+        boxAt(sg2, 3.1, 0.78, 1.9, lodgeModX, sfy2 + 0.39, lodgeModZ, basaltRockMat, true, true, 0.03);
+        boxAt(sg2, 2.85, 0.05, 1.65, lodgeModX, sfy2 + 0.8, lodgeModZ, std({ color: 0x5c7c41, roughness: 0.88 }), false, true);
+        boxAt(sg2, 0.9, 0.03, 0.56, lodgeModX, sfy2 + 0.83, lodgeModZ + 0.28, std({ color: 0x38bdf8, roughness: 0.2 }), false, false);
+        [-0.85, 0, 0.85].forEach((lx) => {
+          boxAt(sg2, 0.42, 0.22, 0.36, lodgeModX + lx, sfy2 + 0.93, lodgeModZ - 0.28, safariCanvasMat, false, false);
+          const peak = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.24, 4), terracottaClay);
+          peak.rotation.y = Math.PI / 4;
+          peak.position.set(lodgeModX + lx, sfy2 + 1.14, lodgeModZ - 0.28);
+          sg2.add(peak);
+        });
+
+        boxAt(sg2, 2.7, 0.06, 1.08, spec.cx + 1.0, sfy2 + 0.74, spec.cz + 2.4, safariAcaciaTimber, true, true, 0.02);
+        [-1.1, 1.1].forEach((lx) => boxAt(sg2, 0.08, 0.72, 0.88, spec.cx + 1.0 + lx, sfy2 + 0.36, spec.cz + 2.4, wroughtBronze, true, true, 0.01));
+        registerChair(2, spec.cx + 1.0, sfy2, spec.cz + 3.32, Math.PI, 1);
+        registerMonitor(2, s2MonIdx++, [spec.cx + 1.0, sfy2 + 0.77, spec.cz + 2.55], 0, spec.cx + 1.0, spec.cz + 3.32, 'Eco-Lodge Architect · L2', 'Eco-Lodge Showroom');
+
+        boxAt(sg2, 2.7, 0.06, 1.08, spec.cx + 7.4, sfy2 + 0.74, spec.cz - 5.2, safariAcaciaTimber, true, true, 0.02);
+        [-1.1, 1.1].forEach((lx) => boxAt(sg2, 0.08, 0.72, 0.88, spec.cx + 7.4 + lx, sfy2 + 0.36, spec.cz - 5.2, wroughtBronze, true, true, 0.01));
+        registerChair(2, spec.cx + 7.4, sfy2, spec.cz - 6.12, 0, -1);
+        registerMonitor(2, s2MonIdx++, [spec.cx + 7.4, sfy2 + 0.77, spec.cz - 5.35], Math.PI, spec.cx + 7.4, spec.cz - 6.12, 'Conservation Impact Lead · L2', 'Eco-Lodge Showroom');
+
+        // Sustainable Material Sample Rack (makuti thatch, coral block, mvule wood, woven kitenge)
+        boxAt(sg2, 3.6, 1.85, 0.42, spec.cx + 1.0, sfy2 + 0.925, spec.cz + 7.2, wroughtBronze, true, true, 0.02);
+        [safariCanvasMat, terracottaClay, safariAcaciaTimber, savannaOlive].forEach((sm, si) => {
+          boxAt(sg2, 0.68, 0.82, 0.12, spec.cx - 0.25 + si * 0.84, sfy2 + 1.25, spec.cz + 7.12, sm, false, false);
+        });
+
+        // East Mid: Sculpted Giraffe Gallery Sculpture + Viewing Chairs
+        addBronzeGiraffeSculpture(sg2, spec.cx + 7.4, sfy2, spec.cz - 0.6, 1.05, -0.45);
+        const l2View1 = armchair(sg2, spec.cx + 9.4, sfy2, spec.cz - 0.6, -Math.PI / 2, M.fabricCognac, M);
+        l2View1.scale.set(0.75, 0.88, 0.75);
+        plant(sg2, spec.cx + 13.0, sfy2, spec.cz - 7.0, 1.25, 1304, M, 'olive');
+        plant(sg2, spec.cx - 13.4, sfy2, spec.cz + 7.0, 1.25, 1305, M, 'ficus');
+      }
+
+      // -------------------------------------------------------------------------
+      // FLOOR 3 (L3): Conservation Boardroom, Founder's Safari Penthouse & Head Offices
+      // -------------------------------------------------------------------------
+      const sg3 = levelGroups[3];
+      if (sg3) {
+        const sfy3 = spec.groundY + 3 * spec.floorH + SLAB_THICK * 0.5;
+        const s3Fill = new THREE.PointLight(0xffebd0, 1.3, 27);
+        s3Fill.position.set(spec.cx, sfy3 + 3.15, spec.cz);
+        sg3.add(s3Fill);
+        warmLights.push(s3Fill);
+
+        boxAt(sg3, 29.2, 0.018, 12.85, spec.cx, sfy3 + 0.009, spec.cz - 2.275, safariStoneFloor, false, true);
+        boxAt(sg3, 25.8, 0.018, 4.55, spec.cx - 1.7, sfy3 + 0.009, spec.cz + 6.425, safariStoneFloor, false, true);
+        boxAt(sg3, 3.4, 0.018, 0.75, spec.cx + 12.9, sfy3 + 0.009, spec.cz + 8.325, safariStoneFloor, false, true);
+        boxAt(sg3, 8.2, 0.02, 11.4, spec.cx - 8.8, sfy3 + 0.014, spec.cz + 0.2, safariSisalRug, false, true);
+        boxAt(sg3, 5.8, 0.02, 4.8, spec.cx + 1.0, sfy3 + 0.014, spec.cz + 5.3, safariSisalRug, false, true);
+        boxAt(sg3, 4.2, 0.02, 3.8, spec.cx + 0.8, sfy3 + 0.014, spec.cz - 1.6, safariSisalRug, false, true);
+        addSafariTimberCeiling(levelCeilings[3], spec.groundY + 4 * spec.floorH - 0.14, [spec.cz - 4.8, spec.cz + 4.8]);
+
+        let s3MonIdx = 0;
+
+        // 1. WEST WING (dx -14.4..-3.4): Wildlife & Conservation Boardroom (boat-tapered acacia table + 3 basket lamps)
+        const sfBrWallX = spec.cx - 3.4;
+        boxAt(sg3, 0.08, 2.95, 5.0, sfBrWallX, sfy3 + 1.475, spec.cz - 4.3, safariGlass, false, false);
+        boxAt(sg3, 0.08, 2.95, 8.5, sfBrWallX, sfy3 + 1.475, spec.cz + 4.25, safariGlass, false, false);
+        boxAt(sg3, 0.14, 0.14, 15.3, sfBrWallX, sfy3 + 2.95, spec.cz + 0.85, safariAcaciaTimber, true, false);
+        [-6.8, -1.8, 0.0, 2.6, 5.6, 8.5].forEach((mz) => {
+          boxAt(sg3, 0.14, 2.96, 0.14, sfBrWallX, sfy3 + 1.48, spec.cz + mz, wroughtBronze, true, false);
+        });
+        addSafariPlaque(sg3, 'CONSERVATION BOARDROOM', sfBrWallX + 0.1, sfy3 + 2.66, spec.cz - 0.9, Math.PI / 2);
+
+        const sfBrX = spec.cx - 8.8;
+        const sfBrZ = spec.cz + 0.2;
+        // Boat-tapered live-edge acacia boardroom table (2.8m x 6.8m)
+        const boatShape = new THREE.Shape();
+        boatShape.moveTo(-0.92, -3.4);
+        boatShape.quadraticCurveTo(1.48, 0, 0.92, 3.4);
+        boatShape.lineTo(-0.92, 3.4);
+        boatShape.quadraticCurveTo(-1.48, 0, -0.92, -3.4);
+        boatShape.closePath();
+        const boatGeo = new THREE.ExtrudeGeometry(boatShape, {
+          depth: 0.08,
+          bevelEnabled: true,
+          bevelThickness: 0.02,
+          bevelSize: 0.02,
+          bevelSegments: 2,
+          curveSegments: 20,
+        });
+        boatGeo.rotateX(-Math.PI / 2);
+        const boatTop = new THREE.Mesh(boatGeo, safariAcaciaTimber);
+        boatTop.position.set(sfBrX, sfy3 + 0.71, sfBrZ);
+        boatTop.castShadow = true;
+        boatTop.receiveShadow = true;
+        sg3.add(boatTop);
+        [-2.0, 2.0].forEach((pz) => {
+          cylAt(sg3, 0.36, 0.48, 0.7, sfBrX, sfy3 + 0.35, sfBrZ + pz, wroughtBronze, true, true, 16);
+        });
+        [-2.1, 0, 2.1].forEach((lz) => {
+          addWovenBellLamp(sg3, sfBrX, spec.groundY + 4 * spec.floorH - 0.18, sfBrZ + lz, 1.0);
+        });
+        registerChair(3, sfBrX, sfy3, sfBrZ - 3.85, 0, 1);
+        registerMonitor(3, s3MonIdx++, [sfBrX, sfy3 + 0.79, sfBrZ - 2.9], Math.PI, sfBrX, sfBrZ - 3.85, 'Director of Wildlife Partnerships · L3', 'Conservation Boardroom');
+        registerChair(3, sfBrX + 2.05, sfy3, sfBrZ - 1.4, -Math.PI / 2, -1);
+        registerMonitor(3, s3MonIdx++, [sfBrX + 1.15, sfy3 + 0.79, sfBrZ - 1.4], Math.PI / 2, sfBrX + 2.05, sfBrZ - 1.4, 'Head of Eco-Lodge Operations · L3', 'Conservation Boardroom');
+        officeChair(sg3, sfBrX, sfy3, sfBrZ + 3.85, Math.PI, M);
+        [-2.5, -0.2, 1.0, 2.2].forEach((czo) => officeChair(sg3, sfBrX + 2.05, sfy3, sfBrZ + czo, -Math.PI / 2, M));
+        [-2.5, -1.4, -0.2, 1.0, 2.2].forEach((czo) => officeChair(sg3, sfBrX - 2.05, sfy3, sfBrZ + czo, Math.PI / 2, M));
+
+        boxAt(sg3, 0.1, 2.0, 4.8, spec.cx - 14.65, sfy3 + 1.88, sfBrZ, wroughtBronze, false, false);
+        const s3BrTv = new THREE.Mesh(new THREE.PlaneGeometry(4.55, 1.82), conservancyScreen.mat);
+        s3BrTv.position.set(spec.cx - 14.58, sfy3 + 1.88, sfBrZ);
+        s3BrTv.rotation.y = Math.PI / 2;
+        sg3.add(s3BrTv);
+        addTerracottaUrn(sg3, spec.cx - 13.4, sfy3, spec.cz - 7.1);
+        plant(sg3, spec.cx - 13.4, sfy3, spec.cz + 7.1, 1.25, 1306, M, 'ficus');
+
+        // 2. BACK CENTER (dx -2.8..+4.8, dz +2.0..+8.4): FOUNDER & CHIEF SAFARI OFFICER STUDY
+        const ceoSfX = spec.cx + 1.0;
+        const ceoSfFrontZ = spec.cz + 2.0;
+        boxAt(sg3, 2.6, 2.95, 0.08, spec.cx - 1.5, sfy3 + 1.475, ceoSfFrontZ, safariGlass, false, false);
+        boxAt(sg3, 3.4, 2.95, 0.08, spec.cx + 3.1, sfy3 + 1.475, ceoSfFrontZ, safariGlass, false, false);
+        boxAt(sg3, 7.65, 0.14, 0.14, ceoSfX, sfy3 + 2.95, ceoSfFrontZ, safariAcaciaTimber, true, false);
+        boxAt(sg3, 0.08, 2.95, 6.4, spec.cx + 4.8, sfy3 + 1.475, spec.cz + 5.2, safariGlass, false, false);
+        [-2.8, -0.2, 1.4, 4.8].forEach((px) => {
+          boxAt(sg3, 0.14, 2.96, 0.14, spec.cx + px, sfy3 + 1.48, ceoSfFrontZ, wroughtBronze, true, false);
+        });
+        addSafariPlaque(sg3, 'FOUNDER · SAFARI COMMAND', spec.cx + 2.8, sfy3 + 2.66, ceoSfFrontZ - 0.09, Math.PI);
+
+        // South Hand-Carved Curio & Expedition Trophy Wall (Maasai shields, brass compasses, amphora shelves)
+        boxAt(sg3, 5.6, 2.9, 0.44, ceoSfX, sfy3 + 1.45, spec.cz + 8.36, terracottaClay, true, true, 0.02);
+        [0.88, 1.68, 2.4].forEach((sy) => {
+          boxAt(sg3, 5.0, 0.05, 0.38, ceoSfX, sfy3 + sy, spec.cz + 8.34, safariAcaciaTimber, false, false);
+        });
+        [-0.8, 0.8].forEach((mx) => {
+          cylAt(sg3, 0.28, 0.28, 0.06, ceoSfX + mx, sfy3 + 2.02, spec.cz + 8.2, savannaOlive, false, false, 16);
+          cylAt(sg3, 0.12, 0.12, 0.07, ceoSfX + mx, sfy3 + 2.02, spec.cz + 8.17, safariCopper, false, false, 12);
+        });
+
+        boxAt(sg3, 2.8, 0.065, 1.14, ceoSfX, sfy3 + 0.74, spec.cz + 5.75, safariAcaciaTimber, true, true, 0.02);
+        boxAt(sg3, 2.6, 0.72, 0.14, ceoSfX, sfy3 + 0.36, spec.cz + 5.34, wroughtBronze, true, true, 0.01);
+        registerChair(3, ceoSfX, sfy3, spec.cz + 6.72, Math.PI, -1);
+        registerMonitor(3, s3MonIdx++, [ceoSfX, sfy3 + 0.77, spec.cz + 5.88], 0, ceoSfX, spec.cz + 6.72, 'Founder & Chief Safari Officer · L3', 'Founder Safari Penthouse');
+        [spec.cx + 0.25, spec.cx + 1.75].forEach((gx) => {
+          const gc = armchair(sg3, gx, sfy3, spec.cz + 4.4, 0, M.fabricCognac, M);
+          gc.scale.set(0.75, 0.88, 0.75);
+        });
+        plant(sg3, spec.cx + 4.0, sfy3, spec.cz + 7.5, 1.2, 1307, M, 'olive');
+
+        // 3. NORTH-EAST CORNER (dx +5.4..+14.4, dz -8.2..-1.8): HEAD OF EXPEDITIONS & BUSH AVIATION OFFICE
+        const expFrontZ = spec.cz - 1.8;
+        boxAt(sg3, 0.8, 2.95, 0.08, spec.cx + 5.8, sfy3 + 1.475, expFrontZ, safariGlass, false, false);
+        boxAt(sg3, 6.6, 2.95, 0.08, spec.cx + 11.1, sfy3 + 1.475, expFrontZ, safariGlass, false, false);
+        boxAt(sg3, 9.0, 0.14, 0.14, spec.cx + 9.9, sfy3 + 2.95, expFrontZ, safariAcaciaTimber, true, false);
+        boxAt(sg3, 0.08, 2.95, 6.4, spec.cx + 5.4, sfy3 + 1.475, spec.cz - 5.0, safariGlass, false, false);
+        [5.4, 6.2, 7.8, 14.4].forEach((px) => {
+          boxAt(sg3, 0.14, 2.96, 0.14, spec.cx + px, sfy3 + 1.48, expFrontZ, wroughtBronze, true, false);
+        });
+        addSafariPlaque(sg3, 'HEAD OF EXPEDITIONS & AIR', spec.cx + 10.6, sfy3 + 2.66, expFrontZ + 0.09, 0);
+
+        const expX = spec.cx + 9.8;
+        boxAt(sg3, 2.5, 0.06, 1.05, expX, sfy3 + 0.74, spec.cz - 5.2, safariAcaciaTimber, true, true, 0.02);
+        [-1.05, 1.05].forEach((lx) => boxAt(sg3, 0.08, 0.72, 0.86, expX + lx, sfy3 + 0.36, spec.cz - 5.2, wroughtBronze, true, true, 0.01));
+        registerChair(3, expX, sfy3, spec.cz - 6.12, 0, 1);
+        registerMonitor(3, s3MonIdx++, [expX, sfy3 + 0.77, spec.cz - 5.32], Math.PI, expX, spec.cz - 6.12, 'Head of Expeditions & Bush Air · L3', 'Expeditions & Bush Air Office');
+        [expX - 0.75, expX + 0.75].forEach((vx) => {
+          const vc = armchair(sg3, vx, sfy3, spec.cz - 3.9, Math.PI, savannaOlive, M);
+          vc.scale.set(0.74, 0.88, 0.74);
+        });
+        boxAt(sg3, 0.1, 1.45, 2.6, spec.cx + 14.65, sfy3 + 1.85, spec.cz - 5.2, wroughtBronze, false, false);
+        const expTv = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.3), migrationMapScreen.mat);
+        expTv.position.set(spec.cx + 14.58, sfy3 + 1.85, spec.cz - 5.2);
+        expTv.rotation.y = -Math.PI / 2;
+        sg3.add(expTv);
+
+        // 4. FRONT CENTER & SOUTH-CENTER: Safari Reception Pavilion, Sundowner Lounge & Kenyan Tea Bar
+        boxAt(sg3, 2.3, 0.06, 0.96, ceoSfX, sfy3 + 0.74, spec.cz - 5.6, safariAcaciaTimber, true, true, 0.02);
+        boxAt(sg3, 2.34, 0.92, 0.14, ceoSfX, sfy3 + 0.46, spec.cz - 5.14, terracottaClay, true, true, 0.02);
+        registerChair(3, ceoSfX, sfy3, spec.cz - 6.52, 0, 1);
+        registerMonitor(3, s3MonIdx++, [ceoSfX, sfy3 + 0.77, spec.cz - 5.7], Math.PI, ceoSfX, spec.cz - 6.52, 'Executive Guest Relations Lead · L3', 'Penthouse Reception Pavilion');
+
+        const sunSofa = sofaWide(sg3, spec.cx - 0.75, sfy3, spec.cz - 1.6, Math.PI / 2, savannaOlive, M);
+        sunSofa.scale.set(0.76, 0.92, 0.84);
+        cylAt(sg3, 0.52, 0.52, 0.04, spec.cx + 0.75, sfy3 + 0.41, spec.cz - 1.6, safariAcaciaTimber, true, true, 22);
+        cylAt(sg3, 0.14, 0.18, 0.39, spec.cx + 0.75, sfy3 + 0.2, spec.cz - 1.6, wroughtBronze, false, true, 14);
+        const sunArm1 = armchair(sg3, spec.cx + 2.05, sfy3, spec.cz - 2.35, -Math.PI * 0.35, M.fabricCognac, M);
+        sunArm1.scale.set(0.74, 0.88, 0.74);
+        const sunArm2 = armchair(sg3, spec.cx + 2.05, sfy3, spec.cz - 0.85, -Math.PI * 0.65, M.fabricCognac, M);
+        sunArm2.scale.set(0.74, 0.88, 0.74);
+        plant(sg3, spec.cx + 4.0, sfy3, spec.cz + 1.1, 1.25, 1308, M, 'ficus');
+
+        // South-Center Kenyan Tea & Craft Spirits Veranda Bar (dx +7.6, dz +5.8 -> cleanly west of SE stair wall +11.2)
+        boxAt(sg3, 3.4, 0.94, 0.88, spec.cx + 7.6, sfy3 + 0.47, spec.cz + 5.8, terracottaClay, true, true, 0.03);
+        boxAt(sg3, 3.48, 0.06, 0.94, spec.cx + 7.6, sfy3 + 0.97, spec.cz + 5.8, safariAcaciaTimber, false, true, 0.01);
+        cylAt(sg3, 0.14, 0.18, 0.32, spec.cx + 7.6, sfy3 + 1.16, spec.cz + 5.8, safariCopper, false, false, 14);
+        [spec.cx + 6.8, spec.cx + 8.4].forEach((sx) => {
+          cylAt(sg3, 0.2, 0.2, 0.09, sx, sfy3 + 0.68, spec.cz + 4.7, wovenRattan, true, true, 16);
+          cylAt(sg3, 0.035, 0.035, 0.66, sx, sfy3 + 0.33, spec.cz + 4.7, wroughtBronze, false, false, 10);
+          cylAt(sg3, 0.17, 0.2, 0.04, sx, sfy3 + 0.02, spec.cz + 4.7, wroughtBronze, false, true, 14);
+        });
+      }
+
+      // -------------------------------------------------------------------------
+      // CONTINUOUS SE ACACIA & HAMMERED-BRONZE SAFARI STAIRWELL CORE (G -> L3)
+      // -------------------------------------------------------------------------
+      const sfStairXWest = spec.cx + 11.2;
+      const sfStairXEast = spec.cx + 14.32;
+      const sfStairXMid = spec.cx + 12.75;
+      const sfStairZNorth = spec.cz + 2.8;
+      const sfStairZSouth = spec.cz + 8.0;
+      const sfStairW = sfStairXEast - sfStairXWest;
+      const sfStairD = sfStairZSouth - sfStairZNorth;
+      const sfStairCx = (sfStairXWest + sfStairXEast) * 0.5;
+      const sfStairCz = (sfStairZNorth + sfStairZSouth) * 0.5;
+      const sfBridgeZ = spec.cz + 4.15;
+      const sfHalfStartZ = spec.cz + 6.75;
+      const sfStairSigns = ['SAFARI STAIRS · G → L1', 'STAIRS · L1 ↔ L2', 'STAIRS · L2 ↔ L3', 'STAIRS · L3 PENTHOUSE'];
+
+      const addSfRail = (parent: THREE.Object3D, x: number, y0: number, z0: number, y1: number, z1: number) => {
+        const p0 = new THREE.Vector3(x, y0 + 0.92, z0);
+        const p1 = new THREE.Vector3(x, y1 + 0.92, z1);
+        const len = p0.distanceTo(p1);
+        const dir = new THREE.Vector3().subVectors(p1, p0).normalize();
+        const mid = new THREE.Vector3().addVectors(p0, p1).multiplyScalar(0.5);
+        const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, len, 10), safariAcaciaTimber);
+        rail.position.copy(mid);
+        rail.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+        parent.add(rail);
+        [0.15, 0.5, 0.85].forEach((t) => {
+          const py = THREE.MathUtils.lerp(y0, y1, t);
+          const pz = THREE.MathUtils.lerp(z0, z1, t);
+          cylAt(parent, 0.015, 0.015, 0.92, x, py + 0.46, pz, wroughtBronze, false, false, 8);
+        });
+      };
+
+      for (let lv = 0; lv < spec.floors; lv++) {
+        const lgS = levelGroups[lv];
+        if (!lgS) continue;
+        const fyS = spec.groundY + lv * spec.floorH + SLAB_THICK * 0.5;
+        const wallH = spec.floorH - SLAB_THICK - 0.04;
+
+        // North vestibule landing finish & lime-amber safari threshold inlay
+        boxAt(lgS, 3.0, 0.018, 1.32, sfStairCx, fyS + 0.009, spec.cz + 3.48, safariStoneFloor, false, true);
+        boxAt(lgS, 0.14, 0.018, 1.24, sfStairXWest, fyS + 0.012, spec.cz + 3.5, new THREE.MeshBasicMaterial({ color: 0x84cc16 }), false, false);
+
+        // East, North & South acacia-and-bronze glazed shaft perimeter
+        boxAt(lgS, 0.1, 0.2, sfStairD, sfStairXEast, fyS + 0.1, sfStairCz, terracottaClay, true, true);
+        boxAt(lgS, 0.05, wallH - 0.26, sfStairD, sfStairXEast, fyS + 0.2 + (wallH - 0.26) * 0.5, sfStairCz, safariGlass, false, false);
+        boxAt(lgS, 0.12, 0.12, sfStairD, sfStairXEast, fyS + wallH - 0.02, sfStairCz, safariAcaciaTimber, false, false);
+        [sfStairZNorth, spec.cz + 5.4, sfStairZSouth].forEach((mz) => {
+          boxAt(lgS, 0.1, wallH, 0.1, sfStairXEast, fyS + wallH * 0.5, mz, wroughtBronze, true, false);
+        });
+        [sfStairZNorth, sfStairZSouth].forEach((wz) => {
+          boxAt(lgS, sfStairW, 0.2, 0.1, sfStairCx, fyS + 0.1, wz, terracottaClay, true, true);
+          boxAt(lgS, sfStairW, wallH - 0.26, 0.05, sfStairCx, fyS + 0.2 + (wallH - 0.26) * 0.5, wz, safariGlass, false, false);
+          boxAt(lgS, sfStairW, 0.12, 0.12, sfStairCx, fyS + wallH - 0.02, wz, safariAcaciaTimber, false, false);
+          boxAt(lgS, 0.1, wallH, 0.1, sfStairXMid, fyS + wallH * 0.5, wz, wroughtBronze, true, false);
+        });
+
+        // West glass shaft wall south of doorway (dz = +4.12..+8.00 -> 3.88m)
+        boxAt(lgS, 0.12, 0.36, 3.88, sfStairXWest, fyS + 0.18, spec.cz + 6.06, terracottaClay, true, true);
+        boxAt(lgS, 0.05, wallH - 0.42, 3.88, sfStairXWest, fyS + 0.36 + (wallH - 0.42) * 0.5, spec.cz + 6.06, safariGlass, false, false);
+        boxAt(lgS, 0.12, 0.12, 3.88, sfStairXWest, fyS + wallH - 0.02, spec.cz + 6.06, safariAcaciaTimber, false, false);
+        boxAt(lgS, 0.1, wallH, 0.1, sfStairXWest, fyS + wallH * 0.5, spec.cz + 6.06, wroughtBronze, true, false);
+        boxAt(lgS, 0.1, wallH, 0.1, sfStairXWest, fyS + wallH * 0.5, sfStairZSouth, wroughtBronze, true, false);
+
+        // Framed open Safari Stairwell Door on West shaft face (dx = +11.20, dz = +2.86..+4.12)
+        const doorZ = spec.cz + 3.49;
+        const doorH = 2.42;
+        [spec.cz + 2.86, spec.cz + 4.12].forEach((jz) => {
+          boxAt(lgS, 0.15, wallH, 0.11, sfStairXWest, fyS + wallH * 0.5, jz, wroughtBronze, true, false, 0.01);
+        });
+        boxAt(lgS, 0.15, 0.12, 1.38, sfStairXWest, fyS + doorH + 0.06, doorZ, safariAcaciaTimber, true, false, 0.01);
+        const transomH = Math.max(0.3, wallH - doorH - 0.16);
+        boxAt(lgS, 0.05, transomH, 1.2, sfStairXWest, fyS + doorH + 0.12 + transomH * 0.5, doorZ, safariGlass, false, false);
+
+        // Swung-open acacia-stile & glazed door leaf (hinged at South jamb, swung out -X/+Z against glass)
+        const doorLeaf = new THREE.Group();
+        doorLeaf.position.set(sfStairXWest - 0.02, fyS, spec.cz + 4.08);
+        doorLeaf.rotation.y = 2.22;
+        boxAt(doorLeaf, 0.055, doorH - 0.04, 0.09, 0, (doorH - 0.04) * 0.5 + 0.02, -0.045, safariAcaciaTimber, true, false);
+        boxAt(doorLeaf, 0.055, doorH - 0.04, 0.09, 0, (doorH - 0.04) * 0.5 + 0.02, -1.08, safariAcaciaTimber, true, false);
+        boxAt(doorLeaf, 0.055, 0.14, 1.12, 0, 0.09, -0.56, wroughtBronze, true, false);
+        boxAt(doorLeaf, 0.055, 0.12, 1.12, 0, doorH - 0.08, -0.56, wroughtBronze, true, false);
+        boxAt(doorLeaf, 0.028, doorH - 0.3, 0.96, 0, doorH * 0.5, -0.56, safariGlass, false, false);
+        cylAt(doorLeaf, 0.014, 0.014, 0.86, -0.055, 1.15, -0.98, safariCopper, false, false, 10);
+        cylAt(doorLeaf, 0.014, 0.014, 0.86, 0.055, 1.15, -0.98, safariCopper, false, false, 10);
+        lgS.add(doorLeaf);
+        addSafariPlaque(lgS, sfStairSigns[lv] ?? `STAIRS · L${lv}`, sfStairXWest - 0.1, fyS + doorH + 0.34, doorZ, -Math.PI / 2);
+
+        // Two-Flight Switchback Acacia & Bronze Stairs (G->L1, L1->L2, L2->L3)
+        if (lv < spec.floors - 1) {
+          const steps = 8;
+          const runLen = sfHalfStartZ - sfBridgeZ;
+          const stepDepth = runLen / steps;
+          const halfRise = spec.floorH * 0.5;
+          const stepRise = halfRise / steps;
+          const yMidLv = fyS + halfRise;
+          const yTopLv = fyS + spec.floorH;
+
+          // Flight 1 (East lane dx = +13.52, climbs Southward +4.15 -> +6.75)
+          for (let st = 0; st < steps; st++) {
+            const ty = fyS + (st + 0.5) * stepRise;
+            const tz = sfBridgeZ + (st + 0.5) * stepDepth;
+            boxAt(lgS, 1.32, stepRise, stepDepth + 0.03, spec.cx + 13.52, ty, tz, wroughtBronze, true, true, 0.008);
+            boxAt(lgS, 1.35, 0.045, stepDepth + 0.04, spec.cx + 13.52, ty + stepRise * 0.5 + 0.01, tz, safariAcaciaTimber, false, true, 0.008);
+            boxAt(lgS, 1.35, 0.016, 0.035, spec.cx + 13.52, ty + stepRise * 0.5 + 0.028, tz - stepDepth * 0.45, safariCopper, false, false);
+          }
+
+          // South Half Landing (y = fyS + 2.10)
+          boxAt(lgS, 2.94, 0.16, 1.22, sfStairCx, yMidLv - 0.07, spec.cz + 7.36, wroughtBronze, true, true, 0.015);
+          boxAt(lgS, 2.9, 0.04, 1.18, sfStairCx, yMidLv + 0.02, spec.cz + 7.36, safariAcaciaTimber, false, true, 0.01);
+
+          // Flight 2 (West lane dx = +11.98, climbs Northward +6.75 -> +4.15)
+          for (let st = 0; st < steps; st++) {
+            const ty = yMidLv + (st + 0.5) * stepRise;
+            const tz = sfHalfStartZ - (st + 0.5) * stepDepth;
+            boxAt(lgS, 1.32, stepRise * 0.55, stepDepth + 0.03, spec.cx + 11.98, ty + stepRise * 0.22, tz, wroughtBronze, true, true, 0.008);
+            boxAt(lgS, 1.35, 0.045, stepDepth + 0.04, spec.cx + 11.98, ty + stepRise * 0.5 + 0.01, tz, safariAcaciaTimber, false, true, 0.008);
+            boxAt(lgS, 1.35, 0.016, 0.035, spec.cx + 11.98, ty + stepRise * 0.5 + 0.028, tz + stepDepth * 0.45, safariCopper, false, false);
+          }
+
+          addSfRail(lgS, spec.cx + 14.18, fyS, sfBridgeZ, yMidLv, sfHalfStartZ);
+          addSfRail(lgS, spec.cx + 12.82, fyS, sfBridgeZ, yMidLv, sfHalfStartZ);
+          addSfRail(lgS, spec.cx + 12.68, yMidLv, sfHalfStartZ, yTopLv, sfBridgeZ);
+          addSfRail(lgS, spec.cx + 11.32, yMidLv, sfHalfStartZ, yTopLv, sfBridgeZ);
+        }
+
+        // Shaft balustrades (ground under-stair guard + upper-floor drop guardrails)
+        if (lv === 0) {
+          boxAt(lgS, 1.44, 1.45, 0.06, spec.cx + 11.98, fyS + 0.725, sfBridgeZ, safariGlass, false, false);
+          boxAt(lgS, 0.06, 1.04, 2.6, sfStairXMid, fyS + 0.52, spec.cz + 5.45, safariGlass, false, false);
+        } else {
+          boxAt(lgS, 0.06, 1.04, 3.8, sfStairXMid, fyS + 0.52, spec.cz + 6.05, safariGlass, false, false);
+          boxAt(lgS, 0.05, 1.04, 3.8, spec.cx + 14.24, fyS + 0.52, spec.cz + 6.05, safariGlass, false, false);
+          boxAt(lgS, 2.94, 1.04, 0.05, sfStairCx, fyS + 0.52, spec.cz + 7.94, safariGlass, false, false);
+          if (lv === spec.floors - 1) {
+            boxAt(lgS, 1.46, 1.04, 0.06, spec.cx + 13.52, fyS + 0.52, sfBridgeZ, safariGlass, false, false);
+          }
+        }
+      }
     } else if (spec.id === 'medical') {
       // VitalCare Medical & Pharmacy: Rotating 3D emerald cross beacon elevated cleanly on cantilevered sloped roof blade
       const crossBeacon = new THREE.Group();
@@ -1537,85 +4183,206 @@ export function buildDistrictBuildings(
       const steelShutterMat = std({ color: 0x64748b, roughness: 0.48, metalness: 0.42 });
       [-3.5, 3.5].forEach((dz) => {
         const bayZ = spec.cz + dz;
-        // Overhang awning above loading dock bay
         boxAt(g0, 2.0, 0.18, 4.4, dockX + 0.9, fy + 3.45, bayZ, frameDarkMat, true, false, 0.04);
         boxAt(g0, 0.14, 0.12, 4.4, dockX + 1.9, fy + 3.45, bayZ, accentMat, false, false);
-        // Roll-up steel shutter door
         boxAt(g0, 0.18, 2.9, 3.6, dockX, fy + 1.45, bayZ, steelShutterMat, true, true, 0.02);
         for (let rib = 0; rib < 6; rib++) {
           boxAt(g0, 0.22, 0.05, 3.45, dockX + 0.02, fy + 0.35 + rib * 0.46, bayZ, frameDarkMat, false, false);
         }
-        // Yellow/orange dock safety bollards flanking each bay
         [-2.05, 2.05].forEach((bz) => {
           cylAt(g0, 0.11, 0.12, 0.95, dockX + 0.42, spec.groundY + 0.475, bayZ + bz, accentMat, true, true, 10);
         });
-        // Interior staging pallets beside east loading bays
         boxAt(g0, 1.5, 0.14, 1.6, spec.cx + 12.6, fy + 0.07, bayZ, palletMat, true, true, 0.01);
         boxAt(g0, 1.1, 0.72, 1.2, spec.cx + 12.6, fy + 0.5, bayZ, cartonMat, true, true, 0.02);
       });
 
-      // Automated Parcel Sorting Conveyor Belt (running N-S at cx - 4.2)
-      const convX = spec.cx - 4.2;
-      const convZ = spec.cz + 1.2;
-      boxAt(g0, 1.45, 0.14, 9.6, convX, fy + 0.78, convZ, frameDarkMat, true, true, 0.02);
-      boxAt(g0, 1.18, 0.05, 9.45, convX, fy + 0.87, convZ, M.dark, false, false);
-      for (let zOff = -4.2; zOff <= 4.2; zOff += 2.1) {
-        boxAt(g0, 1.24, 0.72, 0.1, convX, fy + 0.36, convZ + zOff, M.metal, true, false);
-      }
-      // Laser barcode scanner gate arch over conveyor
-      boxAt(g0, 1.65, 0.95, 0.45, convX, fy + 1.32, convZ - 0.6, frameDarkMat, true, false, 0.02);
-      boxAt(g0, 1.35, 0.08, 0.12, convX, fy + 1.55, convZ - 0.6, accentMat, false, false);
-      // Parcels along belt
-      [-3.4, -1.7, 0.6, 2.4, 3.8].forEach((pz, pi) => {
-        const bw = 0.52 + (pi % 2) * 0.14;
-        const bh = 0.34 + (pi % 3) * 0.08;
-        boxAt(g0, bw, bh, 0.54, convX + ((pi % 2) - 0.5) * 0.18, fy + 0.9 + bh * 0.5, convZ + pz, pi === 2 ? accentMat : cartonMat, true, true, 0.015);
+      // -------------------------------------------------------------------------
+      // BESPOKE PROCEDURAL MATERIALS & INDUSTRIAL PORT ARCHITECTURE (SWIFTPORT)
+      // -------------------------------------------------------------------------
+      const cargoEpoxyTex = makeCanvasTex('cargo_epoxy_floor', 256, 256, (g, W, H) => {
+        g.fillStyle = '#38414d';
+        g.fillRect(0, 0, W, H);
+        // Industrial epoxy resin speckle & expansion seams
+        for (let i = 0; i < 180; i++) {
+          const sx = (i * 73) % W;
+          const sy = (i * 137) % H;
+          g.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.16)';
+          g.fillRect(sx, sy, 3, 3);
+        }
+        g.strokeStyle = 'rgba(249,115,22,0.28)';
+        g.lineWidth = 2;
+        g.strokeRect(2, 2, W - 4, H - 4);
+      });
+      cargoEpoxyTex.wrapS = cargoEpoxyTex.wrapT = THREE.RepeatWrapping;
+      cargoEpoxyTex.repeat.set(8, 5);
+      const cargoEpoxyFloor = std({ map: cargoEpoxyTex, roughness: 0.36, metalness: 0.12, envMapIntensity: 0.38 });
+
+      const corrugatedSteelTex = makeCanvasTex('cargo_corrugated_steel', 256, 128, (g, W, H) => {
+        g.fillStyle = '#ffffff';
+        g.fillRect(0, 0, W, H);
+        for (let x = 0; x < W; x += 16) {
+          const gr = g.createLinearGradient(x, 0, x + 16, 0);
+          gr.addColorStop(0, '#c4cdd6');
+          gr.addColorStop(0.35, '#ffffff');
+          gr.addColorStop(0.75, '#94a3b8');
+          gr.addColorStop(1, '#c4cdd6');
+          g.fillStyle = gr;
+          g.fillRect(x, 0, 16, H);
+        }
+        g.fillStyle = 'rgba(15,23,42,0.12)';
+        g.fillRect(0, 4, W, 6);
+        g.fillRect(0, H - 10, W, 6);
+      });
+      corrugatedSteelTex.wrapS = corrugatedSteelTex.wrapT = THREE.RepeatWrapping;
+      corrugatedSteelTex.repeat.set(3, 1);
+      const containerOrange = std({ map: corrugatedSteelTex, color: 0xe05d19, roughness: 0.44, metalness: 0.56 });
+      const containerNavy = std({ map: corrugatedSteelTex, color: 0x1e3f66, roughness: 0.44, metalness: 0.56 });
+      const containerTeal = std({ map: corrugatedSteelTex, color: 0x16697a, roughness: 0.44, metalness: 0.56 });
+      const galvanizedSteel = std({ map: corrugatedSteelTex, color: 0x64748b, roughness: 0.38, metalness: 0.72 });
+
+      const perforatedSteel = std({ color: 0x1e2530, roughness: 0.46, metalness: 0.72 });
+      const brushedAluminum = std({ color: 0xc2ccd6, roughness: 0.26, metalness: 0.88 });
+      const birchCrateWood = std({ color: 0xc89d66, roughness: 0.62, metalness: 0.04 });
+      const safetyYellowMat = std({ color: 0xfacc15, roughness: 0.4, metalness: 0.22 });
+      const cargoSteelGlass = new THREE.MeshPhysicalMaterial({
+        color: 0xcfe7f7,
+        roughness: 0.08,
+        metalness: 0.08,
+        transparent: true,
+        opacity: 0.22,
+        depthWrite: false,
+        side: THREE.DoubleSide,
       });
 
-      // Heavy Pallet Storage Racks along West Warehouse Wing
-      [-3.0, 3.2].forEach((rz) => {
-        const rx = spec.cx - 12.2;
-        const rCz = spec.cz + rz;
-        // 4 upright steel posts
-        [-1.3, 1.3].forEach((ox) => {
-          [-1.8, 1.8].forEach((oz) => {
-            boxAt(g0, 0.1, 2.8, 0.1, rx + ox, fy + 1.4, rCz + oz, accentMat, true, false);
+      // Exclusive Architectural Helpers for SwiftPort Cargo & Logistics
+      const addCargoSign = (parent: THREE.Object3D, title: string, x: number, y: number, z: number, rotY = 0) => {
+        const tex = makeCanvasTex(`cargo_sign_${title}`, 390, 74, (g, w, h) => {
+          g.fillStyle = '#11161f';
+          g.fillRect(0, 0, w, h);
+          // Caution hazard diagonal stripes on left edge
+          g.fillStyle = '#f97316';
+          g.fillRect(0, 0, 22, h);
+          g.fillStyle = '#11161f';
+          for (let y = -16; y < h; y += 18) {
+            g.beginPath();
+            g.moveTo(0, y);
+            g.lineTo(22, y + 14);
+            g.lineTo(22, y + 22);
+            g.lineTo(0, y + 8);
+            g.closePath();
+            g.fill();
+          }
+          g.strokeStyle = '#64748b';
+          g.lineWidth = 3;
+          g.strokeRect(2, 2, w - 4, h - 4);
+          g.fillStyle = '#f8fafc';
+          g.font = '800 17px "IBM Plex Mono", monospace';
+          g.textAlign = 'left';
+          g.textBaseline = 'middle';
+          g.fillText(title, 36, h * 0.5);
+        });
+        const mesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(1.56, 0.3),
+          new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false })
+        );
+        mesh.position.set(x, y, z);
+        mesh.rotation.y = rotY;
+        parent.add(mesh);
+      };
+
+      // Exposed Steel I-Beam Gantry Ceiling Grid & Suspended Industrial High-Bay Linear Lamps
+      const addIndustrialCeilingRig = (parent: THREE.Object3D, ceilTopY: number, zBays: number[]) => {
+        zBays.forEach((zb) => {
+          boxAt(parent, spec.w - 2.4, 0.16, 0.16, spec.cx, ceilTopY - 0.16, zb, brushedAluminum, true, false);
+          boxAt(parent, spec.w - 2.4, 0.04, 0.34, spec.cx, ceilTopY - 0.25, zb, perforatedSteel, false, false);
+        });
+        [-10.2, -3.4, 3.4, 10.2].forEach((xb) => {
+          boxAt(parent, 0.12, 0.12, spec.d - 2.4, spec.cx + xb, ceilTopY - 0.22, spec.cz, perforatedSteel, false, false);
+          // Suspended high-bay linear fixture pods
+          [-4.2, 4.2].forEach((lz) => {
+            cylAt(parent, 0.012, 0.012, 0.45, spec.cx + xb, ceilTopY - 0.46, spec.cz + lz, brushedAluminum, false, false, 6);
+            boxAt(parent, 0.24, 0.08, 1.85, spec.cx + xb, ceilTopY - 0.68, spec.cz + lz, perforatedSteel, true, false);
+            boxAt(parent, 0.16, 0.02, 1.72, spec.cx + xb, ceilTopY - 0.72, spec.cz + lz, new THREE.MeshBasicMaterial({ color: 0xf8fafc }), false, false);
           });
         });
-        [0.45, 1.55, 2.65].forEach((ry, li) => {
-          boxAt(g0, 2.7, 0.08, 3.7, rx, fy + ry, rCz, frameDarkMat, true, true);
-          if (li < 2) {
-            boxAt(g0, 1.9, 0.65, 1.2, rx, fy + ry + 0.36, rCz - 0.85, cartonMat, true, true, 0.02);
-            boxAt(g0, 1.9, 0.65, 1.2, rx, fy + ry + 0.36, rCz + 0.85, palletMat, true, true, 0.02);
-          }
+      };
+
+      // Architectural Re-Purposed 20ft Corrugated Container Cutaway Wall & Portal
+      const addContainerDivider = (
+        parent: THREE.Object3D,
+        x: number,
+        y: number,
+        z: number,
+        len: number,
+        h: number,
+        mat: THREE.Material,
+        rotY = 0
+      ) => {
+        const g = new THREE.Group();
+        g.position.set(x, y, z);
+        g.rotation.y = rotY;
+        boxAt(g, len, h, 0.22, 0, h * 0.5, 0, mat, true, true, 0.01);
+        // Top & bottom ISO container structural corner castings & rails
+        boxAt(g, len + 0.04, 0.14, 0.26, 0, 0.07, 0, perforatedSteel, true, false);
+        boxAt(g, len + 0.04, 0.14, 0.26, 0, h - 0.07, 0, perforatedSteel, true, false);
+        [-len * 0.5 + 0.08, len * 0.5 - 0.08].forEach((ex) => {
+          boxAt(g, 0.16, h, 0.26, ex, h * 0.5, 0, perforatedSteel, true, false);
         });
-      });
+        parent.add(g);
+      };
 
-      // Bi-level Waybill Dispatch & Customs Counter: customer ledge (1.06m) + rear dispatch desk (0.78m)
-      const deskZ = spec.cz + 2.5;
-      boxAt(g0, 6.4, 1.04, 0.52, spec.cx + 5.8, fy + 0.52, deskZ - 0.34, frameDarkMat, true, true, 0.03);
-      boxAt(g0, 6.6, 0.08, 0.6, spec.cx + 5.8, fy + 1.06, deskZ - 0.34, accentMat, false, false);
-      boxAt(g0, 6.4, 0.06, 0.94, spec.cx + 5.8, fy + 0.75, deskZ + 0.39, M.walnut, true, true, 0.015);
-      [2.7, 5.8, 8.9].forEach((lx) => {
-        boxAt(g0, 0.14, 0.72, 0.78, spec.cx + lx, fy + 0.36, deskZ + 0.34, frameDarkMat, true, true, 0.01);
-      });
-      [3.8, 7.8].forEach((ox, i) => {
-        const sx = spec.cx + ox;
-        const sz = deskZ + 1.15;
-        registerChair(0, sx, fy, sz, Math.PI, i === 0 ? 1 : -1);
-        registerMonitor(
-          0,
-          i,
-          [sx, fy + 0.78, deskZ + 0.43],
-          0,
-          sx,
-          sz,
-          i === 0 ? 'Freight Dispatch Manager' : 'Customs & Waybill Officer',
-          'Dispatch & Waybill Control'
-        );
-      });
+      // Multi-Part Sculpted Electric Cargo Forklift (10-part THREE.Group)
+      const addCargoForklift = (parent: THREE.Object3D, x: number, y: number, z: number, rotY = 0) => {
+        const fl = new THREE.Group();
+        fl.position.set(x, y, z);
+        fl.rotation.y = rotY;
+        // 4 Industrial rubber tires
+        [
+          [-0.48, 0.56, 0.22],
+          [0.48, 0.56, 0.22],
+          [-0.44, -0.58, 0.18],
+          [0.44, -0.58, 0.18],
+        ].forEach(([wx, wz, wr]) => {
+          const w = new THREE.Mesh(new THREE.CylinderGeometry(wr, wr, 0.16, 16), M.dark);
+          w.rotation.z = Math.PI / 2;
+          w.position.set(wx, wr, wz);
+          w.castShadow = true;
+          fl.add(w);
+        });
+        // Counterweight body & cab hood
+        boxAt(fl, 0.96, 0.62, 1.45, 0, 0.52, -0.05, accentMat, true, true, 0.04);
+        boxAt(fl, 0.92, 0.24, 0.48, 0, 0.68, -0.55, perforatedSteel, true, true, 0.02);
+        // Overhead roll cage (4 posts + roof guard + safety beacon)
+        [
+          [-0.4, 0.35],
+          [0.4, 0.35],
+          [-0.4, -0.45],
+          [0.4, -0.45],
+        ].forEach(([px, pz]) => {
+          cylAt(fl, 0.028, 0.028, 1.15, px, 1.38, pz, perforatedSteel, true, false, 8);
+        });
+        boxAt(fl, 0.88, 0.05, 0.92, 0, 1.96, -0.05, perforatedSteel, true, false);
+        cylAt(fl, 0.06, 0.07, 0.12, 0, 2.04, -0.35, safetyYellowMat, false, false, 10);
+        // Twin vertical hydraulic mast channels & pallet forks + cargo crate
+        [-0.24, 0.24].forEach((mx) => {
+          boxAt(fl, 0.08, 1.85, 0.1, mx, 1.1, 0.78, brushedAluminum, true, false);
+          boxAt(fl, 0.09, 0.04, 0.92, mx, 0.26, 1.24, brushedAluminum, true, false);
+        });
+        boxAt(fl, 0.9, 0.1, 0.85, 0, 0.33, 1.28, palletMat, true, true, 0.01);
+        boxAt(fl, 0.78, 0.55, 0.74, 0, 0.65, 1.28, cartonMat, true, true, 0.02);
+        parent.add(fl);
+      };
 
-      // Live SwiftPort GPS Fleet & Freight Telemetry Board (facing north door -Z)
+      // Industrial Barrel Coffee / Side Table
+      const addSteelDrumTable = (parent: THREE.Object3D, x: number, y: number, z: number, mat: THREE.Material) => {
+        cylAt(parent, 0.28, 0.28, 0.56, x, y + 0.28, z, mat, true, true, 18);
+        [0.14, 0.42].forEach((ry) => {
+          cylAt(parent, 0.295, 0.295, 0.03, x, y + ry, z, brushedAluminum, false, false, 18);
+        });
+        cylAt(parent, 0.42, 0.42, 0.04, x, y + 0.58, z, birchCrateWood, true, true, 20);
+      };
+
+      // Reusable Dynamic Air-Sea Freight & Port Analytics Screens
       const logBoard = createCustomBoardScreen(screenReg, 720, 230, (g, w, h, t) => {
         g.fillStyle = '#0d1117';
         g.fillRect(0, 0, w, h);
@@ -1653,31 +4420,629 @@ export function buildDistrictBuildings(
           g.textAlign = 'left';
         });
       });
-      boxAt(g0, 7.8, 2.35, 0.14, spec.cx + 1.5, fy + 2.35, spec.cz + 9.7, frameDarkMat, false, false);
+
+      const corridorRadarScreen = createCustomBoardScreen(screenReg, 520, 260, (g, w, h, t) => {
+        g.fillStyle = '#0c131c';
+        g.fillRect(0, 0, w, h);
+        g.fillStyle = '#1e293b';
+        g.fillRect(0, 0, w, 36);
+        g.fillStyle = '#f97316';
+        g.fillRect(0, 0, 8, 36);
+        g.fillStyle = '#f8fafc';
+        g.font = '800 15px "IBM Plex Mono", monospace';
+        g.textAlign = 'left';
+        g.textBaseline = 'middle';
+        g.fillText('MOMBASA PORT · JKIA AIR · NORTHERN CORRIDOR', 18, 18);
+        // Freight network grid
+        g.strokeStyle = 'rgba(148,163,184,0.16)';
+        g.lineWidth = 1;
+        for (let gx = 40; gx < w; gx += 48) {
+          g.beginPath();
+          g.moveTo(gx, 42);
+          g.lineTo(gx, h - 12);
+          g.stroke();
+        }
+        const hubs: Array<[number, number, string]> = [
+          [78, 92, 'KAMPALA ICD'],
+          [190, 128, 'ELDORET'],
+          [275, 152, 'NAIROBI HUB'],
+          [325, 140, 'JKIA CARGO'],
+          [432, 212, 'MOMBASA PORT'],
+        ];
+        g.strokeStyle = '#38bdf8';
+        g.lineWidth = 2.5;
+        g.beginPath();
+        hubs.forEach(([hx, hy], hi) => (hi === 0 ? g.moveTo(hx, hy) : g.lineTo(hx, hy)));
+        g.stroke();
+        hubs.forEach(([hx, hy, lbl], hi) => {
+          const active = hi === Math.floor(t * 1.1) % hubs.length;
+          g.fillStyle = active ? '#facc15' : '#f97316';
+          g.beginPath();
+          g.arc(hx, hy, active ? 6.5 : 4.5, 0, Math.PI * 2);
+          g.fill();
+          g.fillStyle = '#e2e8f0';
+          g.font = '700 11px monospace';
+          g.fillText(lbl, hx - 24, hy - 12);
+        });
+      });
+
+      // -------------------------------------------------------------------------
+      // FLOOR 0 (G): Automated Freight Hall, Overhead Gantry Crane & Dispatch Counter
+      // -------------------------------------------------------------------------
+      boxAt(g0, 31.2, 0.018, 19.2, spec.cx, fy + 0.009, spec.cz, cargoEpoxyFloor, false, true);
+      // Safety orange aisle strips framing the East dock walkway & automated belt
+      boxAt(g0, 0.14, 0.02, 13.0, spec.cx + 10.6, fy + 0.012, spec.cz, accentMat, false, false);
+      boxAt(g0, 0.14, 0.02, 10.2, spec.cx - 2.8, fy + 0.012, spec.cz + 0.8, safetyYellowMat, false, false);
+      addIndustrialCeilingRig(levelCeilings[0], spec.groundY + spec.floorH - 0.12, [spec.cz - 5.6, spec.cz, spec.cz + 5.6]);
+
+      // Overhead Bridge Gantry Crane above West-North staging & conveyor zone (dx -8.4, dz -4.2)
+      [-5.6, -2.8].forEach((gz) => {
+        boxAt(g0, 12.6, 0.22, 0.24, spec.cx - 7.8, fy + 3.42, spec.cz + gz, safetyYellowMat, true, false);
+      });
+      boxAt(g0, 1.15, 0.28, 3.2, spec.cx - 6.8, fy + 3.36, spec.cz - 4.2, containerOrange, true, false);
+      cylAt(g0, 0.02, 0.02, 1.15, spec.cx - 6.8, fy + 2.75, spec.cz - 4.2, brushedAluminum, false, false, 8);
+      boxAt(g0, 1.35, 0.12, 0.9, spec.cx - 6.8, fy + 2.15, spec.cz - 4.2, perforatedSteel, true, false);
+
+      // Electric Cargo Forklift staged near NE loading dock lane (cx + 9.8, cz - 5.2)
+      addCargoForklift(g0, spec.cx + 9.8, fy, spec.cz - 5.2, -0.55);
+
+      // Automated Parcel Sorting Conveyor Belt (running N-S at cx - 4.2, cz + 0.8)
+      const convX = spec.cx - 4.2;
+      const convZ = spec.cz + 0.8;
+      boxAt(g0, 1.45, 0.14, 9.4, convX, fy + 0.78, convZ, perforatedSteel, true, true, 0.02);
+      boxAt(g0, 1.18, 0.05, 9.25, convX, fy + 0.87, convZ, M.dark, false, false);
+      for (let zOff = -4.0; zOff <= 4.0; zOff += 2.0) {
+        boxAt(g0, 1.24, 0.72, 0.1, convX, fy + 0.36, convZ + zOff, brushedAluminum, true, false);
+      }
+      boxAt(g0, 1.65, 0.95, 0.45, convX, fy + 1.32, convZ - 0.6, perforatedSteel, true, false, 0.02);
+      boxAt(g0, 1.35, 0.08, 0.12, convX, fy + 1.55, convZ - 0.6, accentMat, false, false);
+      [-3.3, -1.6, 0.6, 2.3, 3.7].forEach((pz, pi) => {
+        const bw = 0.52 + (pi % 2) * 0.14;
+        const bh = 0.34 + (pi % 3) * 0.08;
+        boxAt(g0, bw, bh, 0.54, convX + ((pi % 2) - 0.5) * 0.18, fy + 0.9 + bh * 0.5, convZ + pz, pi === 2 ? containerOrange : cartonMat, true, true, 0.015);
+      });
+
+      // Heavy Pallet Storage Racks in NW Warehouse Wing (strictly North of SW stairwell dz + 2.80)
+      [-4.8, -0.6].forEach((rz) => {
+        const rx = spec.cx - 12.2;
+        const rCz = spec.cz + rz;
+        [-1.3, 1.3].forEach((ox) => {
+          [-1.7, 1.7].forEach((oz) => {
+            boxAt(g0, 0.1, 2.8, 0.1, rx + ox, fy + 1.4, rCz + oz, accentMat, true, false);
+          });
+        });
+        [0.45, 1.55, 2.65].forEach((ry, li) => {
+          boxAt(g0, 2.7, 0.08, 3.5, rx, fy + ry, rCz, perforatedSteel, true, true);
+          if (li < 2) {
+            boxAt(g0, 1.9, 0.65, 1.15, rx, fy + ry + 0.36, rCz - 0.8, cartonMat, true, true, 0.02);
+            boxAt(g0, 1.9, 0.65, 1.15, rx, fy + ry + 0.36, rCz + 0.8, palletMat, true, true, 0.02);
+          }
+        });
+      });
+
+      // 3-Station Waybill Dispatch & Customs Counter (dx +5.8, dz +2.5)
+      const deskZ = spec.cz + 2.5;
+      boxAt(g0, 7.6, 1.04, 0.52, spec.cx + 5.8, fy + 0.52, deskZ - 0.34, containerNavy, true, true, 0.03);
+      boxAt(g0, 7.8, 0.08, 0.6, spec.cx + 5.8, fy + 1.06, deskZ - 0.34, accentMat, false, false);
+      boxAt(g0, 7.6, 0.06, 0.94, spec.cx + 5.8, fy + 0.75, deskZ + 0.39, birchCrateWood, true, true, 0.015);
+      [2.1, 4.5, 7.1, 9.5].forEach((lx) => {
+        boxAt(g0, 0.14, 0.72, 0.78, spec.cx + lx, fy + 0.36, deskZ + 0.34, perforatedSteel, true, true, 0.01);
+      });
+      [3.2, 5.8, 8.4].forEach((ox, i) => {
+        const sx = spec.cx + ox;
+        const sz = deskZ + 1.15;
+        registerChair(0, sx, fy, sz, Math.PI, i % 2 === 0 ? 1 : -1);
+        registerMonitor(
+          0,
+          i,
+          [sx, fy + 0.78, deskZ + 0.43],
+          0,
+          sx,
+          sz,
+          i === 0 ? 'Freight Dispatch Manager' : i === 1 ? 'Customs & Waybill Officer' : 'Air-Cargo Clearance Coordinator',
+          'Dispatch & Waybill Control'
+        );
+      });
+
+      // Live SwiftPort GPS Fleet & Freight Telemetry Board (facing north door -Z)
+      boxAt(g0, 7.8, 2.35, 0.14, spec.cx + 1.5, fy + 2.35, spec.cz + 9.7, perforatedSteel, false, false);
       const logMesh = new THREE.Mesh(new THREE.PlaneGeometry(7.5, 2.1), logBoard.mat);
       logMesh.position.set(spec.cx + 1.5, fy + 2.35, spec.cz + 9.62);
       logMesh.rotation.y = Math.PI;
       g0.add(logMesh);
       logBoard.setMesh(logMesh);
+
+      // -------------------------------------------------------------------------
+      // FLOOR 1 (L1): Global Route Planning, Customs Brokerage & Cold-Chain Ops
+      // -------------------------------------------------------------------------
+      const lg1 = levelGroups[1];
+      if (lg1) {
+        const lfy1 = spec.groundY + spec.floorH + SLAB_THICK * 0.5;
+        const l1Fill = new THREE.PointLight(0xeef6ff, 1.24, 28);
+        l1Fill.position.set(spec.cx, lfy1 + 3.2, spec.cz);
+        lg1.add(l1Fill);
+        warmLights.push(l1Fill);
+
+        // Non-overlapping epoxy floor clearing SW stairwell void (-14.32..-11.28 x +4.15..+7.95)
+        boxAt(lg1, 31.2, 0.018, 13.7, spec.cx, lfy1 + 0.009, spec.cz - 2.75, cargoEpoxyFloor, false, true);
+        boxAt(lg1, 26.8, 0.018, 4.0, spec.cx + 2.2, lfy1 + 0.009, spec.cz + 6.1, cargoEpoxyFloor, false, true);
+        boxAt(lg1, 1.3, 0.018, 4.0, spec.cx - 14.95, lfy1 + 0.009, spec.cz + 6.1, cargoEpoxyFloor, false, true);
+        boxAt(lg1, 31.2, 0.018, 1.5, spec.cx, lfy1 + 0.009, spec.cz + 8.85, cargoEpoxyFloor, false, true);
+        addIndustrialCeilingRig(levelCeilings[1], spec.groundY + 2 * spec.floorH - 0.12, [spec.cz - 5.2, spec.cz + 5.2]);
+
+        let l1MonIdx = 0;
+
+        // Cutaway Navy Shipping Container Partition dividing West Route Pods (open portal dz -1.2..+0.6)
+        addContainerDivider(lg1, spec.cx - 3.4, lfy1, spec.cz - 5.1, 7.8, 2.75, containerNavy, Math.PI / 2);
+        addContainerDivider(lg1, spec.cx - 3.4, lfy1, spec.cz + 4.8, 8.4, 2.75, containerNavy, Math.PI / 2);
+        addCargoSign(lg1, 'CUSTOMS & PORT ROUTING', spec.cx - 3.22, lfy1 + 2.48, spec.cz - 0.3, Math.PI / 2);
+
+        const l1PodX = spec.cx - 8.6;
+        [spec.cz - 4.6, spec.cz + 0.2].forEach((pz, pi) => {
+          boxAt(lg1, 3.3, 0.06, 1.38, l1PodX, lfy1 + 0.74, pz, birchCrateWood, true, true, 0.02);
+          [-1.4, 1.4].forEach((lx) => {
+            boxAt(lg1, 0.08, 0.72, 1.15, l1PodX + lx, lfy1 + 0.36, pz, perforatedSteel, true, true, 0.01);
+          });
+          boxAt(lg1, 3.1, 0.28, 0.05, l1PodX, lfy1 + 0.91, pz, containerOrange, false, false);
+          if (pi === 0) {
+            registerChair(1, l1PodX - 0.8, lfy1, pz - 1.05, 0, 1);
+            registerMonitor(1, l1MonIdx++, [l1PodX - 0.8, lfy1 + 0.77, pz - 0.25], Math.PI, l1PodX - 0.8, pz - 1.05, 'Ocean & Port Routing Lead · L1', 'Global Route Planning');
+            officeChair(lg1, l1PodX + 0.8, lfy1, pz - 1.05, 0, M);
+            monitor(lg1, l1PodX + 0.8, lfy1 + 0.77, pz - 0.25, true, Math.PI, M);
+            officeChair(lg1, l1PodX - 0.8, lfy1, pz + 1.05, Math.PI, M);
+            monitor(lg1, l1PodX - 0.8, lfy1 + 0.77, pz + 0.25, true, 0, M);
+            officeChair(lg1, l1PodX + 0.8, lfy1, pz + 1.05, Math.PI, M);
+            monitor(lg1, l1PodX + 0.8, lfy1 + 0.77, pz + 0.25, true, 0, M);
+          } else {
+            registerChair(1, l1PodX + 0.8, lfy1, pz + 1.05, Math.PI, -1);
+            registerMonitor(1, l1MonIdx++, [l1PodX + 0.8, lfy1 + 0.77, pz + 0.25], 0, l1PodX + 0.8, pz + 1.05, 'Customs Compliance Broker · L1', 'Global Route Planning');
+            officeChair(lg1, l1PodX - 0.8, lfy1, pz - 1.05, 0, M);
+            monitor(lg1, l1PodX - 0.8, lfy1 + 0.77, pz - 0.25, true, Math.PI, M);
+            officeChair(lg1, l1PodX + 0.8, lfy1, pz - 1.05, 0, M);
+            monitor(lg1, l1PodX + 0.8, lfy1 + 0.77, pz - 0.25, true, Math.PI, M);
+            officeChair(lg1, l1PodX - 0.8, lfy1, pz + 1.05, Math.PI, M);
+            monitor(lg1, l1PodX - 0.8, lfy1 + 0.77, pz + 0.25, true, 0, M);
+          }
+        });
+        // Stenciled Archive Crate Console East of SW stairwell (cx - 7.4, cz + 6.8)
+        boxAt(lg1, 3.2, 1.15, 0.78, spec.cx - 7.4, lfy1 + 0.575, spec.cz + 6.8, containerTeal, true, true, 0.02);
+        boxAt(lg1, 3.28, 0.05, 0.84, spec.cx - 7.4, lfy1 + 1.17, spec.cz + 6.8, birchCrateWood, false, true);
+        boxAt(lg1, 0.1, 1.9, 4.4, spec.cx - 15.65, lfy1 + 1.88, spec.cz - 2.4, perforatedSteel, false, false);
+        const l1WestTv = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.72), corridorRadarScreen.mat);
+        l1WestTv.position.set(spec.cx - 15.56, lfy1 + 1.88, spec.cz - 2.4);
+        l1WestTv.rotation.y = Math.PI / 2;
+        lg1.add(l1WestTv);
+
+        // Center Zone: Steel-Drum & Birch Quick-Huddle Dispatch Table + Cold-Chain Telemetry Desk
+        cylAt(lg1, 0.96, 0.96, 0.06, spec.cx + 1.4, lfy1 + 0.74, spec.cz - 3.8, birchCrateWood, true, true, 24);
+        cylAt(lg1, 0.32, 0.34, 0.72, spec.cx + 1.4, lfy1 + 0.36, spec.cz - 3.8, containerOrange, true, true, 18);
+        [
+          [-1.32, 0, Math.PI / 2],
+          [1.32, 0, -Math.PI / 2],
+          [0, -1.32, 0],
+          [0, 1.32, Math.PI],
+        ].forEach(([ox, oz, rot]) => {
+          const ch = officeChair(lg1, spec.cx + 1.4 + ox, lfy1, spec.cz - 3.8 + oz, rot, M);
+          void ch;
+        });
+
+        boxAt(lg1, 2.7, 0.06, 1.08, spec.cx + 1.4, lfy1 + 0.74, spec.cz + 4.4, birchCrateWood, true, true, 0.02);
+        [-1.1, 1.1].forEach((lx) => boxAt(lg1, 0.08, 0.72, 0.88, spec.cx + 1.4 + lx, lfy1 + 0.36, spec.cz + 4.4, perforatedSteel, true, true, 0.01));
+        registerChair(1, spec.cx + 1.4, lfy1, spec.cz + 5.32, Math.PI, 1);
+        registerMonitor(1, l1MonIdx++, [spec.cx + 1.4, lfy1 + 0.77, spec.cz + 4.55], 0, spec.cx + 1.4, spec.cz + 5.32, 'Cold-Chain Telemetry Lead · L1', 'Cold-Chain Telemetry');
+        [spec.cx + 0.65, spec.cx + 2.15].forEach((vx) => {
+          const vc = armchair(lg1, vx, lfy1, spec.cz + 3.1, 0, M.fabricGrey, M);
+          vc.scale.set(0.74, 0.88, 0.74);
+        });
+
+        // East Wing: Burnt-Orange Container Driver Briefing & Espresso Counter + Corridor Map
+        boxAt(lg1, 4.4, 0.96, 0.92, spec.cx + 10.2, lfy1 + 0.48, spec.cz - 4.8, containerOrange, true, true, 0.02);
+        boxAt(lg1, 4.52, 0.06, 1.0, spec.cx + 10.2, lfy1 + 0.99, spec.cz - 4.8, birchCrateWood, false, true, 0.02);
+        [-1.2, 0, 1.2].forEach((ox) => {
+          cylAt(lg1, 0.2, 0.2, 0.09, spec.cx + 10.2 + ox, lfy1 + 0.68, spec.cz - 3.7, M.fabricCognac, true, true, 16);
+          cylAt(lg1, 0.035, 0.035, 0.66, spec.cx + 10.2 + ox, lfy1 + 0.33, spec.cz - 3.7, perforatedSteel, false, false, 10);
+          cylAt(lg1, 0.17, 0.2, 0.04, spec.cx + 10.2 + ox, lfy1 + 0.02, spec.cz - 3.7, perforatedSteel, false, true, 14);
+        });
+        // Acoustic Galvanized Container Phone Booth (cx + 10.8, cz + 4.8)
+        boxAt(lg1, 1.65, 2.45, 1.65, spec.cx + 10.8, lfy1 + 1.225, spec.cz + 4.8, galvanizedSteel, true, true, 0.02);
+        boxAt(lg1, 1.1, 1.85, 0.06, spec.cx + 10.8, lfy1 + 1.18, spec.cz + 3.96, cargoSteelGlass, false, false);
+        boxAt(lg1, 0.1, 1.9, 4.2, spec.cx + 15.65, lfy1 + 1.88, spec.cz - 2.6, perforatedSteel, false, false);
+        const l1EastTv = new THREE.Mesh(new THREE.PlaneGeometry(4.0, 1.72), logBoard.mat);
+        l1EastTv.position.set(spec.cx + 15.56, lfy1 + 1.88, spec.cz - 2.6);
+        l1EastTv.rotation.y = -Math.PI / 2;
+        lg1.add(l1EastTv);
+        plant(lg1, spec.cx + 14.0, lfy1, spec.cz - 7.8, 1.2, 1401, M, 'ficus');
+      }
+
+      // -------------------------------------------------------------------------
+      // FLOOR 2 (L2): Automated Warehouse Showroom, Port Diorama & Packaging Lab
+      // -------------------------------------------------------------------------
+      const lg2 = levelGroups[2];
+      if (lg2) {
+        const lfy2 = spec.groundY + 2 * spec.floorH + SLAB_THICK * 0.5;
+        const l2Fill = new THREE.PointLight(0xeef6ff, 1.26, 28);
+        l2Fill.position.set(spec.cx, lfy2 + 3.2, spec.cz);
+        lg2.add(l2Fill);
+        warmLights.push(l2Fill);
+
+        boxAt(lg2, 31.2, 0.018, 13.7, spec.cx, lfy2 + 0.009, spec.cz - 2.75, cargoEpoxyFloor, false, true);
+        boxAt(lg2, 26.8, 0.018, 4.0, spec.cx + 2.2, lfy2 + 0.009, spec.cz + 6.1, cargoEpoxyFloor, false, true);
+        boxAt(lg2, 1.3, 0.018, 4.0, spec.cx - 14.95, lfy2 + 0.009, spec.cz + 6.1, cargoEpoxyFloor, false, true);
+        boxAt(lg2, 31.2, 0.018, 1.5, spec.cx, lfy2 + 0.009, spec.cz + 8.85, cargoEpoxyFloor, false, true);
+        addIndustrialCeilingRig(levelCeilings[2], spec.groundY + 3 * spec.floorH - 0.12, [spec.cz - 5.2, spec.cz + 5.2]);
+
+        let l2MonIdx = 0;
+
+        // West North: Scale Container Port, Ship & Gantry Crane Diorama (cx - 8.8, cz - 4.4)
+        const portX = spec.cx - 8.8;
+        const portZ = spec.cz - 4.4;
+        boxAt(lg2, 4.8, 0.78, 2.8, portX, lfy2 + 0.39, portZ, perforatedSteel, true, true, 0.03);
+        // Sea channel basin + berth apron
+        boxAt(lg2, 4.5, 0.05, 1.25, portX, lfy2 + 0.8, portZ - 0.6, std({ color: 0x0c4a6e, roughness: 0.18 }), false, true);
+        boxAt(lg2, 4.5, 0.07, 1.35, portX, lfy2 + 0.81, portZ + 0.65, std({ color: 0x64748b, roughness: 0.72 }), false, true);
+        // Multi-part scale container vessel docked at quay
+        boxAt(lg2, 3.2, 0.28, 0.68, portX - 0.2, lfy2 + 0.94, portZ - 0.56, containerNavy, true, false, 0.02);
+        boxAt(lg2, 0.45, 0.44, 0.62, portX - 1.35, lfy2 + 1.24, portZ - 0.56, M.white, false, false);
+        [-0.5, 0.15, 0.8].forEach((cxo, ci) => {
+          boxAt(lg2, 0.52, 0.22, 0.52, portX + cxo, lfy2 + 1.18, portZ - 0.56, ci === 1 ? containerOrange : containerTeal, false, false);
+        });
+        // Two miniature red/orange ship-to-shore gantry cranes on berth
+        [-0.6, 0.85].forEach((gx) => {
+          boxAt(lg2, 0.14, 0.85, 0.42, portX + gx, lfy2 + 1.26, portZ + 0.32, containerOrange, false, false);
+          boxAt(lg2, 0.18, 0.1, 1.45, portX + gx, lfy2 + 1.68, portZ - 0.15, safetyYellowMat, false, false);
+        });
+        addCargoSign(lg2, 'MOMBASA PORT SCALE MODEL', portX, lfy2 + 0.44, portZ + 1.44, 0);
+
+        // Mid-West South: Autonomous AGV Warehouse Robot & Smart-Rack Demo Bay (cx - 6.8, cz + 4.8 — clear of SW stairwell)
+        const agvX = spec.cx - 6.8;
+        const agvZ = spec.cz + 4.8;
+        boxAt(lg2, 4.4, 0.04, 3.2, agvX, lfy2 + 0.02, agvZ, std({ color: 0x1e293b, roughness: 0.5 }), false, true);
+        // Smart RFID pallet rack + Autonomous Robot carrier
+        boxAt(lg2, 3.4, 2.15, 0.72, agvX, lfy2 + 1.075, agvZ + 1.05, galvanizedSteel, true, true);
+        boxAt(lg2, 1.05, 0.24, 0.85, agvX - 0.65, lfy2 + 0.14, agvZ - 0.45, containerOrange, true, true, 0.02);
+        boxAt(lg2, 0.76, 0.44, 0.64, agvX - 0.65, lfy2 + 0.48, agvZ - 0.45, cartonMat, true, false, 0.02);
+        boxAt(lg2, 3.6, 0.08, 0.12, agvX, lfy2 + 2.22, agvZ - 0.45, safetyYellowMat, false, false);
+        [-1.7, 1.7].forEach((px) => boxAt(lg2, 0.1, 2.2, 0.1, agvX + px, lfy2 + 1.1, agvZ - 0.45, perforatedSteel, true, false));
+
+        // Center Zone: Packaging & Pallet Engineering Atelier + 2 Specialist Stations
+        boxAt(lg2, 3.4, 1.85, 0.42, spec.cx + 1.8, lfy2 + 0.925, spec.cz - 3.6, perforatedSteel, true, true, 0.02);
+        [cartonMat, containerTeal, birchCrateWood, containerOrange].forEach((pm, pi) => {
+          boxAt(lg2, 0.65, 0.72, 0.22, spec.cx + 0.62 + pi * 0.78, lfy2 + 1.2, spec.cz - 3.55, pm, false, false);
+        });
+        boxAt(lg2, 2.7, 0.06, 1.08, spec.cx + 1.8, lfy2 + 0.74, spec.cz + 3.2, birchCrateWood, true, true, 0.02);
+        [-1.1, 1.1].forEach((lx) => boxAt(lg2, 0.08, 0.72, 0.88, spec.cx + 1.8 + lx, lfy2 + 0.36, spec.cz + 3.2, perforatedSteel, true, true, 0.01));
+        registerChair(2, spec.cx + 1.8, lfy2, spec.cz + 4.12, Math.PI, 1);
+        registerMonitor(2, l2MonIdx++, [spec.cx + 1.8, lfy2 + 0.77, spec.cz + 3.35], 0, spec.cx + 1.8, spec.cz + 4.12, 'Supply-Chain Systems Architect · L2', 'Logistics Automation Lab');
+
+        boxAt(lg2, 2.7, 0.06, 1.08, spec.cx + 9.8, lfy2 + 0.74, spec.cz - 5.2, birchCrateWood, true, true, 0.02);
+        [-1.1, 1.1].forEach((lx) => boxAt(lg2, 0.08, 0.72, 0.88, spec.cx + 9.8 + lx, lfy2 + 0.36, spec.cz - 5.2, perforatedSteel, true, true, 0.01));
+        registerChair(2, spec.cx + 9.8, lfy2, spec.cz - 6.12, 0, -1);
+        registerMonitor(2, l2MonIdx++, [spec.cx + 9.8, lfy2 + 0.77, spec.cz - 5.35], Math.PI, spec.cx + 9.8, spec.cz - 6.12, 'Fleet Electrification & Robotics Lead · L2', 'Logistics Automation Lab');
+
+        // East Mid: Industrial Barrel & Leather Client Lounge + East Port Analytics Screen
+        const l2Sofa = sofaWide(lg2, spec.cx + 11.4, lfy2, spec.cz + 1.8, -Math.PI / 2, M.fabricGrey, M);
+        l2Sofa.scale.set(0.8, 0.92, 0.84);
+        addSteelDrumTable(lg2, spec.cx + 9.4, lfy2, spec.cz + 1.8, containerOrange);
+        const l2Arm1 = armchair(lg2, spec.cx + 8.0, lfy2, spec.cz + 0.9, Math.PI * 0.35, M.fabricCognac, M);
+        l2Arm1.scale.set(0.74, 0.88, 0.74);
+        const l2Arm2 = armchair(lg2, spec.cx + 8.0, lfy2, spec.cz + 2.7, Math.PI * 0.65, M.fabricCognac, M);
+        l2Arm2.scale.set(0.74, 0.88, 0.74);
+        boxAt(lg2, 0.1, 1.9, 4.2, spec.cx + 15.65, lfy2 + 1.88, spec.cz + 1.8, perforatedSteel, false, false);
+        const l2EastTv = new THREE.Mesh(new THREE.PlaneGeometry(4.0, 1.72), corridorRadarScreen.mat);
+        l2EastTv.position.set(spec.cx + 15.56, lfy2 + 1.88, spec.cz + 1.8);
+        l2EastTv.rotation.y = -Math.PI / 2;
+        lg2.add(l2EastTv);
+        plant(lg2, spec.cx + 14.0, lfy2, spec.cz + 7.6, 1.25, 1402, M, 'ficus');
+      }
+
+      // -------------------------------------------------------------------------
+      // FLOOR 3 (L3): Maritime & Air-Freight Boardroom, CEO Control Deck & Head Offices
+      // -------------------------------------------------------------------------
+      const lg3 = levelGroups[3];
+      if (lg3) {
+        const lfy3 = spec.groundY + 3 * spec.floorH + SLAB_THICK * 0.5;
+        const l3Fill = new THREE.PointLight(0xf1f7ff, 1.3, 29);
+        l3Fill.position.set(spec.cx, lfy3 + 3.25, spec.cz);
+        lg3.add(l3Fill);
+        warmLights.push(l3Fill);
+
+        boxAt(lg3, 31.2, 0.018, 13.7, spec.cx, lfy3 + 0.009, spec.cz - 2.75, cargoEpoxyFloor, false, true);
+        boxAt(lg3, 26.8, 0.018, 4.0, spec.cx + 2.2, lfy3 + 0.009, spec.cz + 6.1, cargoEpoxyFloor, false, true);
+        boxAt(lg3, 1.3, 0.018, 4.0, spec.cx - 14.95, lfy3 + 0.009, spec.cz + 6.1, cargoEpoxyFloor, false, true);
+        boxAt(lg3, 31.2, 0.018, 1.5, spec.cx, lfy3 + 0.009, spec.cz + 8.85, cargoEpoxyFloor, false, true);
+        addIndustrialCeilingRig(levelCeilings[3], spec.groundY + 4 * spec.floorH - 0.12, [spec.cz - 5.2, spec.cz + 5.2]);
+
+        let l3MonIdx = 0;
+
+        // 1. EAST WING (dx +4.4..+15.2): Global Trade & Port Alliances Boardroom (open portal dz -1.6..+0.2)
+        const lgBrWallX = spec.cx + 4.4;
+        boxAt(lg3, 0.08, 3.05, 6.2, lgBrWallX, lfy3 + 1.525, spec.cz - 4.7, cargoSteelGlass, false, false);
+        boxAt(lg3, 0.08, 3.05, 8.8, lgBrWallX, lfy3 + 1.525, spec.cz + 4.6, cargoSteelGlass, false, false);
+        boxAt(lg3, 0.14, 0.14, 17.6, lgBrWallX, lfy3 + 3.05, spec.cz, perforatedSteel, true, false);
+        [-7.8, -1.6, 0.2, 3.6, 8.8].forEach((mz) => {
+          boxAt(lg3, 0.14, 3.06, 0.14, lgBrWallX, lfy3 + 1.53, spec.cz + mz, brushedAluminum, true, false);
+        });
+        addCargoSign(lg3, 'GLOBAL TRADE BOARDROOM', lgBrWallX - 0.1, lfy3 + 2.74, spec.cz - 0.7, -Math.PI / 2);
+
+        const lgBrX = spec.cx + 9.8;
+        const lgBrZ = spec.cz + 0.0;
+        // Steel I-Beam & Smoked Birch 12-Seat Boardroom Table (2.9m x 7.2m)
+        boxAt(lg3, 2.85, 0.08, 7.1, lgBrX, lfy3 + 0.75, lgBrZ, birchCrateWood, true, true, 0.03);
+        boxAt(lg3, 2.94, 0.04, 7.2, lgBrX, lfy3 + 0.71, lgBrZ, perforatedSteel, true, true, 0.01);
+        [-2.2, 2.2].forEach((pz) => {
+          boxAt(lg3, 1.35, 0.68, 0.28, lgBrX, lfy3 + 0.34, lgBrZ + pz, containerNavy, true, true, 0.02);
+        });
+        registerChair(3, lgBrX, lfy3, lgBrZ - 4.05, 0, 1);
+        registerMonitor(3, l3MonIdx++, [lgBrX, lfy3 + 0.8, lgBrZ - 3.1], Math.PI, lgBrX, lgBrZ - 4.05, 'VP Global Freight & Maritime · L3', 'Global Trade Boardroom');
+        registerChair(3, lgBrX - 2.05, lfy3, lgBrZ - 1.4, Math.PI / 2, -1);
+        registerMonitor(3, l3MonIdx++, [lgBrX - 1.15, lfy3 + 0.8, lgBrZ - 1.4], -Math.PI / 2, lgBrX - 2.05, lgBrZ - 1.4, 'Director of Customs & Trade Corridors · L3', 'Global Trade Boardroom');
+        officeChair(lg3, lgBrX, lfy3, lgBrZ + 4.05, Math.PI, M);
+        [-2.6, -0.2, 1.0, 2.2].forEach((czo) => officeChair(lg3, lgBrX - 2.05, lfy3, lgBrZ + czo, Math.PI / 2, M));
+        [-2.6, -1.4, -0.2, 1.0, 2.2].forEach((czo) => officeChair(lg3, lgBrX + 2.05, lfy3, lgBrZ + czo, -Math.PI / 2, M));
+
+        boxAt(lg3, 0.1, 2.1, 5.2, spec.cx + 15.65, lfy3 + 1.92, lgBrZ, perforatedSteel, false, false);
+        const l3BrTv = new THREE.Mesh(new THREE.PlaneGeometry(4.95, 1.9), logBoard.mat);
+        l3BrTv.position.set(spec.cx + 15.56, lfy3 + 1.92, lgBrZ);
+        l3BrTv.rotation.y = -Math.PI / 2;
+        lg3.add(l3BrTv);
+        plant(lg3, spec.cx + 14.0, lfy3, spec.cz - 7.8, 1.25, 1403, M, 'ficus');
+        plant(lg3, spec.cx + 14.0, lfy3, spec.cz + 7.8, 1.25, 1404, M, 'olive');
+
+        // 2. BACK CENTER (dx -4.2..+3.6, dz +2.2..+9.2): CEO & CHIEF LOGISTICS OFFICER COMMAND SUITE (portal dx -1.2..+0.4)
+        const ceoLgX = spec.cx - 0.3;
+        const ceoLgFrontZ = spec.cz + 2.2;
+        boxAt(lg3, 3.0, 3.05, 0.08, spec.cx - 2.7, lfy3 + 1.525, ceoLgFrontZ, cargoSteelGlass, false, false);
+        boxAt(lg3, 3.2, 3.05, 0.08, spec.cx + 2.0, lfy3 + 1.525, ceoLgFrontZ, cargoSteelGlass, false, false);
+        boxAt(lg3, 7.8, 0.14, 0.14, ceoLgX, lfy3 + 3.05, ceoLgFrontZ, perforatedSteel, true, false);
+        boxAt(lg3, 0.08, 3.05, 7.0, spec.cx - 4.2, lfy3 + 1.525, spec.cz + 5.7, cargoSteelGlass, false, false);
+        [-4.2, -1.2, 0.4, 3.6].forEach((px) => {
+          boxAt(lg3, 0.14, 3.06, 0.14, spec.cx + px, lfy3 + 1.53, ceoLgFrontZ, brushedAluminum, true, false);
+        });
+        addCargoSign(lg3, 'CEO · LOGISTICS COMMAND', spec.cx + 1.8, lfy3 + 2.74, ceoLgFrontZ - 0.09, Math.PI);
+
+        // Industrial Blueprint & Scale Container Trophy Wall
+        boxAt(lg3, 5.8, 2.95, 0.44, ceoLgX, lfy3 + 1.475, spec.cz + 9.05, containerNavy, true, true, 0.02);
+        [0.9, 1.72, 2.45].forEach((sy) => {
+          boxAt(lg3, 5.2, 0.05, 0.38, ceoLgX, lfy3 + sy, spec.cz + 9.03, birchCrateWood, false, false);
+        });
+        [-1.0, 1.0].forEach((mx, mi) => {
+          boxAt(lg3, 0.62, 0.28, 0.28, ceoLgX + mx, lfy3 + 1.88, spec.cz + 8.95, mi === 0 ? containerOrange : containerTeal, false, false);
+        });
+        boxAt(lg3, 2.8, 0.065, 1.14, ceoLgX, lfy3 + 0.74, spec.cz + 5.8, birchCrateWood, true, true, 0.02);
+        boxAt(lg3, 2.6, 0.72, 0.14, ceoLgX, lfy3 + 0.36, spec.cz + 5.38, perforatedSteel, true, true, 0.01);
+        registerChair(3, ceoLgX, lfy3, spec.cz + 6.76, Math.PI, -1);
+        registerMonitor(3, l3MonIdx++, [ceoLgX, lfy3 + 0.77, spec.cz + 5.93], 0, ceoLgX, spec.cz + 6.76, 'Chief Executive Officer · L3', 'CEO Logistics Command Suite');
+        [spec.cx - 1.05, spec.cx + 0.45].forEach((gx) => {
+          const gc = armchair(lg3, gx, lfy3, spec.cz + 4.4, 0, M.fabricCognac, M);
+          gc.scale.set(0.75, 0.88, 0.75);
+        });
+
+        // 3. NW CORNER (dx -15.2..-5.2, dz -9.2..-2.0): HEAD OF FLEET & AVIATION CARGO OFFICE (portal dx -7.6..-6.0)
+        const fltFrontZ = spec.cz - 2.0;
+        boxAt(lg3, 7.6, 3.05, 0.08, spec.cx - 11.4, lfy3 + 1.525, fltFrontZ, cargoSteelGlass, false, false);
+        boxAt(lg3, 0.8, 3.05, 0.08, spec.cx - 5.6, lfy3 + 1.525, fltFrontZ, cargoSteelGlass, false, false);
+        boxAt(lg3, 10.0, 0.14, 0.14, spec.cx - 10.2, lfy3 + 3.05, fltFrontZ, perforatedSteel, true, false);
+        boxAt(lg3, 0.08, 3.05, 7.2, spec.cx - 5.2, lfy3 + 1.525, spec.cz - 5.6, cargoSteelGlass, false, false);
+        [-15.2, -7.6, -6.0, -5.2].forEach((px) => {
+          boxAt(lg3, 0.14, 3.06, 0.14, spec.cx + px, lfy3 + 1.53, fltFrontZ, brushedAluminum, true, false);
+        });
+        addCargoSign(lg3, 'HEAD OF FLEET & AIR CARGO', spec.cx - 11.4, lfy3 + 2.74, fltFrontZ + 0.09, 0);
+
+        const fltX = spec.cx - 10.2;
+        boxAt(lg3, 2.5, 0.06, 1.05, fltX, lfy3 + 0.74, spec.cz - 5.6, birchCrateWood, true, true, 0.02);
+        [-1.05, 1.05].forEach((lx) => boxAt(lg3, 0.08, 0.72, 0.86, fltX + lx, lfy3 + 0.36, spec.cz - 5.6, perforatedSteel, true, true, 0.01));
+        registerChair(3, fltX, lfy3, spec.cz - 6.52, 0, 1);
+        registerMonitor(3, l3MonIdx++, [fltX, lfy3 + 0.77, spec.cz - 5.72], Math.PI, fltX, spec.cz - 6.52, 'Head of Fleet & Aviation Cargo · L3', 'Head of Fleet & Air Cargo');
+        [fltX - 0.75, fltX + 0.75].forEach((vx) => {
+          const vc = armchair(lg3, vx, lfy3, spec.cz - 4.3, Math.PI, M.fabricGrey, M);
+          vc.scale.set(0.74, 0.88, 0.74);
+        });
+        boxAt(lg3, 0.1, 1.45, 2.6, spec.cx - 15.65, lfy3 + 1.88, spec.cz - 5.6, perforatedSteel, false, false);
+        const fltTv = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.3), corridorRadarScreen.mat);
+        fltTv.position.set(spec.cx - 15.56, lfy3 + 1.88, spec.cz - 5.6);
+        fltTv.rotation.y = Math.PI / 2;
+        lg3.add(fltTv);
+
+        // 4. FRONT CENTER & SOUTH-CENTER WEST: C-Suite Reception, Port Executive Lounge & Container Cafe Bar
+        boxAt(lg3, 2.3, 0.06, 0.96, ceoLgX, lfy3 + 0.74, spec.cz - 5.8, birchCrateWood, true, true, 0.02);
+        boxAt(lg3, 2.34, 0.92, 0.14, ceoLgX, lfy3 + 0.46, spec.cz - 5.34, containerOrange, true, true, 0.02);
+        registerChair(3, ceoLgX, lfy3, spec.cz - 6.72, 0, 1);
+        registerMonitor(3, l3MonIdx++, [ceoLgX, lfy3 + 0.77, spec.cz - 5.9], Math.PI, ceoLgX, spec.cz - 6.72, 'Executive Operations Coordinator · L3', 'Control Tower Reception');
+
+        const pSofa = sofaWide(lg3, spec.cx + 1.4, lfy3, spec.cz - 1.5, -Math.PI / 2, M.fabricGrey, M);
+        pSofa.scale.set(0.76, 0.92, 0.84);
+        addSteelDrumTable(lg3, spec.cx - 0.2, lfy3, spec.cz - 1.5, containerTeal);
+        const pArm1 = armchair(lg3, spec.cx - 1.55, lfy3, spec.cz - 2.25, Math.PI * 0.35, M.fabricCognac, M);
+        pArm1.scale.set(0.74, 0.88, 0.74);
+        const pArm2 = armchair(lg3, spec.cx - 1.55, lfy3, spec.cz - 0.75, Math.PI * 0.65, M.fabricCognac, M);
+        pArm2.scale.set(0.74, 0.88, 0.74);
+
+        // Container Cafe & Refreshment Galley (dx -7.4, dz +6.4 -> 2m East of SW stairwell wall -11.25)
+        boxAt(lg3, 3.4, 0.94, 0.88, spec.cx - 7.4, lfy3 + 0.47, spec.cz + 6.4, containerOrange, true, true, 0.02);
+        boxAt(lg3, 3.48, 0.06, 0.94, spec.cx - 7.4, lfy3 + 0.97, spec.cz + 6.4, birchCrateWood, false, true, 0.01);
+        [spec.cx - 8.2, spec.cx - 6.6].forEach((sx) => {
+          cylAt(lg3, 0.2, 0.2, 0.09, sx, lfy3 + 0.68, spec.cz + 5.2, M.fabricCognac, true, true, 16);
+          cylAt(lg3, 0.035, 0.035, 0.66, sx, lfy3 + 0.33, spec.cz + 5.2, perforatedSteel, false, false, 10);
+          cylAt(lg3, 0.17, 0.2, 0.04, sx, lfy3 + 0.02, spec.cz + 5.2, perforatedSteel, false, true, 14);
+        });
+      }
+
+      // -------------------------------------------------------------------------
+      // CONTINUOUS SW STEEL-MESH & BIRCH-TREAD LOGISTICS STAIRWELL CORE (G -> L3)
+      // -------------------------------------------------------------------------
+      const swStairXWest = spec.cx - 14.35;
+      const swStairXEast = spec.cx - 11.25;
+      const swStairXMid = spec.cx - 12.8;
+      const swStairZNorth = spec.cz + 2.8;
+      const swStairZSouth = spec.cz + 8.0;
+      const swStairW = swStairXEast - swStairXWest;
+      const swStairD = swStairZSouth - swStairZNorth;
+      const swStairCx = (swStairXWest + swStairXEast) * 0.5;
+      const swStairCz = (swStairZNorth + swStairZSouth) * 0.5;
+      const swBridgeZ = spec.cz + 4.15;
+      const swHalfStartZ = spec.cz + 6.75;
+      const swStairSigns = ['CARGO STAIRS · G → L1', 'STAIRS · L1 ↔ L2', 'STAIRS · L2 ↔ L3', 'STAIRS · L3 COMMAND'];
+
+      const addSwRail = (parent: THREE.Object3D, x: number, y0: number, z0: number, y1: number, z1: number) => {
+        const p0 = new THREE.Vector3(x, y0 + 0.94, z0);
+        const p1 = new THREE.Vector3(x, y1 + 0.94, z1);
+        const len = p0.distanceTo(p1);
+        const dir = new THREE.Vector3().subVectors(p1, p0).normalize();
+        const mid = new THREE.Vector3().addVectors(p0, p1).multiplyScalar(0.5);
+        const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, len, 10), safetyYellowMat);
+        rail.position.copy(mid);
+        rail.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+        parent.add(rail);
+        [0.15, 0.5, 0.85].forEach((t) => {
+          const py = THREE.MathUtils.lerp(y0, y1, t);
+          const pz = THREE.MathUtils.lerp(z0, z1, t);
+          cylAt(parent, 0.015, 0.015, 0.94, x, py + 0.47, pz, perforatedSteel, false, false, 8);
+        });
+      };
+
+      for (let lv = 0; lv < spec.floors; lv++) {
+        const lgS = levelGroups[lv];
+        if (!lgS) continue;
+        const fyS = spec.groundY + lv * spec.floorH + SLAB_THICK * 0.5;
+        const wallH = spec.floorH - SLAB_THICK - 0.04;
+
+        // North vestibule landing finish & safety-orange threshold bar
+        boxAt(lgS, 3.0, 0.018, 1.32, swStairCx, fyS + 0.009, spec.cz + 3.48, cargoEpoxyFloor, false, true);
+        boxAt(lgS, 0.14, 0.018, 1.24, swStairXEast, fyS + 0.012, spec.cz + 3.5, new THREE.MeshBasicMaterial({ color: 0xf97316 }), false, false);
+
+        // West, North & South industrial galvanized-base & steel-glass shaft perimeter
+        boxAt(lgS, 0.1, 0.24, swStairD, swStairXWest, fyS + 0.12, swStairCz, galvanizedSteel, true, true);
+        boxAt(lgS, 0.05, wallH - 0.3, swStairD, swStairXWest, fyS + 0.24 + (wallH - 0.3) * 0.5, swStairCz, cargoSteelGlass, false, false);
+        boxAt(lgS, 0.12, 0.12, swStairD, swStairXWest, fyS + wallH - 0.02, swStairCz, perforatedSteel, false, false);
+        [swStairZNorth, spec.cz + 5.4, swStairZSouth].forEach((mz) => {
+          boxAt(lgS, 0.1, wallH, 0.1, swStairXWest, fyS + wallH * 0.5, mz, brushedAluminum, true, false);
+        });
+        [swStairZNorth, swStairZSouth].forEach((wz) => {
+          boxAt(lgS, swStairW, 0.24, 0.1, swStairCx, fyS + 0.12, wz, galvanizedSteel, true, true);
+          boxAt(lgS, swStairW, wallH - 0.3, 0.05, swStairCx, fyS + 0.24 + (wallH - 0.3) * 0.5, wz, cargoSteelGlass, false, false);
+          boxAt(lgS, swStairW, 0.12, 0.12, swStairCx, fyS + wallH - 0.02, wz, perforatedSteel, false, false);
+          boxAt(lgS, 0.1, wallH, 0.1, swStairXMid, fyS + wallH * 0.5, wz, brushedAluminum, true, false);
+        });
+
+        // East glass shaft wall south of doorway (dz = +4.12..+8.00 -> 3.88m)
+        boxAt(lgS, 0.12, 0.36, 3.88, swStairXEast, fyS + 0.18, spec.cz + 6.06, containerOrange, true, true);
+        boxAt(lgS, 0.05, wallH - 0.42, 3.88, swStairXEast, fyS + 0.36 + (wallH - 0.42) * 0.5, spec.cz + 6.06, cargoSteelGlass, false, false);
+        boxAt(lgS, 0.12, 0.12, 3.88, swStairXEast, fyS + wallH - 0.02, spec.cz + 6.06, perforatedSteel, false, false);
+        boxAt(lgS, 0.1, wallH, 0.1, swStairXEast, fyS + wallH * 0.5, spec.cz + 6.06, brushedAluminum, true, false);
+        boxAt(lgS, 0.1, wallH, 0.1, swStairXEast, fyS + wallH * 0.5, swStairZSouth, brushedAluminum, true, false);
+
+        // Framed open Steel-Portal Stairwell Door on East shaft face (dx = -11.25, dz = +2.86..+4.12)
+        const doorZ = spec.cz + 3.49;
+        const doorH = 2.48;
+        [spec.cz + 2.86, spec.cz + 4.12].forEach((jz) => {
+          boxAt(lgS, 0.15, wallH, 0.11, swStairXEast, fyS + wallH * 0.5, jz, brushedAluminum, true, false, 0.01);
+        });
+        boxAt(lgS, 0.15, 0.12, 1.38, swStairXEast, fyS + doorH + 0.06, doorZ, perforatedSteel, true, false, 0.01);
+        const transomH = Math.max(0.3, wallH - doorH - 0.16);
+        boxAt(lgS, 0.05, transomH, 1.2, swStairXEast, fyS + doorH + 0.12 + transomH * 0.5, doorZ, cargoSteelGlass, false, false);
+
+        // Swung-open industrial steel & wired-glass door leaf (hinged at South jamb, swung out +X/+Z)
+        const doorLeaf = new THREE.Group();
+        doorLeaf.position.set(swStairXEast + 0.02, fyS, spec.cz + 4.08);
+        doorLeaf.rotation.y = -2.22;
+        boxAt(doorLeaf, 0.055, doorH - 0.04, 0.09, 0, (doorH - 0.04) * 0.5 + 0.02, -0.045, containerOrange, true, false);
+        boxAt(doorLeaf, 0.055, doorH - 0.04, 0.09, 0, (doorH - 0.04) * 0.5 + 0.02, -1.08, containerOrange, true, false);
+        boxAt(doorLeaf, 0.055, 0.14, 1.12, 0, 0.09, -0.56, perforatedSteel, true, false);
+        boxAt(doorLeaf, 0.055, 0.12, 1.12, 0, doorH - 0.08, -0.56, perforatedSteel, true, false);
+        boxAt(doorLeaf, 0.028, doorH - 0.3, 0.96, 0, doorH * 0.5, -0.56, cargoSteelGlass, false, false);
+        cylAt(doorLeaf, 0.014, 0.014, 0.86, -0.055, 1.15, -0.98, brushedAluminum, false, false, 10);
+        cylAt(doorLeaf, 0.014, 0.014, 0.86, 0.055, 1.15, -0.98, brushedAluminum, false, false, 10);
+        lgS.add(doorLeaf);
+        addCargoSign(lgS, swStairSigns[lv] ?? `STAIRS · L${lv}`, swStairXEast + 0.1, fyS + doorH + 0.36, doorZ, Math.PI / 2);
+
+        // Two-Flight Switchback Steel-Stringer & Birch-Tread Stairs (G->L1, L1->L2, L2->L3)
+        if (lv < spec.floors - 1) {
+          const steps = 8;
+          const runLen = swHalfStartZ - swBridgeZ;
+          const stepDepth = runLen / steps;
+          const halfRise = spec.floorH * 0.5;
+          const stepRise = halfRise / steps;
+          const yMidLv = fyS + halfRise;
+          const yTopLv = fyS + spec.floorH;
+
+          // Flight 1 (West lane dx = -13.57, climbs Southward +4.15 -> +6.75)
+          for (let st = 0; st < steps; st++) {
+            const ty = fyS + (st + 0.5) * stepRise;
+            const tz = swBridgeZ + (st + 0.5) * stepDepth;
+            boxAt(lgS, 1.32, stepRise, stepDepth + 0.03, spec.cx - 13.57, ty, tz, perforatedSteel, true, true, 0.008);
+            boxAt(lgS, 1.35, 0.045, stepDepth + 0.04, spec.cx - 13.57, ty + stepRise * 0.5 + 0.01, tz, birchCrateWood, false, true, 0.008);
+            boxAt(lgS, 1.35, 0.016, 0.035, spec.cx - 13.57, ty + stepRise * 0.5 + 0.028, tz - stepDepth * 0.45, safetyYellowMat, false, false);
+          }
+
+          // South Half Landing (y = fyS + 2.20)
+          boxAt(lgS, 2.94, 0.16, 1.22, swStairCx, yMidLv - 0.07, spec.cz + 7.36, perforatedSteel, true, true, 0.015);
+          boxAt(lgS, 2.9, 0.04, 1.18, swStairCx, yMidLv + 0.02, spec.cz + 7.36, birchCrateWood, false, true, 0.01);
+
+          // Flight 2 (East lane dx = -12.03, climbs Northward +6.75 -> +4.15)
+          for (let st = 0; st < steps; st++) {
+            const ty = yMidLv + (st + 0.5) * stepRise;
+            const tz = swHalfStartZ - (st + 0.5) * stepDepth;
+            boxAt(lgS, 1.32, stepRise * 0.55, stepDepth + 0.03, spec.cx - 12.03, ty + stepRise * 0.22, tz, perforatedSteel, true, true, 0.008);
+            boxAt(lgS, 1.35, 0.045, stepDepth + 0.04, spec.cx - 12.03, ty + stepRise * 0.5 + 0.01, tz, birchCrateWood, false, true, 0.008);
+            boxAt(lgS, 1.35, 0.016, 0.035, spec.cx - 12.03, ty + stepRise * 0.5 + 0.028, tz + stepDepth * 0.45, safetyYellowMat, false, false);
+          }
+
+          addSwRail(lgS, spec.cx - 14.22, fyS, swBridgeZ, yMidLv, swHalfStartZ);
+          addSwRail(lgS, spec.cx - 12.88, fyS, swBridgeZ, yMidLv, swHalfStartZ);
+          addSwRail(lgS, spec.cx - 12.72, yMidLv, swHalfStartZ, yTopLv, swBridgeZ);
+          addSwRail(lgS, spec.cx - 11.38, yMidLv, swHalfStartZ, yTopLv, swBridgeZ);
+        }
+
+        // Shaft balustrades (ground under-stair guard + upper-floor drop guardrails)
+        if (lv === 0) {
+          boxAt(lgS, 1.44, 1.45, 0.06, spec.cx - 12.03, fyS + 0.725, swBridgeZ, cargoSteelGlass, false, false);
+          boxAt(lgS, 0.06, 1.04, 2.6, swStairXMid, fyS + 0.52, spec.cz + 5.45, cargoSteelGlass, false, false);
+        } else {
+          boxAt(lgS, 0.06, 1.04, 3.8, swStairXMid, fyS + 0.52, spec.cz + 6.05, cargoSteelGlass, false, false);
+          boxAt(lgS, 0.05, 1.04, 3.8, spec.cx - 14.28, fyS + 0.52, spec.cz + 6.05, cargoSteelGlass, false, false);
+          boxAt(lgS, 2.94, 1.04, 0.05, swStairCx, fyS + 0.52, spec.cz + 7.94, cargoSteelGlass, false, false);
+          if (lv === spec.floors - 1) {
+            boxAt(lgS, 1.46, 1.04, 0.06, spec.cx - 13.57, fyS + 0.52, swBridgeZ, cargoSteelGlass, false, false);
+          }
+        }
+      }
     } else if (spec.id === 'realestate') {
-      // TerraCraft Estates, Build & Interiors:
-      // 1. North Cantilevered Architectural Portico & Cedar Soffit Canopy
+      // TerraCraft Estates, Build & Interiors: Signature Curved-Glass Entrance Hall & Showroom
+      // 1. North Cantilevered White Architectural Entrance Blade Canopy with Cedar Soffit
       const reCanopy = new THREE.Mesh(
-        getRoundedSlabGeo(12.8, 3.3, 0.7, 0.32, 0.05),
+        getRoundedSlabGeo(13.4, 2.9, 0.75, 0.28, 0.05),
         archMats.stuccoWhite
       );
-      reCanopy.position.set(spec.doorX, spec.groundY + spec.floorH - 0.15, spec.doorZ - 1.6);
+      reCanopy.position.set(spec.doorX, spec.groundY + spec.floorH - 0.12, spec.doorZ - 1.42);
       reCanopy.castShadow = true;
       g0.add(reCanopy);
       const reSoffit = new THREE.Mesh(
-        getRoundedSlabGeo(12.2, 2.8, 0.55, 0.07, 0.015),
+        getRoundedSlabGeo(12.8, 2.5, 0.6, 0.06, 0.015),
         archMats.timberSoffit
       );
-      reSoffit.position.set(spec.doorX, spec.groundY + spec.floorH - 0.31, spec.doorZ - 1.6);
+      reSoffit.position.set(spec.doorX, spec.groundY + spec.floorH - 0.27, spec.doorZ - 1.42);
       g0.add(reSoffit);
-      [-5.1, 5.1].forEach((px) => {
-        cylAt(g0, 0.16, 0.18, spec.floorH - 0.3, spec.doorX + px, spec.groundY + (spec.floorH - 0.3) * 0.5, spec.doorZ - 2.7, archMats.ashlarStone, true, true, 14);
+      [-5.6, 5.6].forEach((px) => {
+        cylAt(
+          g0,
+          0.18,
+          0.18,
+          spec.floorH - 0.25,
+          spec.doorX + px,
+          spec.groundY + (spec.floorH - 0.25) * 0.5,
+          spec.doorZ - 2.45,
+          archMats.stuccoWhite,
+          true,
+          true,
+          16
+        );
       });
+
+      // Warm entrance gallery fill light
+      const lobbyFill = new THREE.PointLight(0xfff1dc, 1.15, 18);
+      lobbyFill.position.set(spec.cx - 2.5, fy + 3.1, spec.cz - 3.6);
+      g0.add(lobbyFill);
+      warmLights.push(lobbyFill);
 
       // 2. Rooftop Architectural Tower Crane (signals Construction & Development across the skyline)
       const craneYellow = std({ color: 0xf59e0b, roughness: 0.42, metalness: 0.28 });
@@ -1686,17 +5051,15 @@ export function buildDistrictBuildings(
       const craneBaseZ = spec.cz - spec.d * 0.14;
       const roofBaseY = spec.groundY + spec.h + 0.18;
       boxAt(roofShellGroup, 1.9, 0.32, 1.9, craneBaseX, roofBaseY + 0.16, craneBaseZ, craneSteel, true, true, 0.03);
-      // Mast lattice shaft
       boxAt(roofShellGroup, 0.72, 4.8, 0.72, craneBaseX, roofBaseY + 2.55, craneBaseZ, craneYellow, true, false, 0.02);
       const craneTop = new THREE.Group();
       craneTop.position.set(craneBaseX, roofBaseY + 5.05, craneBaseZ);
-      // Operator cab + counter-jib + main slewing jib + trolley hook
       boxAt(craneTop, 0.85, 0.85, 0.95, 0.48, 0.25, 0.3, frameDarkMat, true, false, 0.03);
       boxAt(craneTop, 9.2, 0.36, 0.44, 2.2, 0.75, 0, craneYellow, true, false, 0.02);
-      boxAt(craneTop, 1.25, 0.72, 0.82, -2.0, 0.75, 0, craneSteel, true, false, 0.03); // counterweight
-      cylAt(craneTop, 0.04, 0.24, 1.05, 0, 1.38, 0, craneYellow, true, false, 4); // A-frame apex
-      cylAt(craneTop, 0.025, 0.025, 1.4, 5.8, 0.0, 0, craneSteel, false, false, 8); // hoist cable
-      boxAt(craneTop, 0.36, 0.22, 0.36, 5.8, -0.75, 0, accentMat, true, false, 0.02); // hook block
+      boxAt(craneTop, 1.25, 0.72, 0.82, -2.0, 0.75, 0, craneSteel, true, false, 0.03);
+      cylAt(craneTop, 0.04, 0.24, 1.05, 0, 1.38, 0, craneYellow, true, false, 4);
+      cylAt(craneTop, 0.025, 0.025, 1.4, 5.8, 0.0, 0, craneSteel, false, false, 8);
+      boxAt(craneTop, 0.36, 0.22, 0.36, 5.8, -0.75, 0, accentMat, true, false, 0.02);
       roofShellGroup.add(craneTop);
       rotatingProps.push({ obj: craneTop, speed: 0.18, axis: 'y' });
 
@@ -1706,133 +5069,2059 @@ export function buildDistrictBuildings(
       const timberYardMat = std({ color: 0xb67b44, roughness: 0.72 });
       const coneMat = std({ color: 0xf97316, roughness: 0.45 });
       boxAt(g0, 3.4, 0.08, 7.2, yardX, spec.groundY + 0.04, spec.cz, yardMat, false, true, 0.02);
-      // Timber beams stack
       for (let ti = 0; ti < 3; ti++) {
         boxAt(g0, 1.8, 0.18, 2.6, yardX - 0.3, spec.groundY + 0.17 + ti * 0.2, spec.cz - 1.8, timberYardMat, true, true, 0.015);
       }
-      // Dressed stone block pallet + steel beams
       boxAt(g0, 1.6, 0.12, 1.8, yardX + 0.2, spec.groundY + 0.14, spec.cz + 1.4, woodCedarMat, true, true, 0.01);
       boxAt(g0, 1.25, 0.62, 1.35, yardX + 0.2, spec.groundY + 0.51, spec.cz + 1.4, bankStoneMat, true, true, 0.02);
       boxAt(g0, 0.45, 0.18, 3.2, yardX - 0.85, spec.groundY + 0.18, spec.cz + 1.5, craneSteel, true, true, 0.01);
-      // Safety cones framing yard
       [spec.cz - 3.3, spec.cz + 3.3].forEach((czCone) => {
         cylAt(g0, 0.05, 0.22, 0.56, yardX + 1.4, spec.groundY + 0.28, czCone, coneMat, true, true, 12);
       });
 
-      // 4. INTERIOR WEST WING: Real Estate 3D Masterplan Scale-Model Table & Broker Desk
-      const modX = spec.cx - 6.8;
-      const modZ = spec.cz - 0.8;
-      boxAt(g0, 4.3, 0.78, 2.7, modX, fy + 0.39, modZ, M.walnut, true, true, 0.04);
-      boxAt(g0, 4.0, 0.06, 2.4, modX, fy + 0.81, modZ, std({ color: 0x4b7447, roughness: 0.85 }), false, true);
-      // Miniature architectural towers, pitched villas & turquoise pool on scale-model table
-      boxAt(g0, 0.75, 1.15, 0.65, modX - 1.1, fy + 1.41, modZ - 0.35, M.white, true, false, 0.02);
-      boxAt(g0, 0.62, 0.82, 0.62, modX - 0.15, fy + 1.25, modZ - 0.45, accentMat, true, false, 0.02);
-      boxAt(g0, 0.85, 0.48, 0.7, modX + 0.95, fy + 1.08, modZ + 0.25, M.white, true, false, 0.02);
-      boxAt(g0, 0.78, 0.04, 0.55, modX - 0.2, fy + 0.86, modZ + 0.55, std({ color: 0x38bdf8, roughness: 0.2, emissive: 0x0284c7, emissiveIntensity: 0.3 }), false, false);
+      // 4. INTERIOR ZONING: Slate-Grey Woven Carpet Tiles under Workstation Wing & Coffee Bar
+      const reCarpetTex = makeCanvasTex('realestate_carpet_slate', 256, 256, (g, W, H) => {
+        g.fillStyle = '#5c6672';
+        g.fillRect(0, 0, W, H);
+        const tile = 64;
+        for (let ty = 0; ty < H; ty += tile) {
+          for (let tx = 0; tx < W; tx += tile) {
+            const alt = ((tx / tile + ty / tile) % 2) === 0;
+            g.fillStyle = alt ? '#646e7b' : '#58626e';
+            g.fillRect(tx + 1, ty + 1, tile - 2, tile - 2);
+            g.fillStyle = 'rgba(255,255,255,0.035)';
+            for (let s = 4; s < tile - 2; s += 6) {
+              if (alt) g.fillRect(tx + s, ty + 2, 2, tile - 4);
+              else g.fillRect(tx + 2, ty + s, tile - 4, 2);
+            }
+          }
+        }
+      });
+      reCarpetTex.wrapS = reCarpetTex.wrapT = THREE.RepeatWrapping;
+      reCarpetTex.repeat.set(4, 6);
+      const reCarpetMat = std({ map: reCarpetTex, roughness: 0.92, metalness: 0.0, envMapIntensity: 0.15 });
 
-      // Real Estate Broker Desk
-      makeDeskAt(g0, spec.cx - 6.8, fy, spec.cz + 5.2, 2.5, 1.05, M);
-      registerChair(0, spec.cx - 6.8, fy, spec.cz + 6.08, Math.PI, 1);
-      registerMonitor(
-        0,
-        0,
-        [spec.cx - 6.8, fy + 0.77, spec.cz + 5.05],
-        0,
-        spec.cx - 6.8,
-        spec.cz + 6.08,
-        'Senior Property Broker',
-        'Real Estate Masterplan Gallery'
-      );
+      // East Workstation Wing carpet zone (dx: +5.2 .. +12.6, dz: -8.4 .. +8.4)
+      boxAt(g0, 7.4, 0.02, 16.8, spec.cx + 8.9, fy + 0.014, spec.cz, reCarpetMat, false, true);
+      // South-West Coffee Bar carpet/tile zone (dx: -12.5 .. -4.4, dz: +3.6 .. +8.6)
+      boxAt(g0, 8.1, 0.02, 5.0, spec.cx - 8.45, fy + 0.014, spec.cz + 6.1, reCarpetMat, false, true);
 
-      // 5. INTERIOR CENTER: Bi-Level Reception Desk & Client Lounge
-      boxAt(g0, 4.8, 1.04, 0.52, spec.cx + 0.2, fy + 0.52, spec.cz + 2.86, bankStoneMat, true, true, 0.04);
-      boxAt(g0, 4.95, 0.07, 0.6, spec.cx + 0.2, fy + 1.06, spec.cz + 2.86, accentMat, false, false);
-      boxAt(g0, 4.8, 0.06, 0.88, spec.cx + 0.2, fy + 0.75, spec.cz + 3.55, M.walnut, true, true, 0.02);
-      [-1.4, 1.8].forEach((ox) => {
-        armchair(g0, spec.cx + ox, fy, spec.cz - 2.6, 0, M.fabricCognac, M);
+      // Shared bespoke architectural materials for Real Estate showroom
+      const sagePartitionMat = std({ color: 0x3b634b, roughness: 0.68, metalness: 0.02 });
+      const marbleCreamMat = std({
+        map: mkTileTex(M.textures.marbleTex, 2, 2),
+        normalMap: mkTileTex(M.textures.marbleNormal, 2, 2),
+        normalScale: new THREE.Vector2(0.3, 0.3),
+        color: 0xf4efe6,
+        roughness: 0.28,
+        metalness: 0.04,
+      });
+      const mustardUpholstery = std({ color: 0xd9a74a, roughness: 0.78 });
+      const tealUpholstery = std({ color: 0x3f888f, roughness: 0.76 });
+      const coralUpholstery = std({ color: 0xcf5d52, roughness: 0.78 });
+      const kitchenCabMat = std({ color: 0x37433c, roughness: 0.56, metalness: 0.08 });
+      const vitrineGlass = new THREE.MeshPhysicalMaterial({
+        color: 0xe6f4fa,
+        roughness: 0.06,
+        metalness: 0.04,
+        transparent: true,
+        opacity: 0.24,
+        depthWrite: false,
+        side: THREE.DoubleSide,
       });
 
-      // 6. INTERIOR EAST WING: Construction Engineering Desk + Interior Design Material Library
-      makeDeskAt(g0, spec.cx + 7.4, fy, spec.cz + 5.2, 2.5, 1.05, M);
-      registerChair(0, spec.cx + 7.4, fy, spec.cz + 6.08, Math.PI, -1);
-      registerMonitor(
-        0,
-        1,
-        [spec.cx + 7.4, fy + 0.77, spec.cz + 5.05],
-        0,
-        spec.cx + 7.4,
-        spec.cz + 6.08,
-        'Lead Structural Engineer',
-        'Construction CAD & Interior Atelier'
-      );
-      // Yellow hard-hat & rolled blueprint tubes on Construction Desk
-      cylAt(g0, 0.12, 0.18, 0.14, spec.cx + 8.15, fy + 0.84, spec.cz + 5.2, craneYellow, true, false, 12);
-      boxAt(g0, 0.62, 0.07, 0.07, spec.cx + 6.5, fy + 0.8, spec.cz + 5.3, M.white, false, false);
-
-      // Interior Design Material Library Rack & Designer Showcase Vignette
-      shelfUnit(g0, spec.cx + 7.4, fy, spec.cz - 5.2, 3.6, M);
-      const swatchCols = [0xe07a5f, 0xd4a373, 0x3d5a80, 0x81b29a, 0xf2cc8f, 0x6b7280];
-      swatchCols.forEach((sc, si) => {
-        boxAt(
-          g0,
-          0.42,
-          0.46,
-          0.12,
-          spec.cx + 6.1 + si * 0.52,
-          fy + 1.48,
-          spec.cz - 5.08,
-          std({ color: sc, roughness: 0.55 }),
-          false,
-          false
-        );
+      // 5. RIGHT FRONT CORNER (NW): 4 Cognac Leather Lounge Armchairs + Marble Coffee Table + Corner Plants
+      const cornerCx = spec.cx - 9.8;
+      const cornerCz = spec.cz - 6.7;
+      cylAt(g0, 0.52, 0.52, 0.04, cornerCx, fy + 0.42, cornerCz, marbleCreamMat, true, true, 24);
+      cylAt(g0, 0.08, 0.14, 0.4, cornerCx, fy + 0.2, cornerCz, M.brass, false, true, 16);
+      const clubOffsets: Array<[number, number, number]> = [
+        [-0.95, -0.82, Math.PI * 0.22],
+        [0.95, -0.82, -Math.PI * 0.22],
+        [-0.95, 0.82, Math.PI * 0.78],
+        [0.95, 0.82, -Math.PI * 0.78],
+      ];
+      clubOffsets.forEach(([ox, oz, rot]) => {
+        const ch = armchair(g0, cornerCx + ox, fy, cornerCz + oz, rot, M.fabricCognac, M);
+        ch.scale.set(0.74, 0.88, 0.74);
       });
-      sofaWide(g0, spec.cx + 7.4, fy, spec.cz - 1.6, Math.PI, M.fabricCognac, M);
-      boxAt(g0, 1.6, 0.38, 0.85, spec.cx + 7.4, fy + 0.19, spec.cz - 0.3, M.walnut, true, true, 0.03);
+      plant(g0, spec.cx - 11.8, fy, spec.cz - 7.8, 1.15, 901, M, 'monst');
+      plant(g0, spec.cx - 8.65, fy, spec.cz - 2.15, 1.05, 902, M, 'ficus');
 
-      // 7. Live 3-in-1 Real Estate, Construction & Interiors Telemetry Wall Board
-      const reBoard = createCustomBoardScreen(screenReg, 720, 230, (g, w, h, t) => {
-        g.fillStyle = '#12100e';
+      // 6. RIGHT ENTRANCE WALL: Giant Vertical Architectural LED Property Showcase Screen
+      const showcaseBoard = createCustomBoardScreen(screenReg, 520, 360, (g, w, h, t) => {
+        const slide = Math.floor(t / 4.5) % 2;
+        const sky = g.createLinearGradient(0, 0, 0, h * 0.62);
+        sky.addColorStop(0, slide === 0 ? '#1e3a5f' : '#2b3d54');
+        sky.addColorStop(1, '#8fb8d8');
+        g.fillStyle = sky;
         g.fillRect(0, 0, w, h);
+        // Architectural ground & lawn
+        g.fillStyle = '#3d5e3a';
+        g.fillRect(0, h * 0.62, w, h * 0.38);
+        g.fillStyle = '#d6cfc2';
+        g.fillRect(0, h * 0.74, w, h * 0.14);
+        // Luxury modern villa / glass apartment rendering
+        g.fillStyle = '#f5f1e8';
+        g.fillRect(54, 98, 260, 130);
+        g.fillStyle = '#3b2b20';
+        g.fillRect(42, 90, 290, 14);
+        g.fillRect(150, 148, 220, 12);
+        g.fillStyle = '#7dd3fc';
+        g.fillRect(74, 118, 92, 98);
+        g.fillRect(184, 168, 118, 62);
+        g.fillStyle = '#fbbf24';
+        g.fillRect(78, 124, 84, 86);
+        g.fillStyle = 'rgba(14,23,38,0.65)';
+        g.fillRect(280, 110, 180, 118);
+        g.fillStyle = '#e0f2fe';
+        for (let r = 0; r < 4; r++) {
+          g.fillRect(292, 122 + r * 26, 156, 16);
+        }
+        // Infinity pool foreground
+        g.fillStyle = '#0ea5e9';
+        g.fillRect(80, h * 0.76, 220, 24);
+        // Caption banner
+        g.fillStyle = 'rgba(11,17,28,0.88)';
+        g.fillRect(0, h - 58, w, 58);
         g.fillStyle = '#e07a5f';
-        g.fillRect(0, 0, w, 34);
-        g.fillStyle = '#12100e';
-        g.font = '800 17px "Plus Jakarta Sans", sans-serif';
+        g.fillRect(0, h - 58, 8, 58);
+        g.fillStyle = '#ffffff';
+        g.font = '800 20px "Plus Jakarta Sans", sans-serif';
         g.textAlign = 'left';
         g.textBaseline = 'middle';
-        g.fillText('TERRACRAFT · REAL ESTATE, CONSTRUCTION & INTERIOR DESIGN', 16, 17);
-        const rows = [
-          ['ESTATES', 'Karen Ridge Villa 04', 'KES 82.0M · Title Ready', 'UNDER OFFER'],
-          ['CONSTRUCTION', 'Upper Hill Lofts B2', 'Slab & MEP Rough-In', '84% ON SPEC'],
-          ['INTERIORS', 'Hub Exec Suite Refit', 'Travertine & Smoked Oak', 'INSTALLING'],
-          ['TURNKEY 3-IN-1', 'Kilimani Sky Duplex', 'Full Build + Styling', 'HANDOVER'],
-        ];
-        rows.forEach((r, i) => {
-          const y = 52 + i * 42;
-          g.fillStyle = i === Math.floor(t / 2.8) % 4 ? 'rgba(224,122,95,0.22)' : 'rgba(255,255,255,0.05)';
-          rr(g, 14, y, w - 28, 36, 5);
+        g.fillText(slide === 0 ? 'KAREN RIDGE SIGNATURE VILLAS' : 'UPPER HILL SKYLINE RESIDENCES', 22, h - 37);
+        g.fillStyle = '#cbd5e1';
+        g.font = '600 13px sans-serif';
+        g.fillText('TERRACRAFT ESTATES · ARCHITECTURE & TURNKEY INTERIORS', 22, h - 16);
+      });
+      boxAt(g0, 0.16, 2.75, 4.1, spec.cx - 12.25, fy + 1.42, spec.cz - 3.6, frameDarkMat, true, false, 0.03);
+      const showMesh = new THREE.Mesh(new THREE.PlaneGeometry(3.88, 2.52), showcaseBoard.mat);
+      showMesh.position.set(spec.cx - 12.16, fy + 1.42, spec.cz - 3.6);
+      showMesh.rotation.y = Math.PI / 2;
+      g0.add(showMesh);
+      showcaseBoard.setMesh(showMesh);
+
+      // 7. RIGHT ENTRANCE HERO: Curved Crescent Marble Reception Counter + Gold Emblem + Receptionist Station
+      const recCx = spec.cx - 5.1;
+      const recCz = spec.cz - 4.8;
+      const recShape = new THREE.Shape();
+      const recROut = 2.02;
+      const recRIn = 1.32;
+      const a0 = -Math.PI * 0.28;
+      const a1 = Math.PI * 0.72;
+      recShape.absarc(0, 0, recROut, a0, a1, false);
+      recShape.absarc(0, 0, recRIn, a1, a0, true);
+      recShape.closePath();
+      const recCounterGeo = new THREE.ExtrudeGeometry(recShape, {
+        depth: 1.0,
+        bevelEnabled: true,
+        bevelThickness: 0.02,
+        bevelSize: 0.02,
+        bevelSegments: 2,
+        curveSegments: 24,
+      });
+      recCounterGeo.rotateX(-Math.PI / 2);
+      const recCounter = new THREE.Mesh(recCounterGeo, marbleCreamMat);
+      recCounter.position.set(recCx, fy + 0.06, recCz);
+      recCounter.castShadow = true;
+      recCounter.receiveShadow = true;
+      g0.add(recCounter);
+      // Recessed warm bronze plinth & gold emblem on curved reception front
+      const recPlinthGeo = new THREE.ExtrudeGeometry(recShape, { depth: 0.06, bevelEnabled: false, curveSegments: 20 });
+      recPlinthGeo.rotateX(-Math.PI / 2);
+      const recPlinth = new THREE.Mesh(recPlinthGeo, archMats.bronzeMullion);
+      recPlinth.position.set(recCx, fy, recCz);
+      g0.add(recPlinth);
+      const recEmblemTex = makeCanvasTex('terracraft_rec_emblem', 256, 96, (g, w, h) => {
+        g.clearRect(0, 0, w, h);
+        g.strokeStyle = '#c59b52';
+        g.lineWidth = 4;
+        g.beginPath();
+        g.moveTo(96, 36);
+        g.lineTo(128, 12);
+        g.lineTo(160, 36);
+        g.stroke();
+        g.fillStyle = '#b4873e';
+        g.font = '800 26px "Plus Jakarta Sans", sans-serif';
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.fillText('TERRACRAFT', w / 2, 60);
+        g.font = '600 12px sans-serif';
+        g.fillText('REAL ESTATE & DESIGN', w / 2, 82);
+      });
+      const recEmblem = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.1, 0.42),
+        new THREE.MeshStandardMaterial({ map: recEmblemTex, transparent: true, roughness: 0.35, metalness: 0.55 })
+      );
+      recEmblem.position.set(recCx + 1.56, fy + 0.56, recCz - 1.32);
+      recEmblem.rotation.y = Math.PI * 0.72;
+      g0.add(recEmblem);
+      // Inner curved receptionist desk & monitor/chair
+      boxAt(g0, 1.55, 0.06, 0.72, recCx + 0.15, fy + 0.74, recCz - 0.15, M.walnut, true, true, 0.015);
+      registerChair(0, recCx - 0.45, fy, recCz + 0.55, Math.PI * 0.75, 1);
+      registerMonitor(
+        0,
+        0,
+        [recCx + 0.35, fy + 0.77, recCz - 0.25],
+        -Math.PI * 0.25,
+        recCx - 0.45,
+        recCz + 0.55,
+        'Front Desk Concierge',
+        'Curved Marble Reception'
+      );
+
+      // 8. CENTER ENTRANCE PROMENADE: Illuminated Glass-Encased 3D Masterplan Scale-Model Vitrine
+      const modX = spec.cx - 0.25;
+      const modZ = spec.cz - 1.45;
+      // Walnut plinth + dark reveal
+      boxAt(g0, 3.35, 0.74, 2.05, modX, fy + 0.37, modZ, M.walnut, true, true, 0.04);
+      boxAt(g0, 3.45, 0.05, 2.15, modX, fy + 0.76, modZ, archMats.bronzeMullion, false, true, 0.015);
+      // Illuminated landscape base
+      boxAt(g0, 3.15, 0.05, 1.85, modX, fy + 0.8, modZ, std({ color: 0x5c7f4d, roughness: 0.85 }), false, true);
+      // Estate boulevard strip & courtyard plaza on scale model
+      boxAt(g0, 3.05, 0.02, 0.28, modX, fy + 0.83, modZ + 0.12, std({ color: 0x64748b, roughness: 0.7 }), false, false);
+      boxAt(g0, 0.26, 0.02, 1.68, modX - 0.35, fy + 0.83, modZ, std({ color: 0x64748b, roughness: 0.7 }), false, false);
+      // Miniature residential towers, pitched villas & turquoise pool
+      const miniWhite = std({ color: 0xf8fafc, roughness: 0.4 });
+      const miniRoof = std({ color: 0xc97352, roughness: 0.55 });
+      [
+        [-1.05, -0.45, 0.58, 0.72, 0.46],
+        [-0.95, 0.52, 0.54, 0.56, 0.42],
+        [0.18, -0.48, 0.65, 0.88, 0.48],
+        [0.88, -0.42, 0.52, 0.44, 0.44],
+        [0.92, 0.48, 0.62, 0.4, 0.46],
+      ].forEach(([bx, bz, bw, bh, bd], bi) => {
+        boxAt(g0, bw, bh, bd, modX + bx, fy + 0.83 + bh * 0.5, modZ + bz, bi === 2 ? accentMat : miniWhite, true, false, 0.015);
+        boxAt(g0, bw + 0.04, 0.05, bd + 0.04, modX + bx, fy + 0.83 + bh + 0.025, modZ + bz, miniRoof, false, false);
+      });
+      boxAt(g0, 0.68, 0.03, 0.42, modX + 0.2, fy + 0.84, modZ + 0.54, std({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.35 }), false, false);
+      // Crystal-clear glass vitrine hood + warm gallery light rim
+      boxAt(g0, 3.22, 0.54, 1.92, modX, fy + 1.09, modZ, vitrineGlass, false, false);
+      boxAt(g0, 3.24, 0.03, 1.94, modX, fy + 1.36, modZ, new THREE.MeshBasicMaterial({ color: 0xffe4bc }), false, false);
+
+      // 9. RIGHT MID: Sage-Green Partitioned Client Consultation Booth (Mustard & Teal Sofas + Digital Kiosk)
+      const boothX = spec.cx - 5.95;
+      const boothZ = spec.cz + 0.55;
+      // Sage-green partition backing wall + mounted property screen (leaves clear 1.05m+ stairwell aisle along dx = -9.18)
+      boxAt(g0, 4.3, 2.05, 0.18, boothX, fy + 1.025, boothZ + 1.65, sagePartitionMat, true, true, 0.02);
+      const boothScreen = createCustomBoardScreen(screenReg, 480, 240, (g, w, h) => {
+        g.fillStyle = '#0f172a';
+        g.fillRect(0, 0, w, h);
+        g.fillStyle = '#3b634b';
+        g.fillRect(0, 0, w, 34);
+        g.fillStyle = '#ffffff';
+        g.font = '800 16px sans-serif';
+        g.textAlign = 'left';
+        g.textBaseline = 'middle';
+        g.fillText('ESTATE MASTERPLAN · PHASE II AVAILABILITY', 14, 17);
+        g.fillStyle = '#6ba368';
+        rr(g, 24, 52, 230, 164, 8);
+        g.fill();
+        g.fillStyle = '#e2e8f0';
+        g.fillRect(54, 78, 70, 52);
+        g.fillRect(148, 92, 82, 48);
+        g.fillStyle = '#38bdf8';
+        g.fillRect(72, 152, 110, 34);
+        g.fillStyle = '#e07a5f';
+        g.font = '700 15px monospace';
+        g.fillText('VILLA 04 · KES 82M', 274, 84);
+        g.fillStyle = '#cbd5e1';
+        g.font = '600 13px sans-serif';
+        g.fillText('4 Bed + Pool · Ready Title', 274, 112);
+        g.fillStyle = '#4ade80';
+        g.fillText('LOFT B2 · AVAILABLE', 274, 154);
+      });
+      boxAt(g0, 2.1, 1.15, 0.08, boothX, fy + 1.4, boothZ + 1.54, frameDarkMat, false, false);
+      const boothTvMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.96, 1.02), boothScreen.mat);
+      boothTvMesh.position.set(boothX, fy + 1.4, boothZ + 1.49);
+      boothTvMesh.rotation.y = Math.PI;
+      g0.add(boothTvMesh);
+      boothScreen.setMesh(boothTvMesh);
+
+      const mustardSofa = sofaWide(g0, boothX - 1.45, fy, boothZ, Math.PI / 2, mustardUpholstery, M);
+      mustardSofa.scale.set(0.72, 0.94, 0.85);
+      const tealSofa = sofaWide(g0, boothX + 1.45, fy, boothZ, -Math.PI / 2, tealUpholstery, M);
+      tealSofa.scale.set(0.72, 0.94, 0.85);
+      // Round walnut coffee table with brochures
+      cylAt(g0, 0.54, 0.54, 0.05, boothX, fy + 0.42, boothZ, M.walnut, true, true, 22);
+      cylAt(g0, 0.08, 0.14, 0.4, boothX, fy + 0.2, boothZ, M.dark, false, true, 14);
+      boxAt(g0, 0.26, 0.02, 0.34, boothX - 0.14, fy + 0.455, boothZ + 0.06, M.white, false, false);
+      boxAt(g0, 0.24, 0.02, 0.3, boothX + 0.16, fy + 0.455, boothZ - 0.08, accentMat, false, false);
+
+      // End credenza + Interactive Digital Property Kiosk facing the main center walkway
+      boxAt(g0, 0.62, 0.92, 1.45, spec.cx - 3.9, fy + 0.46, boothZ, M.walnut, true, true, 0.02);
+      const kioskBoard = createCustomBoardScreen(screenReg, 360, 260, (g, w, h, t) => {
+        g.fillStyle = '#0c1522';
+        g.fillRect(0, 0, w, h);
+        g.fillStyle = '#e07a5f';
+        g.fillRect(0, 0, w, 30);
+        g.fillStyle = '#ffffff';
+        g.font = '800 14px sans-serif';
+        g.textAlign = 'left';
+        g.textBaseline = 'middle';
+        g.fillText('TOUCHSCREEN PROPERTY EXPLORER', 12, 15);
+        g.fillStyle = '#334e3a';
+        rr(g, 14, 42, w - 28, h - 56, 8);
+        g.fill();
+        g.strokeStyle = '#94a3b8';
+        g.lineWidth = 3;
+        g.strokeRect(30, 62, w - 60, h - 96);
+        const pulse = 0.5 + 0.5 * Math.sin(t * 2.5);
+        [
+          [95, 110],
+          [185, 145],
+          [265, 102],
+        ].forEach(([px, py]) => {
+          g.fillStyle = `rgba(224,122,95,${0.55 + pulse * 0.4})`;
+          g.beginPath();
+          g.arc(px, py, 9, 0, Math.PI * 2);
           g.fill();
-          g.fillStyle = '#f4a261';
-          g.font = '700 14px monospace';
-          g.fillText(r[0], 24, y + 18);
-          g.fillStyle = '#f8fafc';
-          g.font = '700 15px sans-serif';
-          g.fillText(r[1], 165, y + 18);
-          g.fillStyle = '#cbd5e1';
-          g.font = '600 14px sans-serif';
-          g.fillText(r[2], 370, y + 18);
-          g.fillStyle = i === 3 ? '#4ade80' : '#facc15';
-          g.textAlign = 'right';
-          g.font = '700 14px monospace';
-          g.fillText(r[3], w - 24, y + 18);
-          g.textAlign = 'left';
         });
       });
-      boxAt(g0, 7.6, 2.35, 0.14, spec.cx, fy + 2.35, spec.cz + 8.7, frameDarkMat, false, false);
-      const reMesh = new THREE.Mesh(new THREE.PlaneGeometry(7.3, 2.1), reBoard.mat);
-      reMesh.position.set(spec.cx, fy + 2.35, spec.cz + 8.62);
-      reMesh.rotation.y = Math.PI;
-      g0.add(reMesh);
-      reBoard.setMesh(reMesh);
+      boxAt(g0, 0.1, 0.88, 1.18, spec.cx - 3.58, fy + 1.32, boothZ, frameDarkMat, true, false, 0.02);
+      const kioskMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.08, 0.78), kioskBoard.mat);
+      kioskMesh.position.set(spec.cx - 3.52, fy + 1.32, boothZ);
+      kioskMesh.rotation.y = Math.PI / 2;
+      g0.add(kioskMesh);
+      kioskBoard.setMesh(kioskMesh);
+      plant(g0, spec.cx - 3.7, fy, spec.cz + 2.25, 0.95, 903, M, 'olive');
+
+      // 10. CENTER-LEFT: Sage-Green Partitioned Central Lounge (Coral Sofa + Accent Chairs + Rug + TV)
+      const loungeX = spec.cx + 3.2;
+      const loungeZ = spec.cz - 0.1;
+      // Woven area rug
+      boxAt(g0, 2.75, 0.02, 3.6, loungeX, fy + 0.02, loungeZ, std({ color: 0xb9b4aa, roughness: 0.96 }), false, true);
+      // North & South sage-green partition walls framing lounge
+      boxAt(g0, 3.0, 2.0, 0.18, loungeX, fy + 1.0, loungeZ - 2.35, sagePartitionMat, true, true, 0.02);
+      boxAt(g0, 3.0, 1.4, 0.18, loungeX, fy + 0.7, loungeZ + 2.25, sagePartitionMat, true, true, 0.02);
+      // Wall TV mounted on north sage-green divider facing into the lounge
+      const loungeTv = new THREE.Mesh(new THREE.PlaneGeometry(1.75, 0.94), boothScreen.mat);
+      loungeTv.position.set(loungeX, fy + 1.38, loungeZ - 2.24);
+      g0.add(loungeTv);
+      boxAt(g0, 1.88, 1.04, 0.06, loungeX, fy + 1.38, loungeZ - 2.26, frameDarkMat, false, false);
+
+      const coralSofa = sofaWide(g0, loungeX + 0.95, fy, loungeZ, -Math.PI / 2, coralUpholstery, M);
+      coralSofa.scale.set(0.76, 0.94, 0.85);
+      const tealClub = armchair(g0, loungeX - 0.45, fy, loungeZ - 1.25, 0, tealUpholstery, M);
+      tealClub.scale.set(0.78, 0.9, 0.78);
+      const mustardClub = armchair(g0, loungeX - 0.45, fy, loungeZ + 1.25, Math.PI, mustardUpholstery, M);
+      mustardClub.scale.set(0.78, 0.9, 0.78);
+      boxAt(g0, 0.78, 0.38, 1.12, loungeX - 0.35, fy + 0.19, loungeZ, M.oakDesk, true, true, 0.03);
+
+      // 11. LEFT (EAST) WING: "FEATURED PROPERTIES" Illuminated Gallery Wall + Regional Map + Living Green Strip
+      const galX = spec.cx + 12.56;
+      // Lush vertical living planter strip along top of gallery wall
+      boxAt(g0, 0.24, 0.48, 15.2, galX - 0.12, fy + 2.95, spec.cz, std({ color: 0x3f7a38, roughness: 0.88 }), false, false);
+      // "FEATURED PROPERTIES" header strip
+      const galHeaderTex = makeCanvasTex('terracraft_featured_hdr', 1024, 96, (g, w, h) => {
+        g.fillStyle = '#2d333b';
+        g.fillRect(0, 0, w, h);
+        g.fillStyle = '#ffffff';
+        g.font = '800 38px "Plus Jakarta Sans", sans-serif';
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.fillText('FEATURED PROPERTIES   ·   TERRACRAFT PORTFOLIO   ·   FEATURED PROPERTIES', w / 2, h / 2);
+      });
+      const galHdr = new THREE.Mesh(
+        new THREE.PlaneGeometry(14.8, 0.56),
+        new THREE.MeshBasicMaterial({ map: galHeaderTex })
+      );
+      galHdr.position.set(galX - 0.04, fy + 2.52, spec.cz);
+      galHdr.rotation.y = -Math.PI / 2;
+      g0.add(galHdr);
+
+      // Two 3x4 Backlit Property Photo Grid Panels flanking the Regional Map
+      const propGridTex = makeCanvasTex('terracraft_prop_grid', 512, 320, (g, w, h) => {
+        g.fillStyle = '#e8e4dc';
+        g.fillRect(0, 0, w, h);
+        const cols = 4;
+        const rows = 3;
+        const cw = (w - 30) / cols;
+        const ch = (h - 28) / rows;
+        const skyCols = ['#3b82f6', '#0ea5e9', '#6366f1', '#14b8a6', '#f59e0b', '#e07a5f'];
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const x = 12 + c * (cw + 2);
+            const y = 10 + r * (ch + 2);
+            g.fillStyle = '#ffffff';
+            g.fillRect(x, y, cw - 6, ch - 6);
+            g.fillStyle = skyCols[(r * cols + c) % skyCols.length];
+            g.fillRect(x + 4, y + 4, cw - 14, ch * 0.56);
+            g.fillStyle = '#334155';
+            g.fillRect(x + 12, y + ch * 0.28, cw - 30, ch * 0.34);
+            g.fillStyle = '#7ea16b';
+            g.fillRect(x + 4, y + ch * 0.58, cw - 14, ch * 0.22);
+            g.fillStyle = '#1e293b';
+            g.fillRect(x + 6, y + ch * 0.84, cw * 0.62, 5);
+          }
+        }
+      });
+      const propMapTex = makeCanvasTex('terracraft_region_map', 512, 320, (g, w, h) => {
+        g.fillStyle = '#f3efe6';
+        g.fillRect(0, 0, w, h);
+        g.fillStyle = '#d7e6c9';
+        g.beginPath();
+        g.ellipse(120, 120, 85, 55, 0.3, 0, Math.PI * 2);
+        g.ellipse(390, 210, 95, 65, -0.2, 0, Math.PI * 2);
+        g.fill();
+        g.strokeStyle = '#93c5fd';
+        g.lineWidth = 6;
+        g.beginPath();
+        g.moveTo(0, 210);
+        g.quadraticCurveTo(220, 150, 512, 95);
+        g.stroke();
+        g.strokeStyle = '#cbd5e1';
+        g.lineWidth = 3;
+        for (let i = 0; i < 6; i++) {
+          g.beginPath();
+          g.moveTo(40 + i * 85, 0);
+          g.lineTo(90 + i * 70, h);
+          g.stroke();
+        }
+        // Red property pins across Nairobi districts
+        [
+          [110, 95],
+          [165, 160],
+          [245, 130],
+          [290, 200],
+          [365, 115],
+          [420, 185],
+          [210, 240],
+        ].forEach(([px, py]) => {
+          g.fillStyle = '#dc2626';
+          g.beginPath();
+          g.arc(px, py, 8, 0, Math.PI * 2);
+          g.fill();
+          g.fillStyle = '#ffffff';
+          g.beginPath();
+          g.arc(px, py, 3, 0, Math.PI * 2);
+          g.fill();
+        });
+      });
+
+      [-4.9, 4.9].forEach((dz) => {
+        boxAt(g0, 0.08, 1.85, 4.4, galX - 0.05, fy + 1.32, spec.cz + dz, frameDarkMat, false, false);
+        const gm = new THREE.Mesh(
+          new THREE.PlaneGeometry(4.25, 1.72),
+          new THREE.MeshStandardMaterial({ map: propGridTex, emissive: 0xffffff, emissiveMap: propGridTex, emissiveIntensity: 0.22, roughness: 0.4 })
+        );
+        gm.position.set(galX - 0.1, fy + 1.32, spec.cz + dz);
+        gm.rotation.y = -Math.PI / 2;
+        g0.add(gm);
+      });
+      boxAt(g0, 0.08, 1.85, 4.2, galX - 0.05, fy + 1.32, spec.cz, frameDarkMat, false, false);
+      const mapMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(4.05, 1.72),
+        new THREE.MeshStandardMaterial({ map: propMapTex, roughness: 0.55 })
+      );
+      mapMesh.position.set(galX - 0.1, fy + 1.32, spec.cz);
+      mapMesh.rotation.y = -Math.PI / 2;
+      g0.add(mapMesh);
+
+      // 12. LEFT (EAST) WING: 3 Open-Plan 4-Seat Workstation Desk Pods + Linear Pendants + Indoor Trees
+      const podZs = [-5.4, -0.4, 5.0];
+      const podMeta: Array<{ role: string; zone: string }> = [
+        { role: 'Senior Property Broker', zone: 'Real Estate Masterplan Gallery' },
+        { role: 'Lead Structural Engineer', zone: 'Construction CAD & Interior Atelier' },
+        { role: 'Interior Design Director', zone: 'Construction CAD & Interior Atelier' },
+      ];
+      podZs.forEach((pdz, pi) => {
+        const px = spec.cx + 8.9;
+        const pz = spec.cz + pdz;
+        // Double-sided oak workstation pod (2.8m wide x 1.36m deep)
+        makeDeskAt(g0, px, fy, pz, 2.8, 1.36, M);
+        // Divider privacy rail & suspended linear pendant lamp above pod
+        boxAt(g0, 2.7, 0.28, 0.05, px, fy + 0.91, pz, M.dark, false, false);
+        boxAt(g0, 2.5, 0.06, 0.12, px, fy + 2.68, pz, M.dark, false, false);
+        boxAt(g0, 2.42, 0.02, 0.08, px, fy + 2.64, pz, new THREE.MeshBasicMaterial({ color: 0xfff3d6 }), false, false);
+        [-1.05, 1.05].forEach((ox) => {
+          cylAt(g0, 0.012, 0.012, 1.15, px + ox, fy + 3.26, pz, M.dark, false, false, 6);
+        });
+
+        // Two registered interactive workstations + two additional team seats per pod
+        const seatZNorth = pz - 1.05;
+        const seatZSouth = pz + 1.05;
+        registerChair(0, px - 0.68, fy, seatZNorth, 0, 1);
+        registerMonitor(
+          0,
+          pi + 1,
+          [px - 0.68, fy + 0.77, pz - 0.25],
+          Math.PI,
+          px - 0.68,
+          seatZNorth,
+          podMeta[pi].role,
+          podMeta[pi].zone
+        );
+        // Secondary monitors & chairs populating the pod realistically
+        officeChair(g0, px + 0.68, fy, seatZNorth, 0, M);
+        monitor(g0, px + 0.68, fy + 0.77, pz - 0.25, true, Math.PI, M);
+        officeChair(g0, px - 0.68, fy, seatZSouth, Math.PI, M);
+        monitor(g0, px - 0.68, fy + 0.77, pz + 0.25, true, 0, M);
+        officeChair(g0, px + 0.68, fy, seatZSouth, Math.PI, M);
+        monitor(g0, px + 0.68, fy + 0.77, pz + 0.25, true, 0, M);
+      });
+      // Lush indoor Ficus trees separating workstation pods from central lounge
+      plant(g0, spec.cx + 5.6, fy, spec.cz - 3.0, 1.45, 910, M, 'ficus');
+      plant(g0, spec.cx + 5.6, fy, spec.cz + 2.4, 1.35, 911, M, 'ficus');
+
+      // Back-Left Timber-Slat Accent Wall & Hanging Ivy Planters
+      for (let sx = spec.cx + 5.6; sx <= spec.cx + 12.2; sx += 0.28) {
+        boxAt(g0, 0.09, 3.0, 0.07, sx, fy + 1.5, spec.cz + 8.68, archMats.timberFin, false, false);
+      }
+      [spec.cx + 7.4, spec.cx + 8.9, spec.cx + 10.4].forEach((hx, hi) => {
+        cylAt(g0, 0.012, 0.012, 0.75, hx, fy + 3.45, spec.cz + 7.9, M.dark, false, false, 6);
+        plant(g0, hx, fy + 2.65, spec.cz + 7.9, 0.48, 920 + hi, M, 'fern');
+      });
+
+      // 13. BACK CENTER: Two Glass-Fronted Executive Meeting Rooms (Timber-Slat Back Walls + Conference Tables + TVs)
+      const meetCenters = [spec.cx - 1.9, spec.cx + 2.7];
+      meetCenters.forEach((mx, mi) => {
+        const mz = spec.cz + 6.4;
+        // Oak perimeter frames & clear glass partitions with open 1.35m doorway at dz = +4.2
+        const frontZRoom = spec.cz + 4.2;
+        boxAt(g0, 1.45, 2.75, 0.06, mx - 1.4, fy + 1.375, frontZRoom, vitrineGlass, false, false);
+        boxAt(g0, 1.45, 2.75, 0.06, mx + 1.4, fy + 1.375, frontZRoom, vitrineGlass, false, false);
+        boxAt(g0, 4.4, 0.14, 0.14, mx, fy + 2.75, frontZRoom, archMats.timberFin, false, false);
+        // Divider glass wall between the two meeting rooms
+        if (mi === 0) {
+          boxAt(g0, 0.08, 2.75, 4.4, spec.cx + 0.4, fy + 1.375, mz, archMats.timberFin, true, false);
+        }
+        // Outer framing walls of meeting room cluster
+        boxAt(g0, 0.12, 2.75, 4.4, mi === 0 ? spec.cx - 4.15 : spec.cx + 4.95, fy + 1.375, mz, archMats.timberFin, true, false);
+        // Acoustic timber-slat rear wall + wall-mounted presentation screen
+        for (let sx = mx - 1.8; sx <= mx + 1.8; sx += 0.24) {
+          boxAt(g0, 0.07, 2.75, 0.06, sx, fy + 1.375, spec.cz + 8.62, archMats.timberFin, false, false);
+        }
+        boxAt(g0, 2.2, 1.25, 0.08, mx, fy + 1.7, spec.cz + 8.54, frameDarkMat, false, false);
+        const mtv = new THREE.Mesh(new THREE.PlaneGeometry(2.05, 1.1), boothScreen.mat);
+        mtv.position.set(mx, fy + 1.7, spec.cz + 8.48);
+        mtv.rotation.y = Math.PI;
+        g0.add(mtv);
+
+        // Round/oval oak conference table + 4 chairs
+        cylAt(g0, 0.92, 0.92, 0.055, mx, fy + 0.74, mz, M.walnut, true, true, 24);
+        cylAt(g0, 0.16, 0.22, 0.72, mx, fy + 0.36, mz, M.dark, true, true, 14);
+        [
+          [-1.12, 0, Math.PI / 2],
+          [1.12, 0, -Math.PI / 2],
+          [0, -1.12, 0],
+          [0, 1.12, Math.PI],
+        ].forEach(([cxo, czo, crot]) => {
+          officeChair(g0, mx + cxo, fy, mz + czo, crot, M);
+        });
+        plant(g0, mx - 1.65, fy, spec.cz + 4.85, 0.72, 930 + mi, M, 'olive');
+      });
+
+      // 14. BACK RIGHT (SW): Hospitality Coffee Bar & Kitchenette + Marble Island with 4 Bar Stools
+      const barCx = spec.cx - 8.5;
+      // Rear kitchenette counters & sage-charcoal cabinetry
+      boxAt(g0, 5.2, 0.92, 0.85, barCx, fy + 0.46, spec.cz + 8.15, kitchenCabMat, true, true, 0.02);
+      boxAt(g0, 5.26, 0.06, 0.9, barCx, fy + 0.94, spec.cz + 8.15, marbleCreamMat, false, true, 0.01);
+      boxAt(g0, 4.8, 0.78, 0.42, barCx, fy + 2.25, spec.cz + 8.36, kitchenCabMat, true, false, 0.02);
+      // Tall brushed stainless refrigerators flanking cabinets
+      [-3.1, 3.1].forEach((fx) => {
+        boxAt(g0, 0.96, 2.35, 0.85, barCx + fx, fy + 1.175, spec.cz + 8.15, M.chrome, true, true, 0.03);
+      });
+      // Commercial dual espresso machine
+      boxAt(g0, 0.82, 0.52, 0.56, barCx - 1.2, fy + 1.23, spec.cz + 8.12, M.dark, true, false, 0.02);
+      boxAt(g0, 0.72, 0.14, 0.4, barCx - 1.2, fy + 1.48, spec.cz + 8.12, M.chrome, false, false);
+
+      // White marble-topped island bar counter + 4 oak bar stools
+      const islZ = spec.cz + 5.55;
+      boxAt(g0, 3.5, 0.94, 0.92, barCx, fy + 0.47, islZ, kitchenCabMat, true, true, 0.02);
+      boxAt(g0, 3.68, 0.07, 1.08, barCx, fy + 0.975, islZ, marbleCreamMat, true, true, 0.02);
+      // Hanging pendant bulbs above island
+      boxAt(g0, 2.8, 0.05, 0.08, barCx, fy + 2.65, islZ, M.dark, false, false);
+      [-1.1, -0.36, 0.36, 1.1].forEach((sx) => {
+        cylAt(g0, 0.012, 0.012, 0.55, barCx + sx, fy + 2.36, islZ, M.dark, false, false, 6);
+        cylAt(g0, 0.07, 0.09, 0.11, barCx + sx, fy + 2.08, islZ, new THREE.MeshBasicMaterial({ color: 0xffe4a8 }), false, false, 10);
+        // Bar stool (walnut round seat + dark steel footrest frame)
+        const stoolX = barCx + sx * 1.15;
+        const stoolZ = islZ - 0.95;
+        cylAt(g0, 0.21, 0.2, 0.06, stoolX, fy + 0.68, stoolZ, M.walnut, true, true, 16);
+        cylAt(g0, 0.035, 0.035, 0.66, stoolX, fy + 0.33, stoolZ, M.dark, false, false, 10);
+        cylAt(g0, 0.18, 0.22, 0.04, stoolX, fy + 0.02, stoolZ, M.dark, false, true, 14);
+      });
+
+      // =========================================================================
+      // TERRACRAFT LEVEL 1 (lv === 1): Double-Height Atrium Void, Oak/Glass Staircase & Studio
+      // =========================================================================
+      const g1 = levelGroups[1];
+      if (g1) {
+        const fy1 = spec.groundY + spec.floorH + SLAB_THICK * 0.5;
+        const l1Fill = new THREE.PointLight(0xfff4e0, 1.15, 22);
+        l1Fill.position.set(spec.cx + 1.5, fy1 + 3.1, spec.cz);
+        g1.add(l1Fill);
+        warmLights.push(l1Fill);
+
+        // 1. FLOORING LAYERS: Warm oak perimeter & stairwell vestibule + Slate-grey carpet tile zones + Kitchen limestone tile
+        boxAt(g1, 13.0, 0.018, 1.25, spec.cx + 5.9, fy1 + 0.009, spec.cz - 8.2, floorWarmOak, false, true);
+        boxAt(g1, 2.95, 0.018, 5.6, spec.cx - 7.675, fy1 + 0.009, spec.cz + 1.0, floorWarmOak, false, true);
+        boxAt(g1, 7.2, 0.02, 16.1, spec.cx + 8.8, fy1 + 0.014, spec.cz + 0.45, reCarpetMat, false, true);
+        boxAt(g1, 5.75, 0.02, 16.1, spec.cx + 2.325, fy1 + 0.014, spec.cz + 0.45, reCarpetMat, false, true);
+        boxAt(g1, 5.65, 0.02, 5.95, spec.cx - 3.375, fy1 + 0.014, spec.cz + 1.225, reCarpetMat, false, true);
+        boxAt(g1, 3.65, 0.02, 4.3, spec.cx - 2.375, fy1 + 0.014, spec.cz + 6.35, reCarpetMat, false, true);
+        boxAt(g1, 8.2, 0.02, 4.7, spec.cx - 8.3, fy1 + 0.014, spec.cz + 6.15, floorTerrazzo, false, true);
+
+        // Exterior balcony lush hedge planter trough along East wall exterior terrace
+        buildPlanterTrough(g1, spec.cx + 13.55, fy1 - 0.02, spec.cz - 3.2, 6.2, Math.PI / 2, 951, archMats);
+        buildPlanterTrough(g1, spec.cx + 13.55, fy1 - 0.02, spec.cz + 3.4, 6.2, Math.PI / 2, 952, archMats);
+
+        // 2. DOUBLE-HEIGHT ATRIUM VOID GLASS BALUSTRADES (NW Overlook Void: dx -12.1..-0.6, dz -8.45..-1.8)
+        const railGMat = vitrineGlass;
+        const addBalustrade = (bx: number, bz: number, bw: number, bd: number, h = 1.04) => {
+          boxAt(g1, bw, h, bd, bx, fy1 + h * 0.5, bz, railGMat, false, false);
+          boxAt(
+            g1,
+            bw > bd ? bw + 0.04 : 0.06,
+            0.05,
+            bd > bw ? bd + 0.04 : 0.06,
+            bx,
+            fy1 + h + 0.025,
+            bz,
+            archMats.bronzeMullion,
+            true,
+            false
+          );
+        };
+        // Continuous perimeter safety glass railing framing the double-height entrance atrium overlook
+        addBalustrade(spec.cx - 0.6, spec.cz - 5.125, 0.045, 6.65);
+        addBalustrade(spec.cx - 6.35, spec.cz - 1.8, 11.5, 0.045);
+        addBalustrade(spec.cx - 6.35, spec.cz - 8.45, 11.5, 0.045);
+        addBalustrade(spec.cx - 12.1, spec.cz - 5.125, 0.045, 6.65);
+
+        // 3. EAST WALL LIVING GARDEN STRIPS, CREDENZA & PROPERTY TV
+        const eastWallX = spec.cx + 12.42;
+        [-7.0, -0.8].forEach((gz) => {
+          boxAt(g1, 0.16, 2.55, 1.35, eastWallX, fy1 + 1.32, spec.cz + gz, frameDarkMat, false, false);
+          boxAt(g1, 0.2, 2.35, 1.18, eastWallX - 0.04, fy1 + 1.32, spec.cz + gz, std({ color: 0x3b7a38, roughness: 0.88 }), false, false);
+        });
+        // Low oak credenza sideboard + large landscape architectural TV + tall bookcase on East wing wall
+        boxAt(g1, 0.56, 0.68, 3.2, spec.cx + 12.05, fy1 + 0.34, spec.cz - 4.8, M.oakDesk, true, true, 0.02);
+        const l1EastTv = createCustomBoardScreen(screenReg, 480, 260, (g, w, h, t) => {
+          g.fillStyle = '#111827';
+          g.fillRect(0, 0, w, h);
+          g.fillStyle = '#0ea5e9';
+          g.fillRect(14, 14, w - 28, h * 0.52);
+          g.fillStyle = '#4c7c48';
+          g.fillRect(14, h * 0.52, w - 28, h * 0.34);
+          g.fillStyle = '#f8fafc';
+          g.fillRect(60, 48, 175, 112);
+          g.fillRect(260, 66, 130, 94);
+          g.fillStyle = '#38bdf8';
+          g.fillRect(80, 72, 60, 52);
+          g.fillStyle = '#e07a5f';
+          g.font = '700 15px sans-serif';
+          g.fillText(`TERRACRAFT DEVELOPMENT PIPELINE · LIVE BIM ${Math.floor(t % 60)}`, 20, h - 18);
+        });
+        boxAt(g1, 0.08, 1.24, 2.18, spec.cx + 12.36, fy1 + 1.62, spec.cz - 4.8, frameDarkMat, false, false);
+        const l1TvMesh = new THREE.Mesh(new THREE.PlaneGeometry(2.04, 1.12), l1EastTv.mat);
+        l1TvMesh.position.set(spec.cx + 12.3, fy1 + 1.62, spec.cz - 4.8);
+        l1TvMesh.rotation.y = -Math.PI / 2;
+        g1.add(l1TvMesh);
+        l1EastTv.setMesh(l1TvMesh);
+        shelfUnit(g1, spec.cx + 12.05, fy1, spec.cz - 2.35, 1.5, M);
+        plant(g1, spec.cx + 11.75, fy1, spec.cz - 7.8, 1.15, 960, M, 'ficus');
+
+        // 4. FRONT-LEFT & CENTER-LEFT: Two 4-Seat Open-Plan Workstation Pods + Linear Pendants + Aisle Trees
+        const l1PodXs = [spec.cx + 8.9, spec.cx + 2.4];
+        const l1PodMeta = [
+          { role: 'Acquisitions Analyst · L1', zone: 'Acquisitions & Valuation Pod' },
+          { role: 'Urban Masterplanner · L1', zone: 'Masterplanning & Design Pod' },
+        ];
+        let l1MonIdx = 0;
+        l1PodXs.forEach((px, pi) => {
+          const pz = spec.cz - 5.3;
+          makeDeskAt(g1, px, fy1, pz, 2.8, 1.36, M);
+          boxAt(g1, 2.7, 0.28, 0.05, px, fy1 + 0.91, pz, M.dark, false, false);
+          boxAt(g1, 2.5, 0.06, 0.12, px, fy1 + 2.68, pz, M.dark, false, false);
+          boxAt(g1, 2.42, 0.02, 0.08, px, fy1 + 2.64, pz, new THREE.MeshBasicMaterial({ color: 0xfff3d6 }), false, false);
+          [-1.05, 1.05].forEach((ox) => {
+            cylAt(g1, 0.012, 0.012, 1.15, px + ox, fy1 + 3.26, pz, M.dark, false, false, 6);
+          });
+
+          const seatZN = pz - 1.05;
+          const seatZS = pz + 1.05;
+          registerChair(1, px - 0.68, fy1, seatZN, 0, -1);
+          registerMonitor(
+            1,
+            l1MonIdx++,
+            [px - 0.68, fy1 + 0.77, pz - 0.25],
+            Math.PI,
+            px - 0.68,
+            seatZN,
+            l1PodMeta[pi].role,
+            l1PodMeta[pi].zone
+          );
+          officeChair(g1, px + 0.68, fy1, seatZN, 0, M);
+          monitor(g1, px + 0.68, fy1 + 0.77, pz - 0.25, true, Math.PI, M);
+          officeChair(g1, px - 0.68, fy1, seatZS, Math.PI, M);
+          monitor(g1, px - 0.68, fy1 + 0.77, pz + 0.25, true, 0, M);
+          officeChair(g1, px + 0.68, fy1, seatZS, Math.PI, M);
+          monitor(g1, px + 0.68, fy1 + 0.77, pz + 0.25, true, 0, M);
+        });
+        // Low sage-green divider separating Front Center Pod from Review Table + Aisle Ficus Trees
+        boxAt(g1, 3.2, 1.32, 0.16, spec.cx + 2.3, fy1 + 0.66, spec.cz - 2.85, sagePartitionMat, true, true, 0.02);
+        plant(g1, spec.cx + 5.15, fy1, spec.cz - 4.1, 1.35, 961, M, 'ficus');
+        plant(g1, spec.cx + 5.15, fy1, spec.cz - 2.5, 1.25, 962, M, 'ficus');
+        plant(g1, spec.cx + 5.15, fy1, spec.cz - 0.9, 1.15, 963, M, 'monst');
+
+        // 5. MID-LEFT ENCLOSED GLASS STUDIO POD & CONSULTATION NOOK (dx +5.6..+12.4, dz -1.7..+3.5)
+        // Tall sage-green rear partition backing Studio Pod (dz = +3.45)
+        boxAt(g1, 6.7, 2.15, 0.18, spec.cx + 9.0, fy1 + 1.075, spec.cz + 3.45, sagePartitionMat, true, true, 0.02);
+        // Dark bronze framed glass enclosure along West (dx = +5.6, leaving open 1.4m doorway at dz -0.4..+1.0) & North (dz = -1.7)
+        boxAt(g1, 0.06, 2.45, 1.2, spec.cx + 5.6, fy1 + 1.225, spec.cz - 1.1, vitrineGlass, false, false);
+        boxAt(g1, 0.06, 2.45, 2.4, spec.cx + 5.6, fy1 + 1.225, spec.cz + 2.25, vitrineGlass, false, false);
+        boxAt(g1, 0.12, 0.12, 5.2, spec.cx + 5.6, fy1 + 2.48, spec.cz + 0.85, archMats.bronzeMullion, true, false);
+        boxAt(g1, 3.6, 2.45, 0.06, spec.cx + 10.6, fy1 + 1.225, spec.cz - 1.7, vitrineGlass, false, false);
+        boxAt(g1, 6.8, 0.12, 0.12, spec.cx + 9.0, fy1 + 2.48, spec.cz - 1.7, archMats.bronzeMullion, true, false);
+
+        // 2-Seat Architectural BIM Workstation inside Glass Studio (cx + 9.2, cz + 1.6)
+        makeDeskAt(g1, spec.cx + 9.2, fy1, spec.cz + 1.6, 2.2, 1.2, M);
+        boxAt(g1, 2.1, 0.28, 0.05, spec.cx + 9.2, fy1 + 0.91, spec.cz + 1.6, M.dark, false, false);
+        registerChair(1, spec.cx + 8.55, fy1, spec.cz + 0.55, 0, 1);
+        registerMonitor(
+          1,
+          l1MonIdx++,
+          [spec.cx + 8.55, fy1 + 0.77, spec.cz + 1.35],
+          Math.PI,
+          spec.cx + 8.55,
+          spec.cz + 0.55,
+          'BIM Project Architect · L1',
+          'Glass Studio Atelier'
+        );
+        officeChair(g1, spec.cx + 9.85, fy1, spec.cz + 0.55, 0, M);
+        monitor(g1, spec.cx + 9.85, fy1 + 0.77, spec.cz + 1.35, true, Math.PI, M);
+        // Consultation table + Teal & Mustard Armchairs + Round Marble Table inside Glass Studio
+        makeDeskAt(g1, spec.cx + 7.45, fy1, spec.cz - 0.55, 1.65, 0.78, M);
+        officeChair(g1, spec.cx + 7.45, fy1, spec.cz - 1.28, 0, M);
+        const stTeal = armchair(g1, spec.cx + 9.25, fy1, spec.cz - 0.45, Math.PI * 0.25, tealUpholstery, M);
+        stTeal.scale.set(0.76, 0.9, 0.76);
+        const stMust = armchair(g1, spec.cx + 10.75, fy1, spec.cz - 0.45, -Math.PI * 0.25, mustardUpholstery, M);
+        stMust.scale.set(0.76, 0.9, 0.76);
+        cylAt(g1, 0.36, 0.36, 0.04, spec.cx + 10.0, fy1 + 0.44, spec.cz - 0.78, marbleCreamMat, true, true, 18);
+        cylAt(g1, 0.05, 0.09, 0.42, spec.cx + 10.0, fy1 + 0.21, spec.cz - 0.78, M.dark, false, true, 12);
+        plant(g1, spec.cx + 6.35, fy1, spec.cz + 2.55, 0.95, 964, M, 'ficus');
+
+        // 6. BACK-LEFT (SE): Private Executive Director Suite (dx +5.45..+12.4, dz +3.7..+8.55)
+        // White partition separating suite (leaving 1.6m open doorway at dz +3.7..+5.3)
+        boxAt(g1, 0.16, 2.75, 3.25, spec.cx + 5.45, fy1 + 1.375, spec.cz + 7.0, archMats.stuccoWhite, true, true, 0.02);
+        // Timber-slat back feature wall + twin walnut bookshelves flanking executive seat
+        for (let sx = spec.cx + 5.75; sx <= spec.cx + 12.2; sx += 0.26) {
+          boxAt(g1, 0.09, 2.85, 0.07, sx, fy1 + 1.425, spec.cz + 8.54, archMats.timberFin, false, false);
+        }
+        shelfUnit(g1, spec.cx + 6.95, fy1, spec.cz + 8.15, 1.55, M);
+        shelfUnit(g1, spec.cx + 10.85, fy1, spec.cz + 8.15, 1.55, M);
+        // Executive Walnut Desk + Linear Pendant + Leather Executive Chair
+        makeDeskAt(g1, spec.cx + 8.9, fy1, spec.cz + 5.75, 2.5, 1.05, M);
+        boxAt(g1, 2.2, 0.05, 0.1, spec.cx + 8.9, fy1 + 2.68, spec.cz + 5.75, M.dark, false, false);
+        boxAt(g1, 2.1, 0.02, 0.06, spec.cx + 8.9, fy1 + 2.65, spec.cz + 5.75, new THREE.MeshBasicMaterial({ color: 0xfff3d6 }), false, false);
+        registerChair(1, spec.cx + 8.9, fy1, spec.cz + 6.9, Math.PI, -1);
+        registerMonitor(
+          1,
+          l1MonIdx++,
+          [spec.cx + 8.9, fy1 + 0.77, spec.cz + 5.9],
+          0,
+          spec.cx + 8.9,
+          spec.cz + 6.9,
+          'Managing Director · L1',
+          'Executive Director Suite'
+        );
+        // Side console credenza + framed architectural art + Ficus in Executive Suite
+        boxAt(g1, 0.52, 0.72, 2.4, spec.cx + 12.08, fy1 + 0.36, spec.cz + 6.1, M.oakDesk, true, true, 0.02);
+        boxAt(g1, 0.06, 1.05, 1.65, spec.cx + 12.36, fy1 + 1.68, spec.cz + 6.1, frameDarkMat, false, false);
+        const execArt = new THREE.Mesh(new THREE.PlaneGeometry(1.52, 0.92), l1EastTv.mat);
+        execArt.position.set(spec.cx + 12.32, fy1 + 1.68, spec.cz + 6.1);
+        execArt.rotation.y = -Math.PI / 2;
+        g1.add(execArt);
+        plant(g1, spec.cx + 11.7, fy1, spec.cz + 4.35, 1.25, 965, M, 'ficus');
+
+        // 7. CENTER: Long Collaborative Architectural Review Table + Tall Sage Partition (cx + 2.25, cz + 0.65)
+        boxAt(g1, 3.9, 0.02, 2.6, spec.cx + 2.25, fy1 + 0.022, spec.cz + 0.65, std({ color: 0xb9b4aa, roughness: 0.96 }), false, true);
+        makeDeskAt(g1, spec.cx + 2.25, fy1, spec.cz + 0.65, 3.55, 1.12, M);
+        // Rolled blueprint tubes & site plan sheets across table
+        boxAt(g1, 0.95, 0.02, 0.62, spec.cx + 2.25, fy1 + 0.775, spec.cz + 0.65, M.white, false, false);
+        boxAt(g1, 0.52, 0.02, 0.38, spec.cx + 1.15, fy1 + 0.775, spec.cz + 0.75, accentMat, false, false);
+        registerChair(1, spec.cx + 2.25, fy1, spec.cz - 0.35, 0, -1);
+        registerMonitor(
+          1,
+          l1MonIdx++,
+          [spec.cx + 2.25, fy1 + 0.77, spec.cz + 0.45],
+          Math.PI,
+          spec.cx + 2.25,
+          spec.cz - 0.35,
+          'Senior Development Lead · L1',
+          'Collaborative Review Table'
+        );
+        [spec.cx + 0.85, spec.cx + 3.65].forEach((chx) => {
+          officeChair(g1, chx, fy1, spec.cz - 0.35, 0, M);
+        });
+        [spec.cx + 0.85, spec.cx + 2.25, spec.cx + 3.65].forEach((chx) => {
+          officeChair(g1, chx, fy1, spec.cz + 1.65, Math.PI, M);
+        });
+        // Tall sage-green acoustic divider behind collaborative table
+        boxAt(g1, 4.6, 2.05, 0.18, spec.cx + 2.25, fy1 + 1.025, spec.cz + 3.15, sagePartitionMat, true, true, 0.02);
+
+        // 8. BACK CENTER: Two Glass-Fronted Executive Meeting Rooms (cx - 1.9 & cx + 2.7, cz + 6.4)
+        [spec.cx - 1.9, spec.cx + 2.7].forEach((mx, mi) => {
+          const mz = spec.cz + 6.4;
+          const frontZRoom = spec.cz + 4.2;
+          boxAt(g1, 1.45, 2.75, 0.06, mx - 1.4, fy1 + 1.375, frontZRoom, vitrineGlass, false, false);
+          boxAt(g1, 1.45, 2.75, 0.06, mx + 1.4, fy1 + 1.375, frontZRoom, vitrineGlass, false, false);
+          boxAt(g1, 4.4, 0.14, 0.14, mx, fy1 + 2.75, frontZRoom, archMats.timberFin, false, false);
+          if (mi === 0) {
+            boxAt(g1, 0.08, 2.75, 4.4, spec.cx + 0.4, fy1 + 1.375, mz, archMats.timberFin, true, false);
+          }
+          boxAt(g1, 0.12, 2.75, 4.4, mi === 0 ? spec.cx - 4.15 : spec.cx + 4.95, fy1 + 1.375, mz, archMats.timberFin, true, false);
+          for (let sx = mx - 1.8; sx <= mx + 1.8; sx += 0.24) {
+            boxAt(g1, 0.07, 2.75, 0.06, sx, fy1 + 1.375, spec.cz + 8.58, archMats.timberFin, false, false);
+          }
+          boxAt(g1, 2.2, 1.25, 0.08, mx, fy1 + 1.7, spec.cz + 8.5, frameDarkMat, false, false);
+          const mtv1 = new THREE.Mesh(new THREE.PlaneGeometry(2.05, 1.1), mi === 0 ? boothScreen.mat : l1EastTv.mat);
+          mtv1.position.set(mx, fy1 + 1.7, spec.cz + 8.44);
+          mtv1.rotation.y = Math.PI;
+          g1.add(mtv1);
+
+          cylAt(g1, 0.92, 0.92, 0.055, mx, fy1 + 0.74, mz, M.walnut, true, true, 24);
+          cylAt(g1, 0.16, 0.22, 0.72, mx, fy1 + 0.36, mz, M.dark, true, true, 14);
+          [
+            [-1.12, 0, Math.PI / 2],
+            [1.12, 0, -Math.PI / 2],
+            [0, -1.12, 0],
+            [0, 1.12, Math.PI],
+          ].forEach(([cxo, czo, crot]) => {
+            officeChair(g1, mx + cxo, fy1, mz + czo, crot, M);
+          });
+          plant(g1, mx - 1.65, fy1, spec.cz + 4.85, 0.72, 970 + mi, M, 'olive');
+        });
+
+        // 9. CENTER-RIGHT: Hospitality Collaboration Lounge (Coral L-Sectional Sofa + Teal Club + Bistro Nook)
+        const l1LoungeX = spec.cx - 3.1;
+        const l1LoungeZ = spec.cz + 0.85;
+        boxAt(g1, 3.3, 0.02, 2.75, l1LoungeX, fy1 + 0.022, l1LoungeZ, std({ color: 0xe6dfd3, roughness: 0.95 }), false, true);
+        const l1CoralBack = sofaWide(g1, l1LoungeX + 0.65, fy1, l1LoungeZ + 0.68, Math.PI, coralUpholstery, M);
+        l1CoralBack.scale.set(0.78, 0.92, 0.84);
+        const l1CoralSide = sofaWide(g1, l1LoungeX + 1.62, fy1, l1LoungeZ - 0.15, -Math.PI / 2, coralUpholstery, M);
+        l1CoralSide.scale.set(0.62, 0.92, 0.84);
+        const l1TealClub = armchair(g1, l1LoungeX - 1.1, fy1, l1LoungeZ - 0.35, Math.PI * 0.4, tealUpholstery, M);
+        l1TealClub.scale.set(0.76, 0.9, 0.76);
+        // Oval light-oak coffee table
+        cylAt(g1, 0.56, 0.56, 0.045, l1LoungeX + 0.1, fy1 + 0.4, l1LoungeZ - 0.2, M.oakDesk, true, true, 22);
+        cylAt(g1, 0.08, 0.14, 0.38, l1LoungeX + 0.1, fy1 + 0.19, l1LoungeZ - 0.2, M.dark, false, true, 12);
+
+        // Bistro table + Green & Mustard Armchairs in front of meeting rooms (cx - 3.0, cz + 2.95)
+        cylAt(g1, 0.38, 0.38, 0.04, spec.cx - 3.0, fy1 + 0.46, spec.cz + 2.95, M.oakDesk, true, true, 18);
+        cylAt(g1, 0.05, 0.09, 0.44, spec.cx - 3.0, fy1 + 0.22, spec.cz + 2.95, M.dark, false, true, 12);
+        const l1GreenArm = armchair(g1, spec.cx - 3.88, fy1, spec.cz + 2.95, Math.PI / 2, sagePartitionMat, M);
+        l1GreenArm.scale.set(0.72, 0.88, 0.72);
+        const l1MustArm = armchair(g1, spec.cx - 2.12, fy1, spec.cz + 2.95, -Math.PI / 2, mustardUpholstery, M);
+        l1MustArm.scale.set(0.72, 0.88, 0.72);
+
+        // 10. BACK-RIGHT (SW): Level 1 Espresso Bar, L-Shaped Peninsula + 4 Stools & West Terrace Chairs
+        const k1Cx = spec.cx - 8.5;
+        // Back sage-green cabinetry & oak counter + floating upper shelf with trailing plants
+        boxAt(g1, 5.4, 0.92, 0.85, k1Cx, fy1 + 0.46, spec.cz + 8.15, kitchenCabMat, true, true, 0.02);
+        boxAt(g1, 5.46, 0.06, 0.9, k1Cx, fy1 + 0.94, spec.cz + 8.15, marbleCreamMat, false, true, 0.01);
+        boxAt(g1, 4.6, 0.08, 0.42, k1Cx, fy1 + 1.98, spec.cz + 8.35, M.oakDesk, true, false, 0.015);
+        [-1.4, 0.0, 1.4].forEach((px, pi) => {
+          plant(g1, k1Cx + px, fy1 + 2.02, spec.cz + 8.32, 0.42, 980 + pi, M, 'fern');
+        });
+        // Commercial espresso machine & framed botanical art above bar
+        boxAt(g1, 0.82, 0.52, 0.56, k1Cx - 1.5, fy1 + 1.23, spec.cz + 8.12, M.dark, true, false, 0.02);
+        boxAt(g1, 2.2, 1.15, 0.06, k1Cx, fy1 + 2.45, spec.cz + 8.6, frameDarkMat, false, false);
+        const k1Art = new THREE.Mesh(
+          new THREE.PlaneGeometry(2.04, 1.0),
+          new THREE.MeshStandardMaterial({ map: propGridTex, roughness: 0.55 })
+        );
+        k1Art.position.set(k1Cx, fy1 + 2.45, spec.cz + 8.56);
+        k1Art.rotation.y = Math.PI;
+        g1.add(k1Art);
+        // L-shaped slatted walnut peninsula counter extending South-to-North + 4 bar stools on East side
+        boxAt(g1, 0.95, 0.94, 3.6, spec.cx - 6.05, fy1 + 0.47, spec.cz + 6.05, archMats.timberFin, true, true, 0.02);
+        boxAt(g1, 1.12, 0.07, 3.75, spec.cx - 6.05, fy1 + 0.975, spec.cz + 6.05, marbleCreamMat, true, true, 0.02);
+        [4.55, 5.3, 6.05, 6.8].forEach((szOff) => {
+          const sx = spec.cx - 5.15;
+          const sz = spec.cz + szOff;
+          cylAt(g1, 0.21, 0.2, 0.06, sx, fy1 + 0.68, sz, M.walnut, true, true, 16);
+          cylAt(g1, 0.035, 0.035, 0.66, sx, fy1 + 0.33, sz, M.dark, false, false, 10);
+          cylAt(g1, 0.18, 0.22, 0.04, sx, fy1 + 0.02, sz, M.dark, false, true, 14);
+        });
+        // West sunlit corner lounge overlooking curved exterior balustrade (positioned south of stairwell core)
+        const wc1 = armchair(g1, spec.cx - 11.1, fy1, spec.cz + 4.45, 0, M.fabricCognac, M);
+        wc1.scale.set(0.76, 0.9, 0.76);
+        const wc2 = armchair(g1, spec.cx - 11.1, fy1, spec.cz + 6.25, Math.PI, M.fabricCognac, M);
+        wc2.scale.set(0.76, 0.9, 0.76);
+        cylAt(g1, 0.36, 0.36, 0.04, spec.cx - 11.1, fy1 + 0.44, spec.cz + 5.35, marbleCreamMat, true, true, 18);
+        cylAt(g1, 0.05, 0.09, 0.42, spec.cx - 11.1, fy1 + 0.21, spec.cz + 5.35, M.brass, false, true, 12);
+        plant(g1, spec.cx - 8.45, fy1, spec.cz + 3.25, 1.35, 985, M, 'ficus');
+      }
+
+      // =========================================================================
+      // TERRACRAFT LEVEL 2 (lv === 2): Property, 3D Masterplan & Material Design Showroom
+      // =========================================================================
+      const g2 = levelGroups[2];
+      if (g2) {
+        const fy2 = spec.groundY + 2 * spec.floorH + SLAB_THICK * 0.5;
+        const l2Fill = new THREE.PointLight(0xfff4e2, 1.2, 24);
+        l2Fill.position.set(spec.cx, fy2 + 3.1, spec.cz);
+        g2.add(l2Fill);
+        warmLights.push(l2Fill);
+
+        // 1. FLOORING LAYERS: Warm oak front & center promenade + Slate-grey carpet tile showroom zones (clear of stairwell void)
+        boxAt(g2, 24.8, 0.018, 1.3, spec.cx + 0.1, fy2 + 0.009, spec.cz - 8.15, floorWarmOak, false, true);
+        boxAt(g2, 5.4, 0.018, 9.2, spec.cx - 1.8, fy2 + 0.01, spec.cz - 0.3, floorWarmOak, false, true);
+        boxAt(g2, 11.6, 0.02, 16.0, spec.cx + 6.6, fy2 + 0.014, spec.cz + 0.45, reCarpetMat, false, true);
+        boxAt(g2, 7.8, 0.02, 6.1, spec.cx - 8.4, fy2 + 0.014, spec.cz - 4.4, reCarpetMat, false, true);
+        boxAt(g2, 4.65, 0.02, 5.3, spec.cx - 6.825, fy2 + 0.014, spec.cz + 1.3, reCarpetMat, false, true);
+        boxAt(g2, 13.0, 0.02, 4.4, spec.cx - 5.8, fy2 + 0.014, spec.cz + 6.3, reCarpetMat, false, true);
+
+        // 2. EAST GALLERY WALL: Backlit Portfolio Photo Grids
+        [-5.6, -1.6, 2.2].forEach((dz) => {
+          boxAt(g2, 0.08, 1.78, 3.3, spec.cx + 12.42, fy2 + 1.38, spec.cz + dz, frameDarkMat, false, false);
+          const gm2 = new THREE.Mesh(
+            new THREE.PlaneGeometry(3.15, 1.65),
+            new THREE.MeshStandardMaterial({ map: propGridTex, emissive: 0xffffff, emissiveMap: propGridTex, emissiveIntensity: 0.22, roughness: 0.4 })
+          );
+          gm2.position.set(spec.cx + 12.37, fy2 + 1.38, spec.cz + dz);
+          gm2.rotation.y = -Math.PI / 2;
+          g2.add(gm2);
+        });
+
+        // 3. FRONT-LEFT CORNER: Dual Immersive VR Property Experience Pods + Glowing Cyan Ring Bases
+        const vrDarkPad = std({ color: 0x1e293b, roughness: 0.62, metalness: 0.1 });
+        const vrGlowRing = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+        [-6.35, -4.15].forEach((vz) => {
+          const vrPod = new THREE.Group();
+          vrPod.position.set(spec.cx + 10.95, fy2, spec.cz + vz);
+          vrPod.rotation.y = -Math.PI * 0.42;
+          cylAt(vrPod, 0.78, 0.82, 0.07, 0, 0.035, 0, M.white, true, true, 24);
+          cylAt(vrPod, 0.83, 0.83, 0.025, 0, 0.02, 0, vrGlowRing, false, false, 24);
+          cylAt(vrPod, 0.14, 0.18, 0.36, 0, 0.22, 0, M.dark, false, true, 14);
+          const shellMesh = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.62, 0.56, 0.86, 20, 1, false, Math.PI * 0.38, Math.PI * 1.24),
+            M.white
+          );
+          shellMesh.position.set(0, 0.78, 0);
+          shellMesh.castShadow = true;
+          vrPod.add(shellMesh);
+          cylAt(vrPod, 0.48, 0.48, 0.12, 0, 0.42, 0.05, vrDarkPad, true, true, 18);
+          boxAt(vrPod, 0.76, 0.62, 0.14, 0, 0.76, -0.34, vrDarkPad, false, false, 0.04);
+          g2.add(vrPod);
+        });
+
+        // 4. FRONT-LEFT PROMENADE: Two Angled Interactive Slanted Touchscreen Masterplan Kiosks
+        [-6.4, -4.2].forEach((kz) => {
+          const kx = spec.cx + 7.25;
+          const kGroup = new THREE.Group();
+          kGroup.position.set(kx, fy2, spec.cz + kz);
+          kGroup.rotation.y = -Math.PI * 0.28;
+          boxAt(kGroup, 0.54, 0.06, 0.54, 0, 0.03, 0, M.white, true, true, 0.02);
+          boxAt(kGroup, 0.28, 1.05, 0.24, 0, 0.55, 0, M.white, true, true, 0.02);
+          const topPad = new THREE.Group();
+          topPad.position.set(0, 1.08, 0);
+          topPad.rotation.x = -0.52;
+          boxAt(topPad, 0.92, 0.06, 0.68, 0, 0, 0, frameDarkMat, true, false, 0.015);
+          const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.84, 0.6), kioskBoard.mat);
+          scr.position.set(0, 0.035, 0);
+          scr.rotation.x = -Math.PI / 2;
+          topPad.add(scr);
+          kGroup.add(topPad);
+          g2.add(kGroup);
+        });
+
+        // 5. MATERIAL ATELIER SAMPLE & SLAB RACKS (East-Mid Gallery)
+        const matSampleTex = makeCanvasTex('terracraft_material_samples', 512, 256, (g, w, h) => {
+          g.fillStyle = '#2d3138';
+          g.fillRect(0, 0, w, h);
+          const cols = 4;
+          const rows = 2;
+          const cw = (w - 28) / cols;
+          const ch = (h - 24) / rows;
+          const swatches = ['#f3efe8', '#b7895c', '#5a636e', '#d6cfc2', '#475569', '#9b7b58', '#e2dfd7', '#334155'];
+          for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+              const x = 10 + c * (cw + 3);
+              const y = 8 + r * (ch + 4);
+              g.fillStyle = swatches[(r * cols + c) % swatches.length];
+              g.fillRect(x, y, cw - 6, ch - 6);
+              if (r === 0 && c === 0) {
+                g.strokeStyle = '#cbd5e1';
+                g.lineWidth = 2;
+                g.beginPath();
+                g.moveTo(x + 8, y + ch - 12);
+                g.lineTo(x + cw - 12, y + 10);
+                g.stroke();
+              }
+            }
+          }
+        });
+        const slabRackMat = std({ map: matSampleTex, roughness: 0.45, metalness: 0.05 });
+
+        // Rack A (Lower Stone/Wood/Fabric Swatch Cabinet Frame at cx + 9.4, cz - 1.85)
+        boxAt(g2, 2.75, 0.72, 0.56, spec.cx + 9.4, fy2 + 0.36, spec.cz - 1.85, M.oakDesk, true, true, 0.02);
+        boxAt(g2, 2.8, 1.55, 0.14, spec.cx + 9.4, fy2 + 1.5, spec.cz - 1.85, frameDarkMat, true, true, 0.02);
+        [-1, 1].forEach((side) => {
+          const rm = new THREE.Mesh(new THREE.PlaneGeometry(2.68, 1.42), slabRackMat);
+          rm.position.set(spec.cx + 9.4, fy2 + 1.5, spec.cz - 1.85 + side * 0.08);
+          if (side < 0) rm.rotation.y = Math.PI;
+          g2.add(rm);
+        });
+
+        // Rack B (Full-Height Book-Matched Marble & Smoked Oak Slabs at cx + 9.4, cz + 2.05)
+        boxAt(g2, 2.85, 2.38, 0.18, spec.cx + 9.4, fy2 + 1.19, spec.cz + 2.05, frameDarkMat, true, true, 0.02);
+        [
+          [-0.88, marbleCreamMat],
+          [0, woodCedarMat],
+          [0.88, std({ color: 0x475569, roughness: 0.48 })],
+        ].forEach(([ox, mat]) => {
+          boxAt(g2, 0.8, 2.22, 0.22, spec.cx + 9.4 + (ox as number), fy2 + 1.18, spec.cz + 2.05, mat as THREE.Material, false, false);
+        });
+
+        // Consultation Desk tucked neatly between Rack A & Rack B (cx + 9.5, cz + 0.1)
+        let l2MonIdx = 0;
+        makeDeskAt(g2, spec.cx + 9.5, fy2, spec.cz + 0.15, 1.75, 0.82, M);
+        registerChair(2, spec.cx + 9.5, fy2, spec.cz - 0.62, 0, -1);
+        registerMonitor(
+          2,
+          l2MonIdx++,
+          [spec.cx + 9.5, fy2 + 0.77, spec.cz + 0.02],
+          Math.PI,
+          spec.cx + 9.5,
+          spec.cz - 0.62,
+          'Bespoke Kitchen & Stone Advisor · L2',
+          'Material Slab Atelier'
+        );
+
+        // 6. BACK-LEFT: 4-Seat Interior & Material Styling Pod + Timber-Slat Wall + Hanging Ferns
+        for (let sx = spec.cx + 5.75; sx <= spec.cx + 12.2; sx += 0.26) {
+          boxAt(g2, 0.09, 2.85, 0.07, sx, fy2 + 1.425, spec.cz + 8.54, archMats.timberFin, false, false);
+        }
+        [spec.cx + 7.4, spec.cx + 8.9, spec.cx + 10.4].forEach((hx, hi) => {
+          cylAt(g2, 0.012, 0.012, 0.75, hx, fy2 + 3.45, spec.cz + 7.9, M.dark, false, false, 6);
+          plant(g2, hx, fy2 + 2.65, spec.cz + 7.9, 0.48, 990 + hi, M, 'fern');
+        });
+        const l2BackPodX = spec.cx + 8.9;
+        const l2BackPodZ = spec.cz + 5.55;
+        makeDeskAt(g2, l2BackPodX, fy2, l2BackPodZ, 2.8, 1.36, M);
+        boxAt(g2, 2.7, 0.28, 0.05, l2BackPodX, fy2 + 0.91, l2BackPodZ, M.dark, false, false);
+        boxAt(g2, 2.5, 0.06, 0.12, l2BackPodX, fy2 + 2.68, l2BackPodZ, M.dark, false, false);
+        boxAt(g2, 2.42, 0.02, 0.08, l2BackPodX, fy2 + 2.64, l2BackPodZ, new THREE.MeshBasicMaterial({ color: 0xfff3d6 }), false, false);
+        registerChair(2, l2BackPodX - 0.68, fy2, l2BackPodZ - 1.05, 0, -1);
+        registerMonitor(
+          2,
+          l2MonIdx++,
+          [l2BackPodX - 0.68, fy2 + 0.77, l2BackPodZ - 0.25],
+          Math.PI,
+          l2BackPodX - 0.68,
+          l2BackPodZ - 1.05,
+          'Lead Material Stylist · L2',
+          'Finish & Material Atelier'
+        );
+        registerChair(2, l2BackPodX + 0.68, fy2, l2BackPodZ + 1.05, Math.PI, 1);
+        registerMonitor(
+          2,
+          l2MonIdx++,
+          [l2BackPodX + 0.68, fy2 + 0.77, l2BackPodZ + 0.25],
+          0,
+          l2BackPodX + 0.68,
+          l2BackPodZ + 1.05,
+          'Senior Interior Designer · L2',
+          'Finish & Material Atelier'
+        );
+        officeChair(g2, l2BackPodX + 0.68, fy2, l2BackPodZ - 1.05, 0, M);
+        monitor(g2, l2BackPodX + 0.68, fy2 + 0.77, l2BackPodZ - 0.25, true, Math.PI, M);
+        officeChair(g2, l2BackPodX - 0.68, fy2, l2BackPodZ + 1.05, Math.PI, M);
+        monitor(g2, l2BackPodX - 0.68, fy2 + 0.77, l2BackPodZ + 0.25, true, 0, M);
+        plant(g2, spec.cx + 5.7, fy2, spec.cz + 6.95, 1.35, 994, M, 'ficus');
+
+        // 7. FRONT-CENTER-LEFT: High-Rise Towers 3D Scale-Model Vitrine (cx + 3.1, cz - 5.55)
+        const m2LeftX = spec.cx + 3.1;
+        const m2LeftZ = spec.cz - 5.55;
+        boxAt(g2, 3.35, 0.74, 2.05, m2LeftX, fy2 + 0.37, m2LeftZ, M.walnut, true, true, 0.04);
+        boxAt(g2, 3.45, 0.05, 2.15, m2LeftX, fy2 + 0.76, m2LeftZ, archMats.bronzeMullion, false, true, 0.015);
+        boxAt(g2, 3.15, 0.05, 1.85, m2LeftX, fy2 + 0.8, m2LeftZ, std({ color: 0x5c7f4d, roughness: 0.85 }), false, true);
+        [
+          [-0.95, -0.35, 0.56, 0.92, 0.48],
+          [-0.15, 0.28, 0.66, 1.15, 0.52],
+          [0.78, -0.25, 0.58, 0.86, 0.48],
+          [0.85, 0.48, 0.52, 0.52, 0.42],
+        ].forEach(([bx, bz, bw, bh, bd], bi) => {
+          boxAt(g2, bw, bh, bd, m2LeftX + bx, fy2 + 0.83 + bh * 0.5, m2LeftZ + bz, bi === 1 ? M.white : std({ color: 0xe2e8f0, roughness: 0.42 }), true, false, 0.015);
+          boxAt(g2, bw + 0.03, 0.04, bd + 0.03, m2LeftX + bx, fy2 + 0.83 + bh + 0.02, m2LeftZ + bz, accentMat, false, false);
+        });
+        boxAt(g2, 3.22, 1.24, 1.92, m2LeftX, fy2 + 1.44, m2LeftZ, vitrineGlass, false, false);
+
+        // 8. CENTER LOUNGE + TIERED TILE & WOOD SAMPLE DISPLAY RACK (cx + 3.2, cz - 0.1)
+        boxAt(g2, 2.75, 0.02, 3.3, spec.cx + 3.2, fy2 + 0.02, spec.cz - 0.05, std({ color: 0xb9b4aa, roughness: 0.96 }), false, true);
+        // Low sage-green divider on North (dz = -2.25) backing angled tile swatch rack (dz = -2.65)
+        boxAt(g2, 3.05, 1.15, 0.18, spec.cx + 3.2, fy2 + 0.575, spec.cz - 2.25, sagePartitionMat, true, true, 0.02);
+        boxAt(g2, 2.85, 0.72, 0.56, spec.cx + 3.2, fy2 + 0.36, spec.cz - 2.65, M.oakDesk, true, true, 0.02);
+        const angledRack = new THREE.Mesh(new THREE.BoxGeometry(2.75, 0.78, 0.06), slabRackMat);
+        angledRack.position.set(spec.cx + 3.2, fy2 + 0.88, spec.cz - 2.62);
+        angledRack.rotation.x = 0.25;
+        g2.add(angledRack);
+        // Tall sage-green back divider (dz = +2.2) with mounted showroom TV
+        boxAt(g2, 3.1, 2.05, 0.18, spec.cx + 3.2, fy2 + 1.025, spec.cz + 2.2, sagePartitionMat, true, true, 0.02);
+        boxAt(g2, 1.88, 1.04, 0.06, spec.cx + 3.2, fy2 + 1.38, spec.cz + 2.09, frameDarkMat, false, false);
+        const l2LoungeTv = new THREE.Mesh(new THREE.PlaneGeometry(1.75, 0.94), boothScreen.mat);
+        l2LoungeTv.position.set(spec.cx + 3.2, fy2 + 1.38, spec.cz + 2.05);
+        l2LoungeTv.rotation.y = Math.PI;
+        g2.add(l2LoungeTv);
+        const l2Coral = sofaWide(g2, spec.cx + 4.15, fy2, spec.cz - 0.1, -Math.PI / 2, coralUpholstery, M);
+        l2Coral.scale.set(0.76, 0.94, 0.85);
+        const l2Teal = armchair(g2, spec.cx + 2.75, fy2, spec.cz - 1.2, 0, tealUpholstery, M);
+        l2Teal.scale.set(0.76, 0.9, 0.76);
+        const l2Must = armchair(g2, spec.cx + 2.75, fy2, spec.cz + 1.05, Math.PI, mustardUpholstery, M);
+        l2Must.scale.set(0.76, 0.9, 0.76);
+        boxAt(g2, 0.78, 0.38, 1.12, spec.cx + 2.85, fy2 + 0.19, spec.cz - 0.1, M.oakDesk, true, true, 0.03);
+        // Tall showroom Ficus centerpiece
+        plant(g2, spec.cx + 5.75, fy2, spec.cz - 1.15, 1.55, 995, M, 'ficus');
+
+        // 9. CENTER-RIGHT: Horizontal 3D Villa Estate Masterplan Vitrine + Model Concierge Desk
+        const m2RightX = spec.cx - 2.3;
+        const m2RightZ = spec.cz - 0.85;
+        boxAt(g2, 3.45, 0.74, 2.1, m2RightX, fy2 + 0.37, m2RightZ, M.walnut, true, true, 0.04);
+        boxAt(g2, 3.55, 0.05, 2.2, m2RightX, fy2 + 0.76, m2RightZ, archMats.bronzeMullion, false, true, 0.015);
+        boxAt(g2, 3.25, 0.05, 1.9, m2RightX, fy2 + 0.8, m2RightZ, std({ color: 0x5c7f4d, roughness: 0.85 }), false, true);
+        [
+          [-1.05, -0.45, 0.56, 0.45, 0.44],
+          [-0.95, 0.48, 0.56, 0.45, 0.44],
+          [0.05, -0.45, 0.62, 0.52, 0.46],
+          [0.95, -0.4, 0.54, 0.42, 0.44],
+          [0.92, 0.48, 0.62, 0.42, 0.46],
+        ].forEach(([bx, bz, bw, bh, bd]) => {
+          boxAt(g2, bw, bh, bd, m2RightX + bx, fy2 + 0.83 + bh * 0.5, m2RightZ + bz, M.white, true, false, 0.015);
+          boxAt(g2, bw + 0.04, 0.05, bd + 0.04, m2RightX + bx, fy2 + 0.83 + bh + 0.025, m2RightZ + bz, terracottaMat, false, false);
+        });
+        boxAt(g2, 3.32, 0.54, 1.98, m2RightX, fy2 + 1.09, m2RightZ, vitrineGlass, false, false);
+        // Concierge Desk right in front of horizontal 3D vitrine (cx - 2.3, cz - 3.05)
+        makeDeskAt(g2, m2RightX, fy2, spec.cz - 3.05, 1.75, 0.78, M);
+        registerChair(2, m2RightX, fy2, spec.cz - 3.85, 0, -1);
+        registerMonitor(
+          2,
+          l2MonIdx++,
+          [m2RightX, fy2 + 0.77, spec.cz - 3.2],
+          Math.PI,
+          m2RightX,
+          spec.cz - 3.85,
+          'Showroom Model Specialist · L2',
+          '3D Masterplan Gallery'
+        );
+
+        // 10. FRONT-RIGHT CORNER: Sage-Green Client Consultation Booth + Explorer Kiosk (cx - 7.6, cz - 5.45)
+        const b2X = spec.cx - 7.6;
+        const b2Z = spec.cz - 5.45;
+        boxAt(g2, 5.4, 2.05, 0.18, b2X, fy2 + 1.025, b2Z + 1.75, sagePartitionMat, true, true, 0.02);
+        boxAt(g2, 2.1, 1.15, 0.08, b2X, fy2 + 1.4, b2Z + 1.64, frameDarkMat, false, false);
+        const b2Tv = new THREE.Mesh(new THREE.PlaneGeometry(1.96, 1.02), boothScreen.mat);
+        b2Tv.position.set(b2X, fy2 + 1.4, b2Z + 1.59);
+        b2Tv.rotation.y = Math.PI;
+        g2.add(b2Tv);
+        const b2Must = sofaWide(g2, b2X - 1.75, fy2, b2Z, Math.PI / 2, mustardUpholstery, M);
+        b2Must.scale.set(0.72, 0.94, 0.85);
+        const b2Teal = sofaWide(g2, b2X + 1.75, fy2, b2Z, -Math.PI / 2, tealUpholstery, M);
+        b2Teal.scale.set(0.72, 0.94, 0.85);
+        cylAt(g2, 0.54, 0.54, 0.05, b2X, fy2 + 0.42, b2Z, M.walnut, true, true, 22);
+        cylAt(g2, 0.08, 0.14, 0.4, b2X, fy2 + 0.2, b2Z, M.dark, false, true, 14);
+        // Upright Interactive Explorer Kiosk + credenza on east end of booth
+        boxAt(g2, 0.62, 0.92, 1.45, spec.cx - 4.7, fy2 + 0.46, b2Z, M.walnut, true, true, 0.02);
+        boxAt(g2, 0.1, 0.88, 1.18, spec.cx - 4.38, fy2 + 1.32, b2Z, frameDarkMat, true, false, 0.02);
+        const b2Kiosk = new THREE.Mesh(new THREE.PlaneGeometry(1.08, 0.78), kioskBoard.mat);
+        b2Kiosk.position.set(spec.cx - 4.32, fy2 + 1.32, b2Z);
+        b2Kiosk.rotation.y = Math.PI / 2;
+        g2.add(b2Kiosk);
+        plant(g2, spec.cx - 4.65, fy2, b2Z + 1.78, 0.95, 996, M, 'olive');
+
+        // 11. BACK CENTER: Two Glass-Fronted Executive Closing Meeting Rooms (cx - 1.9 & cx + 2.7, cz + 6.4)
+        [spec.cx - 1.9, spec.cx + 2.7].forEach((mx, mi) => {
+          const mz = spec.cz + 6.4;
+          const frontZRoom = spec.cz + 4.2;
+          boxAt(g2, 1.45, 2.75, 0.06, mx - 1.4, fy2 + 1.375, frontZRoom, vitrineGlass, false, false);
+          boxAt(g2, 1.45, 2.75, 0.06, mx + 1.4, fy2 + 1.375, frontZRoom, vitrineGlass, false, false);
+          boxAt(g2, 4.4, 0.14, 0.14, mx, fy2 + 2.75, frontZRoom, archMats.timberFin, false, false);
+          if (mi === 0) {
+            boxAt(g2, 0.08, 2.75, 4.4, spec.cx + 0.4, fy2 + 1.375, mz, archMats.timberFin, true, false);
+          }
+          boxAt(g2, 0.12, 2.75, 4.4, mi === 0 ? spec.cx - 4.15 : spec.cx + 4.95, fy2 + 1.375, mz, archMats.timberFin, true, false);
+          for (let sx = mx - 1.8; sx <= mx + 1.8; sx += 0.24) {
+            boxAt(g2, 0.07, 2.75, 0.06, sx, fy2 + 1.375, spec.cz + 8.58, archMats.timberFin, false, false);
+          }
+          boxAt(g2, 2.2, 1.25, 0.08, mx, fy2 + 1.7, spec.cz + 8.5, frameDarkMat, false, false);
+          const mtv2 = new THREE.Mesh(new THREE.PlaneGeometry(2.05, 1.1), boothScreen.mat);
+          mtv2.position.set(mx, fy2 + 1.7, spec.cz + 8.44);
+          mtv2.rotation.y = Math.PI;
+          g2.add(mtv2);
+          cylAt(g2, 0.92, 0.92, 0.055, mx, fy2 + 0.74, mz, M.walnut, true, true, 24);
+          cylAt(g2, 0.16, 0.22, 0.72, mx, fy2 + 0.36, mz, M.dark, true, true, 14);
+          [
+            [-1.12, 0, Math.PI / 2],
+            [1.12, 0, -Math.PI / 2],
+            [0, -1.12, 0],
+            [0, 1.12, Math.PI],
+          ].forEach(([cxo, czo, crot]) => {
+            officeChair(g2, mx + cxo, fy2, mz + czo, crot, M);
+          });
+          plant(g2, mx - 1.65, fy2, spec.cz + 4.85, 0.72, 997 + mi, M, 'olive');
+        });
+
+        // 12. BACK RIGHT (SW): Hospitality Refreshment Espresso Bar & Green Lounge Nook
+        const bar2Cx = spec.cx - 8.5;
+        boxAt(g2, 5.2, 0.92, 0.85, bar2Cx, fy2 + 0.46, spec.cz + 8.15, kitchenCabMat, true, true, 0.02);
+        boxAt(g2, 5.26, 0.06, 0.9, bar2Cx, fy2 + 0.94, spec.cz + 8.15, marbleCreamMat, false, true, 0.01);
+        boxAt(g2, 0.96, 2.35, 0.85, spec.cx - 5.3, fy2 + 1.175, spec.cz + 8.15, M.chrome, true, true, 0.03);
+        boxAt(g2, 0.82, 0.52, 0.56, bar2Cx - 0.8, fy2 + 1.23, spec.cz + 8.12, M.dark, true, false, 0.02);
+        boxAt(g2, 3.3, 0.94, 0.92, bar2Cx, fy2 + 0.47, spec.cz + 5.55, kitchenCabMat, true, true, 0.02);
+        boxAt(g2, 3.48, 0.07, 1.08, bar2Cx, fy2 + 0.975, spec.cz + 5.55, marbleCreamMat, true, true, 0.02);
+        [-1.0, -0.32, 0.32, 1.0].forEach((sx) => {
+          const stoolX = bar2Cx + sx * 1.1;
+          const stoolZ = spec.cz + 4.65;
+          cylAt(g2, 0.21, 0.2, 0.06, stoolX, fy2 + 0.68, stoolZ, M.walnut, true, true, 16);
+          cylAt(g2, 0.035, 0.035, 0.66, stoolX, fy2 + 0.33, stoolZ, M.dark, false, false, 10);
+          cylAt(g2, 0.18, 0.22, 0.04, stoolX, fy2 + 0.02, stoolZ, M.dark, false, true, 14);
+        });
+        // Corner green & mustard waiting lounge + tall Ficus near closing suites (cx - 3.6, cz + 2.2)
+        const w2Grn = armchair(g2, spec.cx - 3.55, fy2, spec.cz + 2.1, Math.PI * 0.25, sagePartitionMat, M);
+        w2Grn.scale.set(0.74, 0.88, 0.74);
+        const w2Must = armchair(g2, spec.cx - 2.15, fy2, spec.cz + 2.1, -Math.PI * 0.25, mustardUpholstery, M);
+        w2Must.scale.set(0.74, 0.88, 0.74);
+        cylAt(g2, 0.36, 0.36, 0.04, spec.cx - 2.85, fy2 + 0.44, spec.cz + 2.45, M.oakDesk, true, true, 18);
+        plant(g2, spec.cx - 4.7, fy2, spec.cz + 2.45, 1.45, 999, M, 'ficus');
+      }
+
+      // =========================================================================
+      // TERRACRAFT LEVEL 3 (lv === 3): Executive Advisory, Material Slabs & Twin Boardrooms
+      // =========================================================================
+      const g3 = levelGroups[3];
+      if (g3) {
+        const fy3 = spec.groundY + 3 * spec.floorH + SLAB_THICK * 0.5;
+        const l3Fill = new THREE.PointLight(0xfff4e2, 1.2, 24);
+        l3Fill.position.set(spec.cx, fy3 + 3.1, spec.cz);
+        g3.add(l3Fill);
+        warmLights.push(l3Fill);
+
+        // 1. FLOORING LAYERS: Continuous warm oak promenade (avoiding stairwell void -12.25..-9.25 x -0.05..+3.75) + area rugs
+        boxAt(g3, 24.4, 0.018, 7.05, spec.cx, fy3 + 0.009, spec.cz - 4.875, floorWarmOak, false, true);
+        boxAt(g3, 21.35, 0.018, 5.6, spec.cx + 1.525, fy3 + 0.009, spec.cz + 1.45, floorWarmOak, false, true);
+        boxAt(g3, 24.4, 0.018, 4.7, spec.cx, fy3 + 0.009, spec.cz + 6.2, floorWarmOak, false, true);
+        // Textured carpet tile / area rugs under pods & lounge seating
+        boxAt(g3, 4.8, 0.02, 4.8, spec.cx + 9.1, fy3 + 0.014, spec.cz - 4.8, reCarpetMat, false, true);
+        boxAt(g3, 3.6, 0.02, 3.4, spec.cx + 3.3, fy3 + 0.014, spec.cz - 4.4, std({ color: 0xb4afa6, roughness: 0.96 }), false, true);
+        boxAt(g3, 3.4, 0.02, 3.1, spec.cx - 1.1, fy3 + 0.014, spec.cz - 4.2, std({ color: 0xbdb7ad, roughness: 0.96 }), false, true);
+
+        // 2. FAR LEFT (EAST WALL): Warm Timber Cladding, Twin Living Moss/Fern Strips & Large Architectural Villa Screen
+        const eastW3X = spec.cx + 12.42;
+        boxAt(g3, 0.14, 3.25, 9.6, eastW3X, fy3 + 1.625, spec.cz - 3.6, archMats.timberFin, true, true);
+        [-7.55, -1.65].forEach((gz) => {
+          boxAt(g3, 0.18, 3.15, 1.18, eastW3X - 0.04, fy3 + 1.58, spec.cz + gz, frameDarkMat, false, false);
+          boxAt(g3, 0.22, 2.98, 1.02, eastW3X - 0.08, fy3 + 1.58, spec.cz + gz, std({ color: 0x3b7a38, roughness: 0.88 }), false, false);
+        });
+        const l3VillaScreen = createCustomBoardScreen(screenReg, 512, 280, (g, w, h, t) => {
+          const sky = g.createLinearGradient(0, 0, 0, h * 0.58);
+          sky.addColorStop(0, '#385d8a');
+          sky.addColorStop(1, '#b8d4ea');
+          g.fillStyle = sky;
+          g.fillRect(0, 0, w, h);
+          g.fillStyle = '#4e7346';
+          g.fillRect(0, h * 0.58, w, h * 0.42);
+          g.fillStyle = '#f5f0e4';
+          g.fillRect(82, 84, 240, 108);
+          g.fillStyle = '#473628';
+          g.fillRect(68, 76, 268, 12);
+          g.fillRect(160, 128, 220, 10);
+          g.fillStyle = '#7dd3fc';
+          g.fillRect(104, 102, 86, 82);
+          g.fillRect(216, 144, 92, 46);
+          g.fillStyle = '#0ea5e9';
+          g.fillRect(110, h * 0.72, 210, 22);
+          g.fillStyle = 'rgba(15,23,42,0.86)';
+          g.fillRect(0, h - 42, w, 42);
+          g.fillStyle = '#e07a5f';
+          g.fillRect(0, h - 42, 7, 42);
+          g.fillStyle = '#ffffff';
+          g.font = '700 15px sans-serif';
+          g.textAlign = 'left';
+          g.textBaseline = 'middle';
+          g.fillText(`TERRACRAFT EXECUTIVE PORTFOLIO · PHASE ${Math.floor(t / 6) % 2 === 0 ? 'III' : 'IV'}`, 18, h - 21);
+        });
+        boxAt(g3, 0.08, 1.85, 3.35, eastW3X - 0.08, fy3 + 1.72, spec.cz - 4.6, frameDarkMat, false, false);
+        const l3ArtMesh = new THREE.Mesh(new THREE.PlaneGeometry(3.18, 1.7), l3VillaScreen.mat);
+        l3ArtMesh.position.set(eastW3X - 0.13, fy3 + 1.72, spec.cz - 4.6);
+        l3ArtMesh.rotation.y = -Math.PI / 2;
+        g3.add(l3ArtMesh);
+        l3VillaScreen.setMesh(l3ArtMesh);
+        plant(g3, spec.cx + 11.45, fy3, spec.cz - 7.75, 1.2, 1001, M, 'ficus');
+
+        // 3. FRONT-LEFT (EAST WING): 4-Seat Workstation Pod + Linear Pendant (cx + 9.1, cz - 4.8)
+        let l3MonIdx = 0;
+        const l3PodX = spec.cx + 9.1;
+        const l3PodZ = spec.cz - 4.8;
+        makeDeskAt(g3, l3PodX, fy3, l3PodZ, 2.8, 1.36, M);
+        boxAt(g3, 2.7, 0.28, 0.05, l3PodX, fy3 + 0.91, l3PodZ, M.dark, false, false);
+        boxAt(g3, 2.5, 0.06, 0.12, l3PodX, fy3 + 2.68, l3PodZ, M.dark, false, false);
+        boxAt(g3, 2.42, 0.02, 0.08, l3PodX, fy3 + 2.64, l3PodZ, new THREE.MeshBasicMaterial({ color: 0xfff3d6 }), false, false);
+        [-1.05, 1.05].forEach((ox) => {
+          cylAt(g3, 0.012, 0.012, 1.15, l3PodX + ox, fy3 + 3.26, l3PodZ, M.dark, false, false, 6);
+        });
+        registerChair(3, l3PodX - 0.68, fy3, l3PodZ - 1.05, 0, -1);
+        registerMonitor(
+          3,
+          l3MonIdx++,
+          [l3PodX - 0.68, fy3 + 0.77, l3PodZ - 0.25],
+          Math.PI,
+          l3PodX - 0.68,
+          l3PodZ - 1.05,
+          'Senior Acquisitions Manager · L3',
+          'Real Estate Investment Studio'
+        );
+        registerChair(3, l3PodX + 0.68, fy3, l3PodZ + 1.05, Math.PI, 1);
+        registerMonitor(
+          3,
+          l3MonIdx++,
+          [l3PodX + 0.68, fy3 + 0.77, l3PodZ + 0.25],
+          0,
+          l3PodX + 0.68,
+          l3PodZ + 1.05,
+          'Development Finance Lead · L3',
+          'Real Estate Investment Studio'
+        );
+        officeChair(g3, l3PodX + 0.68, fy3, l3PodZ - 1.05, 0, M);
+        monitor(g3, l3PodX + 0.68, fy3 + 0.77, l3PodZ - 0.25, true, Math.PI, M);
+        officeChair(g3, l3PodX - 0.68, fy3, l3PodZ + 1.05, Math.PI, M);
+        monitor(g3, l3PodX - 0.68, fy3 + 0.77, l3PodZ + 0.25, true, 0, M);
+
+        // 4. BACK-LEFT (SE): Managing Partner Closing Suite (dx +7.1..+12.3, dz +4.2..+8.55)
+        // Timber-trimmed side partition leaving open 1.35m doorway portal at dz +3.8..+5.15
+        boxAt(g3, 0.16, 2.9, 3.35, spec.cx + 7.1, fy3 + 1.45, spec.cz + 6.85, archMats.stuccoWhite, true, true, 0.02);
+        boxAt(g3, 0.18, 2.9, 0.14, spec.cx + 7.1, fy3 + 1.45, spec.cz + 5.15, M.oakDesk, true, false);
+        boxAt(g3, 0.18, 2.9, 0.14, spec.cx + 7.1, fy3 + 1.45, spec.cz + 3.85, M.oakDesk, true, false);
+        boxAt(g3, 0.18, 0.14, 1.44, spec.cx + 7.1, fy3 + 2.85, spec.cz + 4.5, M.oakDesk, false, false);
+        // Back wall recessed backlit architectural shelving flanking central oak panel
+        const execBackZ = spec.cz + 8.42;
+        boxAt(g3, 1.65, 2.85, 0.16, spec.cx + 9.7, fy3 + 1.425, execBackZ + 0.06, std({ color: 0xcbc2b4, roughness: 0.75 }), true, true);
+        [spec.cx + 8.15, spec.cx + 11.25].forEach((bx) => {
+          boxAt(g3, 1.35, 2.85, 0.44, bx, fy3 + 1.425, execBackZ - 0.08, M.oakDesk, true, true, 0.02);
+          [0.65, 1.32, 1.98, 2.55].forEach((sy) => {
+            boxAt(g3, 1.22, 0.04, 0.36, bx, fy3 + sy, execBackZ - 0.08, M.walnut, false, false);
+            boxAt(g3, 1.15, 0.025, 0.04, bx, fy3 + sy + 0.34, execBackZ - 0.2, new THREE.MeshBasicMaterial({ color: 0xffe4b5 }), false, false);
+          });
+        });
+        // Executive Walnut Desk + Linear Pendant + 2 Forest-Green Visitor Armchairs
+        makeDeskAt(g3, spec.cx + 9.7, fy3, spec.cz + 6.0, 2.5, 1.05, M);
+        boxAt(g3, 2.2, 0.05, 0.09, spec.cx + 9.7, fy3 + 2.68, spec.cz + 6.0, M.dark, false, false);
+        boxAt(g3, 2.1, 0.02, 0.05, spec.cx + 9.7, fy3 + 2.65, spec.cz + 6.0, new THREE.MeshBasicMaterial({ color: 0xfff3d6 }), false, false);
+        registerChair(3, spec.cx + 9.7, fy3, spec.cz + 6.95, Math.PI, -1);
+        registerMonitor(
+          3,
+          l3MonIdx++,
+          [spec.cx + 9.7, fy3 + 0.77, spec.cz + 6.12],
+          0,
+          spec.cx + 9.7,
+          spec.cz + 6.95,
+          'Managing Partner · L3',
+          'Executive Closing Suite'
+        );
+        const execVis1 = armchair(g3, spec.cx + 8.9, fy3, spec.cz + 4.78, 0, sagePartitionMat, M);
+        execVis1.scale.set(0.76, 0.9, 0.76);
+        const execVis2 = armchair(g3, spec.cx + 10.5, fy3, spec.cz + 4.78, 0, sagePartitionMat, M);
+        execVis2.scale.set(0.76, 0.9, 0.76);
+        plant(g3, spec.cx + 11.75, fy3, spec.cz + 4.25, 1.2, 1002, M, 'ficus');
+
+        // 5. CENTER-LEFT: Tall Book-Matched Marble, Oak & Stone Slab Feature Partition (cx + 3.4, cz + 1.15)
+        const slabWallX = spec.cx + 3.4;
+        const slabWallZ = spec.cz + 1.15;
+        boxAt(g3, 3.66, 2.86, 0.22, slabWallX, fy3 + 1.43, slabWallZ, frameDarkMat, true, true, 0.02);
+        // Panel 1 (East): Veined White Calacatta Marble Slab
+        boxAt(g3, 1.14, 2.7, 0.26, slabWallX + 1.18, fy3 + 1.43, slabWallZ, marbleCreamMat, false, true, 0.01);
+        // Panel 2 (Center): Tall Flamed Oak Timber Veneer Slab
+        boxAt(g3, 1.14, 2.7, 0.26, slabWallX, fy3 + 1.43, slabWallZ, woodCedarMat, false, true, 0.01);
+        // Panel 3 (West): Stacked Limestone Upper & Dark Slate Lower Architectural Slabs
+        boxAt(g3, 1.14, 1.32, 0.26, slabWallX - 1.18, fy3 + 2.1, slabWallZ, std({ color: 0xc9c3b8, roughness: 0.62 }), false, true, 0.01);
+        boxAt(g3, 1.14, 1.32, 0.26, slabWallX - 1.18, fy3 + 0.74, slabWallZ, std({ color: 0x4b5563, roughness: 0.56 }), false, true, 0.01);
+        plant(g3, slabWallX + 2.18, fy3, slabWallZ + 0.1, 1.25, 1003, M, 'ficus');
+        plant(g3, slabWallX - 2.18, fy3, slabWallZ + 0.1, 1.1, 1004, M, 'monst');
+
+        // 6. FOREGROUND CENTER-LEFT: 4 Cognac Leather Lounge Armchairs + Marble Coffee Table (cx + 3.3, cz - 4.4)
+        const l3ClubX = spec.cx + 3.3;
+        const l3ClubZ = spec.cz - 4.4;
+        cylAt(g3, 0.52, 0.52, 0.04, l3ClubX, fy3 + 0.42, l3ClubZ, marbleCreamMat, true, true, 22);
+        cylAt(g3, 0.08, 0.14, 0.4, l3ClubX, fy3 + 0.2, l3ClubZ, M.dark, false, true, 14);
+        [
+          [-1.05, -0.88, Math.PI * 0.24],
+          [1.05, -0.88, -Math.PI * 0.24],
+          [-1.05, 0.88, Math.PI * 0.76],
+          [1.05, 0.88, -Math.PI * 0.76],
+        ].forEach(([ox, oz, rot]) => {
+          const ch = armchair(g3, l3ClubX + ox, fy3, l3ClubZ + oz, rot, M.fabricCognac, M);
+          ch.scale.set(0.75, 0.88, 0.75);
+        });
+
+        // 7. BACK CENTER: Twin Glass-Fronted Executive Boardrooms (Boardroom 1 & Boardroom 2, dz +4.2..+8.6)
+        const brConfigs = [
+          { mx: spec.cx + 4.0, w: 5.2, rectangular: true },
+          { mx: spec.cx - 1.5, w: 5.5, rectangular: false },
+        ];
+        brConfigs.forEach((br, bi) => {
+          const mz = spec.cz + 6.4;
+          const frontZ = spec.cz + 4.2;
+          const halfW = br.w * 0.5;
+          const glassPaneW = (br.w - 1.5) * 0.5;
+          // Clear front glazing flanking open central doorway + oak transom framing
+          boxAt(g3, glassPaneW, 2.75, 0.06, br.mx - halfW + glassPaneW * 0.5, fy3 + 1.375, frontZ, vitrineGlass, false, false);
+          boxAt(g3, glassPaneW, 2.75, 0.06, br.mx + halfW - glassPaneW * 0.5, fy3 + 1.375, frontZ, vitrineGlass, false, false);
+          boxAt(g3, br.w, 0.14, 0.14, br.mx, fy3 + 2.75, frontZ, M.oakDesk, false, false);
+          boxAt(g3, br.w, 0.06, 0.12, br.mx, fy3 + 0.04, frontZ, archMats.bronzeMullion, false, false);
+          // Oak pilasters & side/center partition walls
+          boxAt(g3, 0.14, 2.78, 4.4, br.mx - halfW, fy3 + 1.39, mz, M.oakDesk, true, false);
+          if (bi === 0) {
+            boxAt(g3, 0.14, 2.78, 4.4, br.mx + halfW, fy3 + 1.39, mz, M.oakDesk, true, false);
+          }
+          // Acoustic fluted timber-slat rear wall + large presentation display
+          for (let sx = br.mx - halfW + 0.3; sx <= br.mx + halfW - 0.3; sx += 0.24) {
+            boxAt(g3, 0.07, 2.75, 0.06, sx, fy3 + 1.375, spec.cz + 8.56, archMats.timberFin, false, false);
+          }
+          boxAt(g3, 2.35, 1.32, 0.08, br.mx, fy3 + 1.72, spec.cz + 8.48, frameDarkMat, false, false);
+          const brTv = new THREE.Mesh(
+            new THREE.PlaneGeometry(2.2, 1.18),
+            bi === 0 ? boothScreen.mat : l3VillaScreen.mat
+          );
+          brTv.position.set(br.mx, fy3 + 1.72, spec.cz + 8.42);
+          brTv.rotation.y = Math.PI;
+          g3.add(brTv);
+
+          if (br.rectangular) {
+            makeDeskAt(g3, br.mx, fy3, mz, 3.1, 1.15, M);
+            [-1.05, 0, 1.05].forEach((ox) => {
+              officeChair(g3, br.mx + ox, fy3, mz - 0.92, 0, M);
+              officeChair(g3, br.mx + ox, fy3, mz + 0.92, Math.PI, M);
+            });
+          } else {
+            cylAt(g3, 1.0, 1.0, 0.055, br.mx, fy3 + 0.74, mz, M.walnut, true, true, 24);
+            cylAt(g3, 0.16, 0.22, 0.72, br.mx, fy3 + 0.36, mz, M.dark, true, true, 14);
+            [
+              [-1.2, 0, Math.PI / 2],
+              [1.2, 0, -Math.PI / 2],
+              [0, -1.2, 0],
+              [0, 1.2, Math.PI],
+            ].forEach(([cxo, czo, crot]) => {
+              officeChair(g3, br.mx + cxo, fy3, mz + czo, crot, M);
+            });
+          }
+          plant(g3, br.mx - halfW + 0.45, fy3, spec.cz + 4.85, 0.78, 1010 + bi, M, 'olive');
+        });
+        // Decorative oak planter pedestal between the two glazed boardrooms
+        boxAt(g3, 0.68, 0.72, 0.68, spec.cx + 1.25, fy3 + 0.36, spec.cz + 3.65, M.oakDesk, true, true, 0.02);
+        plant(g3, spec.cx + 1.25, fy3 + 0.7, spec.cz + 3.65, 0.82, 1014, M, 'ficus');
+
+        // 8. FOREGROUND CENTER: Coral Sofa + Teal Armchairs Collaboration Lounge (cx - 1.1, cz - 4.2)
+        const l3Coral = sofaWide(g3, spec.cx - 0.15, fy3, spec.cz - 4.2, -Math.PI / 2, coralUpholstery, M);
+        l3Coral.scale.set(0.78, 0.94, 0.86);
+        const l3Teal1 = armchair(g3, spec.cx - 2.05, fy3, spec.cz - 4.95, Math.PI * 0.28, tealUpholstery, M);
+        l3Teal1.scale.set(0.75, 0.88, 0.75);
+        const l3Teal2 = armchair(g3, spec.cx - 2.05, fy3, spec.cz - 3.45, Math.PI * 0.72, tealUpholstery, M);
+        l3Teal2.scale.set(0.75, 0.88, 0.75);
+        boxAt(g3, 0.82, 0.38, 1.18, spec.cx - 1.2, fy3 + 0.19, spec.cz - 4.2, M.oakDesk, true, true, 0.03);
+
+        // 9. FOREGROUND RIGHT: Oval Oak Deal Table + Swivel Chairs + Teal Accent Seat (cx - 5.9, cz - 4.6)
+        const ovalX = spec.cx - 5.9;
+        const ovalZ = spec.cz - 4.6;
+        cylAt(g3, 1.05, 1.05, 0.055, ovalX, fy3 + 0.74, ovalZ, M.oakDesk, true, true, 26);
+        cylAt(g3, 0.18, 0.24, 0.72, ovalX, fy3 + 0.36, ovalZ, M.oakDesk, true, true, 16);
+        registerChair(3, ovalX, fy3, ovalZ + 1.22, Math.PI, 1);
+        registerMonitor(
+          3,
+          l3MonIdx++,
+          [ovalX, fy3 + 0.77, ovalZ + 0.35],
+          0,
+          ovalX,
+          ovalZ + 1.22,
+          'Project Legal Counsel · L3',
+          'Advisory & Deal Table'
+        );
+        [
+          [-1.25, 0, Math.PI / 2],
+          [1.25, 0, -Math.PI / 2],
+          [0, -1.25, 0],
+        ].forEach(([cxo, czo, crot]) => {
+          officeChair(g3, ovalX + cxo, fy3, ovalZ + czo, crot, M);
+        });
+        // Foreground NW olive tree beside front curved glazing
+        plant(g3, spec.cx - 11.1, fy3, spec.cz - 6.8, 1.3, 1018, M, 'olive');
+
+        // 10. BACK-RIGHT (SW): Architectural Blueprint & Print Archive Counter + Espresso Station (south of stairwell)
+        const sw3X = spec.cx - 8.5;
+        boxAt(g3, 5.2, 0.92, 0.85, sw3X, fy3 + 0.46, spec.cz + 8.1, kitchenCabMat, true, true, 0.02);
+        boxAt(g3, 5.26, 0.06, 0.9, sw3X, fy3 + 0.94, spec.cz + 8.1, marbleCreamMat, false, true, 0.01);
+        boxAt(g3, 4.4, 0.08, 0.42, sw3X, fy3 + 1.98, spec.cz + 8.32, M.oakDesk, true, false, 0.015);
+        boxAt(g3, 0.82, 0.52, 0.56, sw3X - 1.4, fy3 + 1.23, spec.cz + 8.08, M.dark, true, false, 0.02);
+        makeDeskAt(g3, sw3X, fy3, spec.cz + 5.85, 2.4, 0.96, M);
+        plant(g3, spec.cx - 5.2, fy3, spec.cz + 4.95, 1.2, 1019, M, 'ficus');
+      }
+
+      // =========================================================================
+      // TERRACRAFT LEVEL 4 (lv === 4): Executive Boardroom, CEO Penthouse & Head Offices
+      // =========================================================================
+      const g4 = levelGroups[4];
+      if (g4) {
+        const fy4 = spec.groundY + 4 * spec.floorH + SLAB_THICK * 0.5;
+        const l4Fill = new THREE.PointLight(0xfff2dc, 1.28, 25);
+        l4Fill.position.set(spec.cx, fy4 + 3.15, spec.cz);
+        g4.add(l4Fill);
+        warmLights.push(l4Fill);
+
+        const walnutExecMat = std({ color: 0x4b3222, roughness: 0.44, metalness: 0.06 });
+        const woolCharcoalMat = std({ color: 0x3b4048, roughness: 0.94 });
+        const warmTaupeRugMat = std({ color: 0xb7afa3, roughness: 0.96 });
+        const darkSlateSlabMat = std({ color: 0x2f3640, roughness: 0.48, metalness: 0.08 });
+        const emeraldUpholstery = std({ color: 0x2e5e4e, roughness: 0.78 });
+
+        const addSuitePlaque = (parent: THREE.Object3D, title: string, x: number, y: number, z: number, rotY = 0) => {
+          const tex = makeCanvasTex(`re_l4_plaque_${title}`, 360, 76, (g, w, h) => {
+            g.fillStyle = '#141b24';
+            rr(g, 2, 2, w - 4, h - 4, 8);
+            g.fill();
+            g.strokeStyle = '#d4aa62';
+            g.lineWidth = 2.5;
+            rr(g, 5, 5, w - 10, h - 10, 6);
+            g.stroke();
+            g.fillStyle = '#d4aa62';
+            g.fillRect(16, 16, 6, h - 32);
+            g.fillStyle = '#f8fafc';
+            g.font = '800 20px "Plus Jakarta Sans", sans-serif';
+            g.textAlign = 'left';
+            g.textBaseline = 'middle';
+            g.fillText(title, 34, h * 0.5);
+          });
+          const mesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(1.42, 0.3),
+            new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false })
+          );
+          mesh.position.set(x, y, z);
+          mesh.rotation.y = rotY;
+          parent.add(mesh);
+        };
+
+        // 1. FLOORING LAYERS: Warm executive herringbone-oak promenade (strictly clearing stairwell void) + bespoke suite rugs
+        boxAt(g4, 24.4, 0.018, 7.05, spec.cx, fy4 + 0.009, spec.cz - 4.875, floorWarmOak, false, true);
+        boxAt(g4, 21.35, 0.018, 5.6, spec.cx + 1.525, fy4 + 0.009, spec.cz + 1.45, floorWarmOak, false, true);
+        boxAt(g4, 24.4, 0.018, 4.7, spec.cx, fy4 + 0.009, spec.cz + 6.2, floorWarmOak, false, true);
+        // Executive suite woven wool area rugs
+        boxAt(g4, 6.4, 0.02, 10.6, spec.cx + 7.4, fy4 + 0.014, spec.cz + 0.2, woolCharcoalMat, false, true);
+        boxAt(g4, 5.4, 0.02, 4.4, spec.cx - 1.15, fy4 + 0.014, spec.cz + 5.4, warmTaupeRugMat, false, true);
+        boxAt(g4, 3.6, 0.02, 3.2, spec.cx - 0.85, fy4 + 0.014, spec.cz - 1.6, warmTaupeRugMat, false, true);
+        boxAt(g4, 4.6, 0.02, 3.3, spec.cx - 8.5, fy4 + 0.014, spec.cz + 6.1, reCarpetMat, false, true);
+        boxAt(g4, 4.8, 0.02, 3.5, spec.cx - 8.7, fy4 + 0.014, spec.cz - 5.8, reCarpetMat, false, true);
+
+        let l4MonIdx = 0;
+
+        // 2. EAST HALF (dx +2.5..+12.3, dz -8.1..+8.4): GRAND 12-SEAT EXECUTIVE BOARDROOM
+        const brGlassX = spec.cx + 2.5;
+        // Glazed acoustic wall along dx = +2.5 with 1.8m wide open double-portal at dz = -2.2..-0.4
+        boxAt(g4, 0.08, 2.95, 4.2, brGlassX, fy4 + 1.475, spec.cz - 4.3, vitrineGlass, false, false);
+        boxAt(g4, 0.08, 2.95, 8.9, brGlassX, fy4 + 1.475, spec.cz + 4.05, vitrineGlass, false, false);
+        boxAt(g4, 0.14, 0.14, 15.0, brGlassX, fy4 + 2.95, spec.cz + 1.0, walnutExecMat, true, false);
+        boxAt(g4, 0.12, 0.06, 15.0, brGlassX, fy4 + 0.03, spec.cz + 1.0, archMats.bronzeMullion, false, false);
+        [-6.4, -2.2, -0.4, 2.2, 5.4, 8.5].forEach((mz) => {
+          boxAt(g4, 0.14, 2.96, 0.14, brGlassX, fy4 + 1.48, spec.cz + mz, walnutExecMat, true, false);
+        });
+        addSuitePlaque(g4, 'EXECUTIVE BOARDROOM', brGlassX - 0.1, fy4 + 2.66, spec.cz - 1.3, -Math.PI / 2);
+
+        // Acoustic fluted walnut south presentation wall + side credenza
+        const brCenterX = spec.cx + 7.4;
+        for (let sx = spec.cx + 3.0; sx <= spec.cx + 12.1; sx += 0.24) {
+          boxAt(g4, 0.08, 3.05, 0.07, sx, fy4 + 1.525, spec.cz + 8.52, archMats.timberFin, false, false);
+        }
+        boxAt(g4, 5.4, 0.82, 0.62, brCenterX, fy4 + 0.41, spec.cz + 8.02, walnutExecMat, true, true, 0.02);
+        boxAt(g4, 5.46, 0.05, 0.66, brCenterX, fy4 + 0.84, spec.cz + 8.02, marbleCreamMat, false, true, 0.01);
+
+        // Animated Executive Boardroom KPI & Portfolio Review Wall Screen
+        const l4BoardScreen = createCustomBoardScreen(screenReg, 640, 320, (g, w, h, t) => {
+          g.fillStyle = '#0b121e';
+          g.fillRect(0, 0, w, h);
+          g.fillStyle = '#182436';
+          g.fillRect(0, 0, w, 46);
+          g.fillStyle = '#d4aa62';
+          g.fillRect(0, 0, 10, 46);
+          g.fillStyle = '#ffffff';
+          g.font = '800 18px "Plus Jakarta Sans", sans-serif';
+          g.textAlign = 'left';
+          g.textBaseline = 'middle';
+          g.fillText('TERRACRAFT HOLDINGS · BOARD OF DIRECTORS BRIEFING', 24, 23);
+
+          const metrics = [
+            { lbl: 'AUM PORTFOLIO', val: 'KES 48.6B', sub: '+14.2% YoY', col: '#6fe3a1' },
+            { lbl: 'NET IRR TARGET', val: '22.8%', sub: 'Q4 Approved', col: '#38bdf8' },
+            { lbl: 'ACTIVE TOWERS', val: '9 Sites', sub: 'Nairobi & Coast', col: '#f59e0b' },
+          ];
+          metrics.forEach((m, mi) => {
+            const x = 24 + mi * 200;
+            g.fillStyle = '#131d2d';
+            rr(g, x, 64, 186, 86, 8);
+            g.fill();
+            g.fillStyle = '#94a3b8';
+            g.font = '600 12px sans-serif';
+            g.fillText(m.lbl, x + 14, 84);
+            g.fillStyle = '#ffffff';
+            g.font = '800 24px "Plus Jakarta Sans", sans-serif';
+            g.fillText(m.val, x + 14, 112);
+            g.fillStyle = m.col;
+            g.font = '700 12px sans-serif';
+            g.fillText(m.sub, x + 14, 136);
+          });
+
+          // Animated quarterly allocation bars
+          g.fillStyle = '#131d2d';
+          rr(g, 24, 166, w - 48, 132, 8);
+          g.fill();
+          const bars = [0.64, 0.82, 0.74, 0.94, 0.68, 0.88];
+          const labels = ['KAREN', 'WESTLANDS', 'KILIMANI', 'UPPER HILL', 'RUNDA', 'DIANI'];
+          const pulse = 0.04 * Math.sin(t * 1.4);
+          bars.forEach((b, bi) => {
+            const bx = 48 + bi * 92;
+            const bh = Math.round((b + (bi % 2 === 0 ? pulse : -pulse)) * 78);
+            g.fillStyle = bi === 3 ? '#d4aa62' : '#3b82f6';
+            rr(g, bx, 268 - bh, 52, bh, 4);
+            g.fill();
+            g.fillStyle = '#cbd5e1';
+            g.font = '600 11px sans-serif';
+            g.textAlign = 'center';
+            g.fillText(labels[bi], bx + 26, 284);
+          });
+        });
+        boxAt(g4, 4.3, 2.05, 0.09, brCenterX, fy4 + 1.98, spec.cz + 8.42, frameDarkMat, false, false);
+        const l4BoardTv = new THREE.Mesh(new THREE.PlaneGeometry(4.12, 1.9), l4BoardScreen.mat);
+        l4BoardTv.position.set(brCenterX, fy4 + 1.98, spec.cz + 8.36);
+        l4BoardTv.rotation.y = Math.PI;
+        g4.add(l4BoardTv);
+        l4BoardScreen.setMesh(l4BoardTv);
+
+        // Grand 12-Seat Walnut & Brass Executive Boardroom Table (2.9m wide x 7.0m long)
+        const brTableZ = spec.cz + 0.2;
+        boxAt(g4, 2.9, 0.08, 7.0, brCenterX, fy4 + 0.74, brTableZ, walnutExecMat, true, true, 0.04);
+        boxAt(g4, 0.28, 0.014, 5.8, brCenterX, fy4 + 0.785, brTableZ, M.brass, false, false, 0.005);
+        [-2.0, 2.0].forEach((pz) => {
+          cylAt(g4, 0.42, 0.56, 0.7, brCenterX, fy4 + 0.35, brTableZ + pz, archMats.bronzeMullion, true, true, 18);
+        });
+        // Twin suspended linear brass architectural chandeliers above the boardroom table
+        [-1.7, 1.7].forEach((pz) => {
+          boxAt(g4, 1.35, 0.055, 2.4, brCenterX, fy4 + 2.75, brTableZ + pz, M.brass, false, false);
+          boxAt(g4, 1.22, 0.025, 2.28, brCenterX, fy4 + 2.71, brTableZ + pz, new THREE.MeshBasicMaterial({ color: 0xfff3d6 }), false, false);
+          [
+            [-0.55, -1.0],
+            [0.55, -1.0],
+            [-0.55, 1.0],
+            [0.55, 1.0],
+          ].forEach(([rx, rz]) => {
+            cylAt(g4, 0.01, 0.01, 1.12, brCenterX + rx, fy4 + 3.31, brTableZ + pz + rz, M.dark, false, false, 6);
+          });
+        });
+
+        // Boardroom Seating: Registered Head Chairperson (North) & COO (West) + 10 Executive Board Chairs
+        registerChair(4, brCenterX, fy4, brTableZ - 4.05, 0, 1);
+        registerMonitor(
+          4,
+          l4MonIdx++,
+          [brCenterX, fy4 + 0.785, brTableZ - 3.05],
+          Math.PI,
+          brCenterX,
+          brTableZ - 4.05,
+          'Board Chairperson · L4',
+          'Executive Boardroom'
+        );
+        registerChair(4, brCenterX - 2.1, fy4, brTableZ - 1.4, Math.PI / 2, -1);
+        registerMonitor(
+          4,
+          l4MonIdx++,
+          [brCenterX - 1.15, fy4 + 0.785, brTableZ - 1.4],
+          -Math.PI / 2,
+          brCenterX - 2.1,
+          brTableZ - 1.4,
+          'Chief Operating Officer · L4',
+          'Executive Boardroom'
+        );
+        // Vice-Chair at South head + 4 more West chairs + 5 East chairs (12 total seats)
+        officeChair(g4, brCenterX, fy4, brTableZ + 4.05, Math.PI, M);
+        [-2.6, -0.2, 1.0, 2.2].forEach((czo) => {
+          officeChair(g4, brCenterX - 2.1, fy4, brTableZ + czo, Math.PI / 2, M);
+        });
+        [-2.6, -1.4, -0.2, 1.0, 2.2].forEach((czo) => {
+          officeChair(g4, brCenterX + 2.1, fy4, brTableZ + czo, -Math.PI / 2, M);
+        });
+        // Subtle brief pads & glass carafes along table
+        [-2.1, -0.6, 0.9, 2.3].forEach((tz) => {
+          boxAt(g4, 0.32, 0.016, 0.24, brCenterX - 0.95, fy4 + 0.79, brTableZ + tz, M.white, false, false);
+          boxAt(g4, 0.32, 0.016, 0.24, brCenterX + 0.95, fy4 + 0.79, brTableZ + tz, darkSlateSlabMat, false, false);
+        });
+        plant(g4, spec.cx + 11.4, fy4, spec.cz - 7.25, 1.35, 1101, M, 'olive');
+        plant(g4, spec.cx + 11.4, fy4, spec.cz + 7.1, 1.25, 1102, M, 'ficus');
+
+        // 3. BACK CENTER (dx -4.6..+2.3, dz +2.1..+8.4): CEO CORNER PENTHOUSE SUITE
+        const ceoCenterX = spec.cx - 1.15;
+        const ceoFrontZ = spec.cz + 2.1;
+        // Front glazed partition with open 1.4m oak portal at dx = -2.3..-0.9
+        boxAt(g4, 2.3, 2.95, 0.08, spec.cx - 3.45, fy4 + 1.475, ceoFrontZ, vitrineGlass, false, false);
+        boxAt(g4, 3.2, 2.95, 0.08, spec.cx + 0.7, fy4 + 1.475, ceoFrontZ, vitrineGlass, false, false);
+        boxAt(g4, 6.95, 0.14, 0.14, ceoCenterX, fy4 + 2.95, ceoFrontZ, walnutExecMat, true, false);
+        boxAt(g4, 6.95, 0.06, 0.12, ceoCenterX, fy4 + 0.03, ceoFrontZ, archMats.bronzeMullion, false, false);
+        [-4.6, -2.3, -0.9, 2.3].forEach((px) => {
+          boxAt(g4, 0.14, 2.96, 0.14, spec.cx + px, fy4 + 1.48, ceoFrontZ, walnutExecMat, true, false);
+        });
+        // West glass divider separating CEO suite from SW CFO Head Office
+        boxAt(g4, 0.08, 2.95, 6.4, spec.cx - 4.6, fy4 + 1.475, spec.cz + 5.3, vitrineGlass, false, false);
+        boxAt(g4, 0.14, 0.14, 6.4, spec.cx - 4.6, fy4 + 2.95, spec.cz + 5.3, walnutExecMat, true, false);
+        addSuitePlaque(g4, 'CEO PENTHOUSE SUITE', spec.cx + 0.55, fy4 + 2.66, ceoFrontZ - 0.09, Math.PI);
+
+        // CEO South feature wall: book-matched dark stone backdrop + recessed backlit walnut display shelves
+        const ceoBackZ = spec.cz + 8.44;
+        boxAt(g4, 2.25, 2.95, 0.16, ceoCenterX, fy4 + 1.475, ceoBackZ + 0.06, darkSlateSlabMat, true, true, 0.02);
+        boxAt(g4, 1.38, 0.42, 0.04, ceoCenterX, fy4 + 2.05, ceoBackZ - 0.03, M.brass, false, false, 0.01);
+        [spec.cx - 3.3, spec.cx + 1.0].forEach((bx) => {
+          boxAt(g4, 1.55, 2.9, 0.44, bx, fy4 + 1.45, ceoBackZ - 0.08, walnutExecMat, true, true, 0.02);
+          [0.65, 1.32, 1.98, 2.55].forEach((sy) => {
+            boxAt(g4, 1.4, 0.04, 0.36, bx, fy4 + sy, ceoBackZ - 0.08, M.oakDesk, false, false);
+            boxAt(g4, 1.32, 0.025, 0.04, bx, fy4 + sy + 0.33, ceoBackZ - 0.2, new THREE.MeshBasicMaterial({ color: 0xffe4b5 }), false, false);
+          });
+        });
+
+        // CEO Walnut & Brass L-Desk + Linear Pendant + Registered CEO Seat + Twin Guest Armchairs
+        makeDeskAt(g4, ceoCenterX, fy4, spec.cz + 5.75, 2.7, 1.1, M);
+        boxAt(g4, 0.86, 0.72, 1.5, spec.cx + 0.55, fy4 + 0.36, spec.cz + 6.45, walnutExecMat, true, true, 0.02);
+        boxAt(g4, 2.3, 0.05, 0.1, ceoCenterX, fy4 + 2.68, spec.cz + 5.75, M.brass, false, false);
+        boxAt(g4, 2.2, 0.02, 0.06, ceoCenterX, fy4 + 2.65, spec.cz + 5.75, new THREE.MeshBasicMaterial({ color: 0xfff3d6 }), false, false);
+        registerChair(4, ceoCenterX, fy4, spec.cz + 6.72, Math.PI, -1);
+        registerMonitor(
+          4,
+          l4MonIdx++,
+          [ceoCenterX, fy4 + 0.77, spec.cz + 5.88],
+          0,
+          ceoCenterX,
+          spec.cz + 6.72,
+          'Chief Executive Officer · L4',
+          'CEO Penthouse Suite'
+        );
+        const ceoGuest1 = armchair(g4, spec.cx - 1.85, fy4, spec.cz + 4.45, 0, M.fabricCognac, M);
+        ceoGuest1.scale.set(0.76, 0.9, 0.76);
+        const ceoGuest2 = armchair(g4, spec.cx - 0.45, fy4, spec.cz + 4.45, 0, M.fabricCognac, M);
+        ceoGuest2.scale.set(0.76, 0.9, 0.76);
+        const ceoRead = armchair(g4, spec.cx + 1.45, fy4, spec.cz + 4.3, -Math.PI * 0.45, emeraldUpholstery, M);
+        ceoRead.scale.set(0.75, 0.88, 0.75);
+        cylAt(g4, 0.32, 0.32, 0.04, spec.cx + 1.3, fy4 + 0.45, spec.cz + 3.45, marbleCreamMat, true, true, 16);
+        cylAt(g4, 0.06, 0.1, 0.43, spec.cx + 1.3, fy4 + 0.22, spec.cz + 3.45, M.brass, false, true, 12);
+        plant(g4, spec.cx + 1.65, fy4, spec.cz + 7.55, 1.2, 1103, M, 'ficus');
+
+        // 4. BACK-RIGHT / SW CORNER (dx -12.3..-4.6, dz +4.05..+8.4): HEAD OFFICE 1 (CFO & CAPITAL STRATEGY)
+        const cfoFrontZ = spec.cz + 4.05;
+        // Glazed partition with 1.5m open portal at dx = -8.1..-6.6
+        boxAt(g4, 4.18, 2.95, 0.08, spec.cx - 10.19, fy4 + 1.475, cfoFrontZ, vitrineGlass, false, false);
+        boxAt(g4, 2.0, 2.95, 0.08, spec.cx - 5.6, fy4 + 1.475, cfoFrontZ, vitrineGlass, false, false);
+        boxAt(g4, 7.68, 0.14, 0.14, spec.cx - 8.44, fy4 + 2.95, cfoFrontZ, walnutExecMat, true, false);
+        boxAt(g4, 7.68, 0.06, 0.12, spec.cx - 8.44, fy4 + 0.03, cfoFrontZ, archMats.bronzeMullion, false, false);
+        [-12.28, -8.1, -6.6].forEach((px) => {
+          boxAt(g4, 0.14, 2.96, 0.14, spec.cx + px, fy4 + 1.48, cfoFrontZ, walnutExecMat, true, false);
+        });
+        addSuitePlaque(g4, 'CFO · HEAD OF FINANCE', spec.cx - 10.1, fy4 + 2.66, cfoFrontZ - 0.09, Math.PI);
+
+        const cfoX = spec.cx - 8.5;
+        makeDeskAt(g4, cfoX, fy4, spec.cz + 6.3, 2.4, 1.05, M);
+        registerChair(4, cfoX, fy4, spec.cz + 7.22, Math.PI, 1);
+        registerMonitor(
+          4,
+          l4MonIdx++,
+          [cfoX, fy4 + 0.77, spec.cz + 6.38],
+          0,
+          cfoX,
+          spec.cz + 7.22,
+          'Chief Financial Officer · L4',
+          'CFO & Capital Strategy Office'
+        );
+        const cfoVis1 = armchair(g4, cfoX - 0.75, fy4, spec.cz + 5.05, 0, sagePartitionMat, M);
+        cfoVis1.scale.set(0.74, 0.88, 0.74);
+        const cfoVis2 = armchair(g4, cfoX + 0.75, fy4, spec.cz + 5.05, 0, sagePartitionMat, M);
+        cfoVis2.scale.set(0.74, 0.88, 0.74);
+        boxAt(g4, 3.8, 0.82, 0.56, cfoX, fy4 + 0.41, spec.cz + 8.24, walnutExecMat, true, true, 0.02);
+        boxAt(g4, 2.05, 1.15, 0.07, cfoX, fy4 + 1.82, spec.cz + 8.46, frameDarkMat, false, false);
+        const cfoTv = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 1.02), boothScreen.mat);
+        cfoTv.position.set(cfoX, fy4 + 1.82, spec.cz + 8.41);
+        cfoTv.rotation.y = Math.PI;
+        g4.add(cfoTv);
+        plant(g4, spec.cx - 11.45, fy4, spec.cz + 7.45, 1.15, 1104, M, 'ficus');
+
+        // 5. FRONT-RIGHT / NW CORNER (dx -12.3..-5.0, dz -8.2..-3.5): HEAD OFFICE 2 (HEAD OF DEVELOPMENTS & ARCHITECTURE)
+        const devFrontZ = spec.cz - 3.5;
+        const devEastX = spec.cx - 5.0;
+        // South glazed wall along dz = -3.5 with 1.4m open doorway at dx = -7.4..-6.0 (leaving 2.18m hallway north of stairwell!)
+        boxAt(g4, 4.9, 2.95, 0.08, spec.cx - 9.85, fy4 + 1.475, devFrontZ, vitrineGlass, false, false);
+        boxAt(g4, 1.0, 2.95, 0.08, spec.cx - 5.5, fy4 + 1.475, devFrontZ, vitrineGlass, false, false);
+        boxAt(g4, 7.36, 0.14, 0.14, spec.cx - 8.65, fy4 + 2.95, devFrontZ, walnutExecMat, true, false);
+        boxAt(g4, 7.36, 0.06, 0.12, spec.cx - 8.65, fy4 + 0.03, devFrontZ, archMats.bronzeMullion, false, false);
+        // East glazed wall along dx = -5.0
+        boxAt(g4, 0.08, 2.95, 4.7, devEastX, fy4 + 1.475, spec.cz - 5.85, vitrineGlass, false, false);
+        boxAt(g4, 0.14, 0.14, 4.7, devEastX, fy4 + 2.95, spec.cz - 5.85, walnutExecMat, true, false);
+        [-12.28, -7.4, -6.0, -5.0].forEach((px) => {
+          boxAt(g4, 0.14, 2.96, 0.14, spec.cx + px, fy4 + 1.48, devFrontZ, walnutExecMat, true, false);
+        });
+        addSuitePlaque(g4, 'HEAD OF DEVELOPMENTS', spec.cx - 9.8, fy4 + 2.66, devFrontZ + 0.09, 0);
+
+        const devX = spec.cx - 8.7;
+        makeDeskAt(g4, devX, fy4, spec.cz - 5.85, 2.5, 1.1, M);
+        registerChair(4, devX, fy4, spec.cz - 6.82, 0, -1);
+        registerMonitor(
+          4,
+          l4MonIdx++,
+          [devX, fy4 + 0.77, spec.cz - 5.95],
+          Math.PI,
+          devX,
+          spec.cz - 6.82,
+          'Head of Developments · L4',
+          'Developments & Architecture Office'
+        );
+        const devVis1 = armchair(g4, devX - 0.75, fy4, spec.cz - 4.6, Math.PI, tealUpholstery, M);
+        devVis1.scale.set(0.74, 0.88, 0.74);
+        const devVis2 = armchair(g4, devX + 0.75, fy4, spec.cz - 4.6, Math.PI, tealUpholstery, M);
+        devVis2.scale.set(0.74, 0.88, 0.74);
+        // West blueprint flat-file credenza with miniature illuminated tower maquette
+        boxAt(g4, 0.82, 0.82, 2.3, spec.cx - 11.55, fy4 + 0.41, spec.cz - 5.65, walnutExecMat, true, true, 0.02);
+        boxAt(g4, 0.45, 0.52, 0.45, spec.cx - 11.55, fy4 + 1.08, spec.cz - 5.65, marbleCreamMat, true, false, 0.02);
+        boxAt(g4, 0.28, 0.72, 0.28, spec.cx - 11.55, fy4 + 1.18, spec.cz - 6.3, M.brass, true, false, 0.015);
+        plant(g4, spec.cx - 11.45, fy4, spec.cz - 7.55, 1.2, 1105, M, 'olive');
+
+        // 6. CENTER EXECUTIVE CONCIERGE, VIP WAITING LOUNGE & ESPRESSO CREDENZA
+        // Executive Assistant Reception Desk
+        const eaX = spec.cx - 1.2;
+        const eaZ = spec.cz - 5.65;
+        makeDeskAt(g4, eaX, fy4, eaZ, 2.2, 0.92, M);
+        boxAt(g4, 2.24, 0.96, 0.14, eaX, fy4 + 0.48, eaZ + 0.48, marbleCreamMat, true, true, 0.02);
+        boxAt(g4, 2.0, 0.05, 0.1, eaX, fy4 + 2.68, eaZ, M.dark, false, false);
+        boxAt(g4, 1.9, 0.02, 0.06, eaX, fy4 + 2.65, eaZ, new THREE.MeshBasicMaterial({ color: 0xfff3d6 }), false, false);
+        registerChair(4, eaX, fy4, spec.cz - 6.55, 0, 1);
+        registerMonitor(
+          4,
+          l4MonIdx++,
+          [eaX, fy4 + 0.77, eaZ - 0.1],
+          Math.PI,
+          eaX,
+          spec.cz - 6.55,
+          'Executive Assistant to CEO · L4',
+          'C-Suite Reception'
+        );
+
+        // Center VIP Board Waiting Lounge (cx - 0.85, cz - 1.6)
+        const vipSofa = sofaWide(g4, spec.cx - 2.35, fy4, spec.cz - 1.6, Math.PI / 2, emeraldUpholstery, M);
+        vipSofa.scale.set(0.76, 0.92, 0.84);
+        cylAt(g4, 0.5, 0.5, 0.04, spec.cx - 0.85, fy4 + 0.41, spec.cz - 1.6, marbleCreamMat, true, true, 22);
+        cylAt(g4, 0.08, 0.14, 0.39, spec.cx - 0.85, fy4 + 0.2, spec.cz - 1.6, M.brass, false, true, 14);
+        const vipArm1 = armchair(g4, spec.cx + 0.45, fy4, spec.cz - 2.45, -Math.PI * 0.35, M.fabricCognac, M);
+        vipArm1.scale.set(0.75, 0.88, 0.75);
+        const vipArm2 = armchair(g4, spec.cx + 0.45, fy4, spec.cz - 0.75, -Math.PI * 0.65, M.fabricCognac, M);
+        vipArm2.scale.set(0.75, 0.88, 0.75);
+        plant(g4, spec.cx + 1.55, fy4, spec.cz + 1.2, 1.25, 1106, M, 'ficus');
+
+        // Executive Espresso & Refreshment Console flush along stairwell SE glass (strictly south of door swing)
+        boxAt(g4, 0.58, 0.92, 2.0, spec.cx - 8.75, fy4 + 0.46, spec.cz + 2.55, walnutExecMat, true, true, 0.02);
+        boxAt(g4, 0.62, 0.05, 2.04, spec.cx - 8.75, fy4 + 0.94, spec.cz + 2.55, marbleCreamMat, false, true, 0.01);
+        boxAt(g4, 0.42, 0.46, 0.62, spec.cx - 8.75, fy4 + 1.19, spec.cz + 2.35, M.dark, true, false, 0.02);
+        boxAt(g4, 0.34, 0.06, 1.8, spec.cx - 8.82, fy4 + 1.92, spec.cz + 2.55, M.oakDesk, true, false, 0.01);
+      }
+
+      // =========================================================================
+      // CONTINUOUS ARCHITECTURAL STAIRWELL CORE (G -> L4) WITH FRAMED DOORS ON ALL FLOORS
+      // =========================================================================
+      const stairXWest = spec.cx - 12.28;
+      const stairXEast = spec.cx - 9.18;
+      const stairXMid = spec.cx - 10.71;
+      const stairZNorth = spec.cz - 1.32;
+      const stairZSouth = spec.cz + 3.82;
+      const stairSpanW = stairXEast - stairXWest; // 3.10m
+      const stairSpanD = stairZSouth - stairZNorth; // 5.14m
+      const stairCenterX = (stairXWest + stairXEast) * 0.5;
+      const stairCenterZ = (stairZNorth + stairZSouth) * 0.5;
+      const stairZBridgeEnd = spec.cz - 0.05;
+      const stairZHalfStart = spec.cz + 2.55;
+
+      const addStairSignPlate = (parent: THREE.Object3D, label: string, x: number, y: number, z: number) => {
+        const tex = makeCanvasTex(`re_stair_sign_${label}`, 320, 84, (g, w, h) => {
+          g.fillStyle = '#182026';
+          rr(g, 2, 2, w - 4, h - 4, 10);
+          g.fill();
+          g.strokeStyle = '#c59b52';
+          g.lineWidth = 3;
+          rr(g, 5, 5, w - 10, h - 10, 8);
+          g.stroke();
+          g.fillStyle = '#e07a5f';
+          g.fillRect(16, 18, 8, h - 36);
+          g.fillStyle = '#f8fafc';
+          g.font = '800 22px "Plus Jakarta Sans", sans-serif';
+          g.textAlign = 'left';
+          g.textBaseline = 'middle';
+          g.fillText(label, 36, h * 0.5);
+        });
+        const signMesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(1.18, 0.31),
+          new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false })
+        );
+        signMesh.position.set(x, y, z);
+        signMesh.rotation.y = Math.PI / 2;
+        parent.add(signMesh);
+      };
+
+      const addStairBalustrade = (parent: THREE.Object3D, bx: number, bz: number, bw: number, bd: number, yBase: number, h = 1.04) => {
+        boxAt(parent, bw, h, bd, bx, yBase + h * 0.5, bz, vitrineGlass, false, false);
+        boxAt(
+          parent,
+          bw > bd ? bw + 0.04 : 0.06,
+          0.05,
+          bd > bw ? bd + 0.04 : 0.06,
+          bx,
+          yBase + h + 0.025,
+          bz,
+          archMats.bronzeMullion,
+          true,
+          false
+        );
+      };
+
+      const addSlopedRail = (parent: THREE.Object3D, x: number, y0: number, z0: number, y1: number, z1: number) => {
+        const p0 = new THREE.Vector3(x, y0 + 0.92, z0);
+        const p1 = new THREE.Vector3(x, y1 + 0.92, z1);
+        const len = p0.distanceTo(p1);
+        const dir = new THREE.Vector3().subVectors(p1, p0).normalize();
+        const mid = new THREE.Vector3().addVectors(p0, p1).multiplyScalar(0.5);
+        const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, len, 10), archMats.bronzeMullion);
+        rail.position.copy(mid);
+        rail.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+        parent.add(rail);
+        [0.15, 0.5, 0.85].forEach((t) => {
+          const py = THREE.MathUtils.lerp(y0, y1, t);
+          const pz = THREE.MathUtils.lerp(z0, z1, t);
+          cylAt(parent, 0.014, 0.014, 0.92, x, py + 0.46, pz, archMats.bronzeMullion, false, false, 8);
+        });
+      };
+
+      const stairSigns = ['STAIRS · G → L1', 'STAIRS · L1 ↔ L2', 'STAIRS · L2 ↔ L3', 'STAIRS · L3 ↔ L4', 'STAIRS · L4'];
+
+      for (let lv = 0; lv < spec.floors; lv++) {
+        const lgStair = levelGroups[lv];
+        if (!lgStair) continue;
+        const fyLv = spec.groundY + lv * spec.floorH + SLAB_THICK * 0.5;
+        const wallH = spec.floorH - SLAB_THICK - 0.04;
+
+        // 1. North vestibule landing finish & East threshold trim
+        boxAt(lgStair, 3.0, 0.018, 1.24, stairCenterX, fyLv + 0.009, spec.cz - 0.68, floorWarmOak, false, true);
+        boxAt(lgStair, 0.16, 0.018, 1.2, stairXEast, fyLv + 0.011, spec.cz - 0.62, M.brass, false, true);
+
+        // 2. Full-height glazed stairwell shaft enclosure (West, North, South + East south-of-doorway)
+        // West shaft glazing
+        boxAt(lgStair, 0.1, 0.18, stairSpanD, stairXWest, fyLv + 0.09, stairCenterZ, archMats.stuccoWhite, true, true);
+        boxAt(lgStair, 0.05, wallH - 0.24, stairSpanD, stairXWest, fyLv + 0.18 + (wallH - 0.24) * 0.5, stairCenterZ, vitrineGlass, false, false);
+        boxAt(lgStair, 0.12, 0.12, stairSpanD, stairXWest, fyLv + wallH - 0.02, stairCenterZ, archMats.bronzeMullion, false, false);
+        [stairZNorth, spec.cz + 1.25, stairZSouth].forEach((mz) => {
+          boxAt(lgStair, 0.1, wallH, 0.1, stairXWest, fyLv + wallH * 0.5, mz, archMats.bronzeMullion, true, false);
+        });
+
+        // North & South shaft glazing
+        [stairZNorth, stairZSouth].forEach((wz) => {
+          boxAt(lgStair, stairSpanW, 0.18, 0.1, stairCenterX, fyLv + 0.09, wz, archMats.stuccoWhite, true, true);
+          boxAt(lgStair, stairSpanW, wallH - 0.24, 0.05, stairCenterX, fyLv + 0.18 + (wallH - 0.24) * 0.5, wz, vitrineGlass, false, false);
+          boxAt(lgStair, stairSpanW, 0.12, 0.12, stairCenterX, fyLv + wallH - 0.02, wz, archMats.bronzeMullion, false, false);
+          boxAt(lgStair, 0.1, wallH, 0.1, stairXMid, fyLv + wallH * 0.5, wz, archMats.bronzeMullion, true, false);
+        });
+
+        // East shaft glass wall south of the doorway (dz = -0.02 .. +3.82 -> 3.84m)
+        const eastGlZ = spec.cz + 1.9;
+        const eastGlLen = 3.84;
+        boxAt(lgStair, 0.12, 0.36, eastGlLen, stairXEast, fyLv + 0.18, eastGlZ, archMats.stuccoWhite, true, true);
+        boxAt(lgStair, 0.05, wallH - 0.42, eastGlLen, stairXEast, fyLv + 0.36 + (wallH - 0.42) * 0.5, eastGlZ, vitrineGlass, false, false);
+        boxAt(lgStair, 0.12, 0.12, eastGlLen, stairXEast, fyLv + wallH - 0.02, eastGlZ, archMats.bronzeMullion, false, false);
+        boxAt(lgStair, 0.1, wallH, 0.1, stairXEast, fyLv + wallH * 0.5, spec.cz + 1.9, archMats.bronzeMullion, true, false);
+        boxAt(lgStair, 0.1, wallH, 0.1, stairXEast, fyLv + wallH * 0.5, stairZSouth, archMats.bronzeMullion, true, false);
+
+        // 3. DEDICATED FRAMED STAIRWELL DOOR & SWUNG-OPEN DOOR LEAF ON EVERY FLOOR (G, L1, L2, L3, L4)
+        const doorCenterZ = spec.cz - 0.62;
+        const doorH = 2.42;
+        // Oak & bronze portal jambs framing the 1.20m doorway + transom glass header
+        [spec.cz - 1.25, spec.cz + 0.01].forEach((jz) => {
+          boxAt(lgStair, 0.15, wallH, 0.11, stairXEast, fyLv + wallH * 0.5, jz, M.oakDesk, true, false, 0.01);
+        });
+        boxAt(lgStair, 0.15, 0.12, 1.36, stairXEast, fyLv + doorH + 0.06, doorCenterZ, archMats.bronzeMullion, true, false, 0.01);
+        const transomH = Math.max(0.3, wallH - doorH - 0.16);
+        boxAt(lgStair, 0.05, transomH, 1.18, stairXEast, fyLv + doorH + 0.12 + transomH * 0.5, doorCenterZ, vitrineGlass, false, false);
+        boxAt(lgStair, 0.13, 0.1, 1.32, stairXEast, fyLv + wallH - 0.02, doorCenterZ, archMats.bronzeMullion, false, false);
+
+        // Swung-open oak-stile & clear-glass stairwell door leaf (hinged at South jamb, swung out +X/+Z against glass wall)
+        const doorPivot = new THREE.Group();
+        doorPivot.position.set(stairXEast + 0.02, fyLv, spec.cz - 0.04);
+        doorPivot.rotation.y = -2.22;
+        // Oak frame stiles & rails
+        boxAt(doorPivot, 0.055, doorH - 0.04, 0.09, 0, (doorH - 0.04) * 0.5 + 0.02, -0.045, M.oakDesk, true, false);
+        boxAt(doorPivot, 0.055, doorH - 0.04, 0.09, 0, (doorH - 0.04) * 0.5 + 0.02, -1.08, M.oakDesk, true, false);
+        boxAt(doorPivot, 0.055, 0.14, 1.12, 0, 0.09, -0.56, M.oakDesk, true, false);
+        boxAt(doorPivot, 0.055, 0.12, 1.12, 0, doorH - 0.08, -0.56, M.oakDesk, true, false);
+        // Clear architectural vision pane
+        boxAt(doorPivot, 0.028, doorH - 0.3, 0.96, 0, doorH * 0.5, -0.56, vitrineGlass, false, false);
+        // Dual vertical brushed-brass tubular pull handles & bronze hydraulic door closer
+        cylAt(doorPivot, 0.014, 0.014, 0.86, -0.055, 1.15, -0.98, M.brass, false, false, 10);
+        cylAt(doorPivot, 0.014, 0.014, 0.86, 0.055, 1.15, -0.98, M.brass, false, false, 10);
+        boxAt(doorPivot, 0.08, 0.055, 0.24, 0, doorH - 0.12, -0.18, archMats.bronzeMullion, false, false, 0.01);
+        lgStair.add(doorPivot);
+
+        // Floor signage plaque mounted cleanly on the East transom header
+        addStairSignPlate(lgStair, stairSigns[lv] ?? `STAIRS · L${lv}`, stairXEast + 0.1, fyLv + doorH + 0.34, doorCenterZ);
+
+        // 4. CONTINUOUS TWO-FLIGHT OAK & BRONZE SWITCHBACK STAIRS (G->L1, L1->L2, L2->L3, L3->L4)
+        if (lv < spec.floors - 1) {
+          const steps = 8;
+          const runLen = stairZHalfStart - stairZBridgeEnd; // 2.60m
+          const stepDepth = runLen / steps;
+          const halfRise = spec.floorH * 0.5;
+          const stepRise = halfRise / steps;
+          const yMidLv = fyLv + halfRise;
+          const yTopLv = fyLv + spec.floorH;
+
+          // Flight 1 (West lane dx = -11.46, climbs Southward -0.05 -> +2.55)
+          for (let st = 0; st < steps; st++) {
+            const ty = fyLv + (st + 0.5) * stepRise;
+            const tz = stairZBridgeEnd + (st + 0.5) * stepDepth;
+            boxAt(lgStair, 1.32, stepRise, stepDepth + 0.03, spec.cx - 11.46, ty, tz, archMats.bronzeMullion, true, true, 0.008);
+            boxAt(lgStair, 1.35, 0.045, stepDepth + 0.04, spec.cx - 11.46, ty + stepRise * 0.5 + 0.01, tz, M.oakDesk, false, true, 0.008);
+            boxAt(lgStair, 1.35, 0.016, 0.035, spec.cx - 11.46, ty + stepRise * 0.5 + 0.028, tz - stepDepth * 0.45, M.brass, false, false);
+          }
+
+          // South Half Landing (y = fyLv + 2.10)
+          boxAt(lgStair, 2.94, 0.16, 1.22, stairCenterX, yMidLv - 0.07, spec.cz + 3.16, archMats.bronzeMullion, true, true, 0.015);
+          boxAt(lgStair, 2.9, 0.04, 1.18, stairCenterX, yMidLv + 0.02, spec.cz + 3.16, M.oakDesk, false, true, 0.01);
+
+          // Flight 2 (East lane dx = -9.96, climbs Northward +2.55 -> -0.05 up to floor lv + 1)
+          for (let st = 0; st < steps; st++) {
+            const ty = yMidLv + (st + 0.5) * stepRise;
+            const tz = stairZHalfStart - (st + 0.5) * stepDepth;
+            boxAt(lgStair, 1.32, stepRise * 0.55, stepDepth + 0.03, spec.cx - 9.96, ty + stepRise * 0.22, tz, archMats.bronzeMullion, true, true, 0.008);
+            boxAt(lgStair, 1.35, 0.045, stepDepth + 0.04, spec.cx - 9.96, ty + stepRise * 0.5 + 0.01, tz, M.oakDesk, false, true, 0.008);
+            boxAt(lgStair, 1.35, 0.016, 0.035, spec.cx - 9.96, ty + stepRise * 0.5 + 0.028, tz + stepDepth * 0.45, M.brass, false, false);
+          }
+
+          // Sloped bronze handrails on both flights
+          addSlopedRail(lgStair, spec.cx - 12.14, fyLv, stairZBridgeEnd, yMidLv, stairZHalfStart);
+          addSlopedRail(lgStair, spec.cx - 10.78, fyLv, stairZBridgeEnd, yMidLv, stairZHalfStart);
+          addSlopedRail(lgStair, spec.cx - 10.64, yMidLv, stairZHalfStart, yTopLv, stairZBridgeEnd);
+          addSlopedRail(lgStair, spec.cx - 9.28, yMidLv, stairZHalfStart, yTopLv, stairZBridgeEnd);
+        }
+
+        // 5. FLOOR-LEVEL SAFETY BALUSTRADES & GROUND-FLOOR UNDER-STAIR SCREEN
+        if (lv === 0) {
+          // Under-stair glazed feature barrier beneath Flight 2 so G visitors step cleanly up the West flight
+          addStairBalustrade(lgStair, spec.cx - 9.96, stairZBridgeEnd, 1.44, 0.06, fyLv, 1.45);
+          addStairBalustrade(lgStair, stairXMid, spec.cz + 1.25, 0.06, 2.6, fyLv, 1.04);
+        } else {
+          // Upper-floor guardrails flanking the open stairwell shaft cutout
+          addStairBalustrade(lgStair, stairXMid, spec.cz + 1.85, 0.06, 3.8, fyLv, 1.04);
+          addStairBalustrade(lgStair, spec.cx - 12.22, spec.cz + 1.85, 0.05, 3.8, fyLv, 1.04);
+          addStairBalustrade(lgStair, stairCenterX, spec.cz + 3.74, 2.94, 0.05, fyLv, 1.04);
+          if (lv === spec.floors - 1) {
+            // Top floor (L4) West-lane drop guardrail while leaving East arrival lane open for descending L4 -> L3
+            addStairBalustrade(lgStair, spec.cx - 11.46, stairZBridgeEnd, 1.46, 0.06, fyLv, 1.04);
+          }
+        }
+      }
     }
 
     // Architectural Rooftop Crowns (4 cohesive tropical-modern silhouettes replacing boxy flat roofs)

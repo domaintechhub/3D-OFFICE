@@ -2914,6 +2914,121 @@ export class AtriumSimulation {
       const t = Math.max(0, Math.min(1, (z - flightZEnd) / (flightZStart - flightZEnd)));
       return y0 + halfRise + t * halfRise + 0.02;
     }
+    const reSpec = DISTRICT_BUILDING_MAP.realestate;
+    if (
+      lv >= 0 &&
+      lv < reSpec.floors - 1 &&
+      x >= reSpec.cx - 12.24 &&
+      x <= reSpec.cx - 9.22 &&
+      z >= reSpec.cz - 0.05 &&
+      z <= reSpec.cz + 3.76
+    ) {
+      const y0 = reSpec.groundY + lv * reSpec.floorH + 0.12;
+      const halfRise = reSpec.floorH * 0.5;
+      const zStart = reSpec.cz - 0.05;
+      const zHalf = reSpec.cz + 2.55;
+      if (z >= zHalf) {
+        return y0 + halfRise + 0.04;
+      }
+      if (x <= reSpec.cx - 10.71) {
+        const t = Math.max(0, Math.min(1, (z - zStart) / (zHalf - zStart)));
+        return y0 + t * halfRise;
+      }
+      const t = Math.max(0, Math.min(1, (zHalf - z) / (zHalf - zStart)));
+      return y0 + halfRise + t * halfRise + 0.02;
+    }
+    const travelSpec = DISTRICT_BUILDING_MAP.travel;
+    if (
+      lv >= 0 &&
+      lv < travelSpec.floors - 1 &&
+      x >= travelSpec.cx + 10.25 &&
+      x <= travelSpec.cx + 13.28 &&
+      z >= travelSpec.cz - 0.05 &&
+      z <= travelSpec.cz + 3.76
+    ) {
+      const y0 = travelSpec.groundY + lv * travelSpec.floorH + 0.12;
+      const halfRise = travelSpec.floorH * 0.5;
+      const zStart = travelSpec.cz - 0.05;
+      const zHalf = travelSpec.cz + 2.55;
+      if (z >= zHalf) {
+        return y0 + halfRise + 0.04;
+      }
+      if (x >= travelSpec.cx + 11.75) {
+        const t = Math.max(0, Math.min(1, (z - zStart) / (zHalf - zStart)));
+        return y0 + t * halfRise;
+      }
+      const t = Math.max(0, Math.min(1, (zHalf - z) / (zHalf - zStart)));
+      return y0 + halfRise + t * halfRise + 0.02;
+    }
+    const tourismSpec = DISTRICT_BUILDING_MAP.tourism;
+    if (
+      lv >= 0 &&
+      lv < tourismSpec.floors - 1 &&
+      x >= tourismSpec.cx + 11.22 &&
+      x <= tourismSpec.cx + 14.28 &&
+      z >= tourismSpec.cz + 4.15 &&
+      z <= tourismSpec.cz + 7.95
+    ) {
+      const y0 = tourismSpec.groundY + lv * tourismSpec.floorH + 0.12;
+      const halfRise = tourismSpec.floorH * 0.5;
+      const zStart = tourismSpec.cz + 4.15;
+      const zHalf = tourismSpec.cz + 6.75;
+      if (z >= zHalf) {
+        return y0 + halfRise + 0.04;
+      }
+      if (x >= tourismSpec.cx + 12.75) {
+        const t = Math.max(0, Math.min(1, (z - zStart) / (zHalf - zStart)));
+        return y0 + t * halfRise;
+      }
+      const t = Math.max(0, Math.min(1, (zHalf - z) / (zHalf - zStart)));
+      return y0 + halfRise + t * halfRise + 0.02;
+    }
+    const logisticsSpec = DISTRICT_BUILDING_MAP.logistics;
+    if (
+      lv >= 0 &&
+      lv < logisticsSpec.floors - 1 &&
+      x >= logisticsSpec.cx - 14.32 &&
+      x <= logisticsSpec.cx - 11.28 &&
+      z >= logisticsSpec.cz + 4.15 &&
+      z <= logisticsSpec.cz + 7.95
+    ) {
+      const y0 = logisticsSpec.groundY + lv * logisticsSpec.floorH + 0.12;
+      const halfRise = logisticsSpec.floorH * 0.5;
+      const zStart = logisticsSpec.cz + 4.15;
+      const zHalf = logisticsSpec.cz + 6.75;
+      if (z >= zHalf) {
+        return y0 + halfRise + 0.04;
+      }
+      if (x <= logisticsSpec.cx - 12.8) {
+        const t = Math.max(0, Math.min(1, (z - zStart) / (zHalf - zStart)));
+        return y0 + t * halfRise;
+      }
+      const t = Math.max(0, Math.min(1, (zHalf - z) / (zHalf - zStart)));
+      return y0 + halfRise + t * halfRise + 0.02;
+    }
+    const restaurantSpec = DISTRICT_BUILDING_MAP.restaurant;
+    if (
+      lv >= 0 &&
+      lv < restaurantSpec.floors - 1 &&
+      x >= restaurantSpec.cx - 9.52 &&
+      x <= restaurantSpec.cx - 6.48 &&
+      z >= restaurantSpec.cz + 2.85 &&
+      z <= restaurantSpec.cz + 6.65
+    ) {
+      const y0 = restaurantSpec.groundY + lv * restaurantSpec.floorH + 0.12;
+      const halfRise = restaurantSpec.floorH * 0.5;
+      const zStart = restaurantSpec.cz + 2.85;
+      const zHalf = restaurantSpec.cz + 5.45;
+      if (z >= zHalf) {
+        return y0 + halfRise + 0.04;
+      }
+      if (x <= restaurantSpec.cx - 8.0) {
+        const t = Math.max(0, Math.min(1, (z - zStart) / (zHalf - zStart)));
+        return y0 + t * halfRise;
+      }
+      const t = Math.max(0, Math.min(1, (zHalf - z) / (zHalf - zStart)));
+      return y0 + halfRise + t * halfRise + 0.02;
+    }
     if (lv !== 0) {
       if (buildingId !== 'hub') {
         const spec = DISTRICT_BUILDING_MAP[buildingId];
@@ -6405,6 +6520,7 @@ export class AtriumSimulation {
         const res = resolveObstaclePosition(0, cx + dxSub, cz + dzSub, {
           radius: 0.38,
           districtWalk: true,
+          allowStairwell: true,
           extraVehicles,
         });
         cx = res.x;
@@ -6422,6 +6538,7 @@ export class AtriumSimulation {
       for (let s = 0; s < substeps; s++) {
         const res = resolveDistrictObstacle(this.walkBuildingId, this.walkFloor, cx + dxSub, cz + dzSub, {
           radius: 0.38,
+          allowStairwell: true,
         });
         cx = res.x;
         cz = res.z;
@@ -6441,6 +6558,91 @@ export class AtriumSimulation {
         }
       } else if (prevWalkZ > 7.85 && this.walkPos.z <= 7.85 && this.walkFloor > 0) {
         this.walkFloor--;
+      }
+    }
+
+    // Seamless G <-> L4 stairwell floor transitions inside Real Estate
+    const reSpecWalk = DISTRICT_BUILDING_MAP.realestate;
+    if (
+      (this.walkBuildingId === 'realestate' || this.walkFloor === 0) &&
+      this.walkPos.x >= reSpecWalk.cx - 10.71 &&
+      this.walkPos.x <= reSpecWalk.cx - 9.22
+    ) {
+      const bridgeZ = reSpecWalk.cz - 0.05;
+      if (prevWalkZ >= bridgeZ && this.walkPos.z < bridgeZ && this.walkFloor < reSpecWalk.floors - 1) {
+        this.walkFloor++;
+        this.walkBuildingId = 'realestate';
+      } else if (prevWalkZ < bridgeZ && this.walkPos.z >= bridgeZ && this.walkFloor > 0) {
+        this.walkFloor--;
+        this.walkBuildingId = 'realestate';
+      }
+    }
+
+    // Seamless G <-> L3 boarding stairwell floor transitions inside Skyline Travel & Aviation
+    const travelSpecWalk = DISTRICT_BUILDING_MAP.travel;
+    if (
+      (this.walkBuildingId === 'travel' || this.walkFloor === 0) &&
+      this.walkPos.x >= travelSpecWalk.cx + 10.25 &&
+      this.walkPos.x <= travelSpecWalk.cx + 11.75
+    ) {
+      const bridgeZ = travelSpecWalk.cz - 0.05;
+      if (prevWalkZ >= bridgeZ && this.walkPos.z < bridgeZ && this.walkFloor < travelSpecWalk.floors - 1) {
+        this.walkFloor++;
+        this.walkBuildingId = 'travel';
+      } else if (prevWalkZ < bridgeZ && this.walkPos.z >= bridgeZ && this.walkFloor > 0) {
+        this.walkFloor--;
+        this.walkBuildingId = 'travel';
+      }
+    }
+
+    // Seamless G <-> L3 acacia & bronze stairwell transitions inside Kenya Safari & Tourism
+    const tourismSpecWalk = DISTRICT_BUILDING_MAP.tourism;
+    if (
+      (this.walkBuildingId === 'tourism' || this.walkFloor === 0) &&
+      this.walkPos.x >= tourismSpecWalk.cx + 11.22 &&
+      this.walkPos.x <= tourismSpecWalk.cx + 12.75
+    ) {
+      const bridgeZ = tourismSpecWalk.cz + 4.15;
+      if (prevWalkZ >= bridgeZ && this.walkPos.z < bridgeZ && this.walkFloor < tourismSpecWalk.floors - 1) {
+        this.walkFloor++;
+        this.walkBuildingId = 'tourism';
+      } else if (prevWalkZ < bridgeZ && this.walkPos.z >= bridgeZ && this.walkFloor > 0) {
+        this.walkFloor--;
+        this.walkBuildingId = 'tourism';
+      }
+    }
+
+    // Seamless G <-> L3 SW steel-mesh stairwell transitions inside SwiftPort Cargo & Logistics
+    const logisticsSpecWalk = DISTRICT_BUILDING_MAP.logistics;
+    if (
+      (this.walkBuildingId === 'logistics' || this.walkFloor === 0) &&
+      this.walkPos.x >= logisticsSpecWalk.cx - 12.8 &&
+      this.walkPos.x <= logisticsSpecWalk.cx - 11.28
+    ) {
+      const bridgeZ = logisticsSpecWalk.cz + 4.15;
+      if (prevWalkZ >= bridgeZ && this.walkPos.z < bridgeZ && this.walkFloor < logisticsSpecWalk.floors - 1) {
+        this.walkFloor++;
+        this.walkBuildingId = 'logistics';
+      } else if (prevWalkZ < bridgeZ && this.walkPos.z >= bridgeZ && this.walkFloor > 0) {
+        this.walkFloor--;
+        this.walkBuildingId = 'logistics';
+      }
+    }
+
+    // Seamless G <-> L3 SW iron & copper stairwell transitions inside Savanna Bistro & Grill
+    const restaurantSpecWalk = DISTRICT_BUILDING_MAP.restaurant;
+    if (
+      (this.walkBuildingId === 'restaurant' || this.walkFloor === 0) &&
+      this.walkPos.x >= restaurantSpecWalk.cx - 8.0 &&
+      this.walkPos.x <= restaurantSpecWalk.cx - 6.48
+    ) {
+      const bridgeZ = restaurantSpecWalk.cz + 2.85;
+      if (prevWalkZ >= bridgeZ && this.walkPos.z < bridgeZ && this.walkFloor < restaurantSpecWalk.floors - 1) {
+        this.walkFloor++;
+        this.walkBuildingId = 'restaurant';
+      } else if (prevWalkZ < bridgeZ && this.walkPos.z >= bridgeZ && this.walkFloor > 0) {
+        this.walkFloor--;
+        this.walkBuildingId = 'restaurant';
       }
     }
 

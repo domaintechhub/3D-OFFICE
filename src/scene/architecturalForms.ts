@@ -425,6 +425,69 @@ export function getRoundedSlabGeo(
   return geo;
 }
 
+export function getRoundedSlabWithVoidsGeo(
+  w: number,
+  d: number,
+  r: number,
+  thick: number,
+  voids: ReadonlyArray<readonly [number, number, number, number]>,
+  bevel = 0.05
+): THREE.BufferGeometry {
+  const voidKey = voids.map((v) => v.map((n) => n.toFixed(2)).join(',')).join('|');
+  const key = `rslabvs_${w.toFixed(2)}_${d.toFixed(2)}_${r.toFixed(2)}_${thick.toFixed(2)}_${voidKey}`;
+  const cached = FORM_GEO_CACHE.get(key);
+  if (cached) return cached;
+
+  const b = Math.min(bevel, thick * 0.36);
+  const innerThick = Math.max(0.02, thick - b * 2);
+  const shape = makeRoundedRectShape(Math.max(0.4, w - b * 2), Math.max(0.4, d - b * 2), Math.max(0.1, r - b));
+
+  // RotateX(-PI/2) maps 2D (x, y) -> 3D (x, 0, -y), so shapeY = -worldZ
+  for (const [vx0, vx1, vz0, vz1] of voids) {
+    const hy0 = -vz1;
+    const hy1 = -vz0;
+    const hole = new THREE.Path();
+    // Clockwise winding in 2D shape space (outer makeRoundedRectShape is CCW)
+    hole.moveTo(vx0, hy0);
+    hole.lineTo(vx0, hy1);
+    hole.lineTo(vx1, hy1);
+    hole.lineTo(vx1, hy0);
+    hole.closePath();
+    shape.holes.push(hole);
+  }
+
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: innerThick,
+    bevelEnabled: b > 0.005,
+    bevelThickness: b,
+    bevelSize: b,
+    bevelSegments: 2,
+    curveSegments: 14,
+  });
+  geo.rotateX(-Math.PI / 2);
+  geo.translate(0, -innerThick * 0.5, 0);
+  FORM_GEO_CACHE.set(key, geo);
+  return geo;
+}
+
+/**
+ * Rounded-corner horizontal slab with a rectangular interior void cutout (e.g. double-height atrium/stairwell),
+ * centered at Y=0. Void bounds vx0..vx1 (X) and vz0..vz1 (Z) are in local slab space.
+ */
+export function getRoundedSlabWithVoidGeo(
+  w: number,
+  d: number,
+  r: number,
+  thick: number,
+  vx0: number,
+  vx1: number,
+  vz0: number,
+  vz1: number,
+  bevel = 0.05
+): THREE.BufferGeometry {
+  return getRoundedSlabWithVoidsGeo(w, d, r, thick, [[vx0, vx1, vz0, vz1]], bevel);
+}
+
 /**
  * Hollow rounded-corner wraparound balcony ribbon (keeps interior cutout open for stairwells & cutaway visibility).
  */

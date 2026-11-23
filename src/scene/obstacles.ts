@@ -12,6 +12,7 @@ export interface BoxObstacle {
   minZ: number;
   maxZ: number;
   liftDoorSide?: -1 | 1;
+  stairwellGate?: boolean;
 }
 
 export interface ObbObstacle {
@@ -59,6 +60,7 @@ export interface FloorColliderSet {
 
 export interface ResolveObstacleOptions {
   allowLiftShaft?: boolean;
+  allowStairwell?: boolean;
   radius?: number;
   ignoreChair?: TrackedChairCollider;
   pedestrianOnly?: boolean;
@@ -87,13 +89,22 @@ export function clearTrackedChairs() {
   DISTRICT_WALK_CACHE = null;
 }
 
-function addBox(list: BoxObstacle[], cx: number, cz: number, w: number, d: number, liftDoorSide?: -1 | 1) {
+function addBox(
+  list: BoxObstacle[],
+  cx: number,
+  cz: number,
+  w: number,
+  d: number,
+  liftDoorSide?: -1 | 1,
+  stairwellGate?: boolean
+) {
   list.push({
     minX: cx - w * 0.5,
     maxX: cx + w * 0.5,
     minZ: cz - d * 0.5,
     maxZ: cz + d * 0.5,
     liftDoorSide,
+    stairwellGate,
   });
 }
 
@@ -492,6 +503,9 @@ export function resolveObstaclePosition(
     for (let i = 0; i < col.boxes.length; i++) {
       const b = col.boxes[i];
       if (b.liftDoorSide !== undefined && options?.allowLiftShaft && nz >= 9.2 && nz <= 10.8) {
+        continue;
+      }
+      if (b.stairwellGate && options?.allowStairwell) {
         continue;
       }
       const exMinX = b.minX - r;
@@ -1055,21 +1069,23 @@ function populateDistrictBuildingGeometry(
 
   if (lv === 0) {
     if (spec.id === 'restaurant') {
+      // Wood-fired copper pizza hearth
+      circles.push({ x: spec.cx - 8.0, z: spec.cz - 7.0, r: 1.38 });
       // Kitchen pass counter
-      addBox(boxes, spec.cx - 2.2, spec.cz - 7.0, 9.8, 1.34);
-      // Brick pizza oven
-      circles.push({ x: spec.cx - 8.2, z: spec.cz - 7.8, r: 1.38 });
-      // Espresso & cocktail bar
-      addBox(boxes, spec.cx + 8.6, spec.cz - 2.2, 1.28, 6.84);
+      addBox(boxes, spec.cx - 1.4, spec.cz - 6.4, 7.04, 1.32);
+      // Espresso & cocktail bar + 3 bar stools
+      addBox(boxes, spec.cx + 7.8, spec.cz - 2.2, 1.38, 6.4);
+      [-4.0, -2.2, -0.4].forEach((bz) => circles.push({ x: spec.cx + 6.75, z: spec.cz + bz, r: 0.24 }));
       // 4 indoor dining tables
       circles.push(
-        { x: spec.cx - 5.2, z: spec.cz + 0.2, r: 0.75 },
-        { x: spec.cx + 2.6, z: spec.cz + 0.2, r: 0.75 },
-        { x: spec.cx - 5.2, z: spec.cz + 4.8, r: 0.75 },
-        { x: spec.cx + 2.6, z: spec.cz + 4.8, r: 0.75 }
+        { x: spec.cx - 3.6, z: spec.cz - 1.6, r: 0.72 },
+        { x: spec.cx + 2.2, z: spec.cz - 1.6, r: 0.72 },
+        { x: spec.cx - 3.6, z: spec.cz + 3.2, r: 0.72 },
+        { x: spec.cx + 2.2, z: spec.cz + 3.2, r: 0.72 },
+        { x: spec.cx + 8.6, z: spec.cz + 7.4, r: 0.45 }
       );
       // Host desk
-      addBox(boxes, spec.cx + 5.2, spec.cz + 6.4, 1.54, 0.9);
+      addBox(boxes, spec.cx + 4.8, spec.cz + 6.4, 1.54, 0.9);
       // Outdoor terrace bistro tables
       circles.push(
         { x: spec.cx - 5.2, z: spec.cz + 12.1, r: 0.58 },
@@ -1110,21 +1126,49 @@ function populateDistrictBuildingGeometry(
         [spec.cx + 6.6, spec.cz - 3.6],
       ].forEach(([px, pz]) => addBox(boxes, px, pz, 2.64, 1.14));
     } else if (spec.id === 'travel') {
-      // Rotating globe plinth
-      circles.push({ x: spec.cx, z: spec.cz - 2.0, r: 1.22 });
-      // Check-in counter
-      addBox(boxes, spec.cx - 6.8, spec.cz + 3.2, 8.8, 1.32);
-      // Terminal waiting sofas
-      addBox(boxes, spec.cx + 7.2, spec.cz + 1.5, 2.88, 1.14);
-      addBox(boxes, spec.cx + 7.2, spec.cz - 1.5, 2.88, 1.14);
+      // North compass-rose medallion globe plinth
+      circles.push({ x: spec.cx, z: spec.cz - 2.2, r: 1.12 });
+      // Aerodynamic curved-end ticketing & visa concierge island + rear luggage credenza
+      addBox(boxes, spec.cx - 7.7, spec.cz + 3.16, 8.9, 1.38);
+      addBox(boxes, spec.cx - 7.7, spec.cz + 7.9, 6.26, 0.72);
+      // 3 NW self-check-in kiosks
+      circles.push(
+        { x: spec.cx - 11.4, z: spec.cz - 5.2, r: 0.42 },
+        { x: spec.cx - 9.5, z: spec.cz - 5.9, r: 0.42 },
+        { x: spec.cx - 7.6, z: spec.cz - 6.3, r: 0.42 }
+      );
+      // East Wing: Executive Jet Scale Model pylon, charter sofas, coffee table & plants
+      circles.push(
+        { x: spec.cx + 6.4, z: spec.cz - 4.8, r: 1.28 },
+        { x: spec.cx + 6.2, z: spec.cz + 0.8, r: 0.54 },
+        { x: spec.cx + 8.6, z: spec.cz - 6.8, r: 0.46 },
+        { x: spec.cx + 8.6, z: spec.cz + 6.9, r: 0.46 }
+      );
+      addBox(boxes, spec.cx + 6.2, spec.cz + 2.2, 2.55, 0.96);
+      addBox(boxes, spec.cx + 6.2, spec.cz - 0.6, 2.55, 0.96);
+      // South cabin-window fuselage feature panels framing departures board
+      addBox(boxes, spec.cx - 8.6, spec.cz + 8.32, 5.24, 0.24);
+      addBox(boxes, spec.cx + 6.4, spec.cz + 8.32, 4.44, 0.24);
     } else if (spec.id === 'tourism') {
-      // Relief map table
-      addBox(boxes, spec.cx - 5.8, spec.cz - 0.8, 4.44, 2.84);
-      // Safari 4x4 Jeep plinth
-      circles.push({ x: spec.cx + 7.2, z: spec.cz - 1.0, r: 2.95 });
-      // 2 Safari planner desks
-      addBox(boxes, spec.cx - 5.5, spec.cz + 5.2, 2.54, 1.08);
-      addBox(boxes, spec.cx + 5.5, spec.cz + 5.2, 2.54, 1.08);
+      // Monumental 3D Topographical Kenya & Mt. Kenya Relief Table
+      addBox(boxes, spec.cx - 5.2, spec.cz - 1.2, 4.86, 2.86);
+      // Basalt 4x4 Expedition Cruiser plinth
+      circles.push({ x: spec.cx + 6.4, z: spec.cz - 2.8, r: 2.95 });
+      // West Bush Camp Lounge, Bronze Giraffe Sculpture, Terracotta Urns & SE Olive Plant
+      addBox(boxes, spec.cx - 12.6, spec.cz + 1.8, 0.96, 2.1);
+      circles.push(
+        { x: spec.cx - 11.8, z: spec.cz - 4.8, r: 0.68 },
+        { x: spec.cx - 11.2, z: spec.cz + 1.8, r: 0.58 },
+        { x: spec.cx - 10.2, z: spec.cz + 0.8, r: 0.46 },
+        { x: spec.cx - 10.2, z: spec.cz + 2.8, r: 0.46 },
+        { x: spec.cx - 13.6, z: spec.cz - 6.8, r: 0.36 },
+        { x: spec.cx - 13.6, z: spec.cz + 7.0, r: 0.36 },
+        { x: spec.cx + 8.6, z: spec.cz + 6.8, r: 0.46 }
+      );
+      // 3 South Acacia Safari Concierge Desks
+      [-5.2, -0.8, 3.6].forEach((ox) => {
+        addBox(boxes, spec.cx + ox, spec.cz + 5.2, 2.58, 1.08);
+      });
     } else if (spec.id === 'medical') {
       // Pharmacy counter & medicine racks
       addBox(boxes, spec.cx - 14.5, spec.cz - 2.2, 10.4, 1.3);
@@ -1139,34 +1183,923 @@ function populateDistrictBuildingGeometry(
       addBox(boxes, spec.cx + 6.5, spec.cz + 3.2, 1.18, 1.18);
     } else if (spec.id === 'logistics') {
       // Parcel sorting conveyor belt
-      addBox(boxes, spec.cx - 4.2, spec.cz + 1.2, 1.65, 9.8);
-      // West pallet storage racks
-      addBox(boxes, spec.cx - 12.2, spec.cz - 3.0, 2.8, 3.8);
-      addBox(boxes, spec.cx - 12.2, spec.cz + 3.2, 2.8, 3.8);
-      // Dispatch & Customs counter
-      addBox(boxes, spec.cx + 5.8, spec.cz + 2.5, 6.6, 1.32);
+      addBox(boxes, spec.cx - 4.2, spec.cz + 0.8, 1.65, 9.6);
+      // NW heavy pallet storage racks (strictly North of SW stairwell core)
+      addBox(boxes, spec.cx - 12.2, spec.cz - 4.8, 2.8, 3.6);
+      addBox(boxes, spec.cx - 12.2, spec.cz - 0.6, 2.8, 3.6);
+      // Electric cargo forklift staged near NE dock lane
+      addBox(boxes, spec.cx + 9.8, spec.cz - 5.2, 1.4, 2.2);
+      // 3-Station Dispatch & Customs counter
+      addBox(boxes, spec.cx + 5.8, spec.cz + 2.5, 7.8, 1.32);
       // East loading bay interior staging pallets
       addBox(boxes, spec.cx + 12.6, spec.cz - 3.5, 1.6, 1.7);
       addBox(boxes, spec.cx + 12.6, spec.cz + 3.5, 1.6, 1.7);
     } else if (spec.id === 'realestate') {
       // Outdoor West construction & material staging yard
       addBox(boxes, spec.cx - 16.2, spec.cz, 3.6, 7.4);
-      // 3D masterplan scale-model table
-      addBox(boxes, spec.cx - 6.8, spec.cz - 0.8, 4.34, 2.74);
-      // Real Estate Broker desk
-      addBox(boxes, spec.cx - 6.8, spec.cz + 5.2, 2.54, 1.08);
-      // Central bi-level reception desk
-      addBox(boxes, spec.cx + 0.2, spec.cz + 3.2, 4.9, 1.32);
-      // Reception lounge armchairs
-      addBox(boxes, spec.cx - 1.4, spec.cz - 2.6, 1.18, 1.18);
-      addBox(boxes, spec.cx + 1.8, spec.cz - 2.6, 1.18, 1.18);
-      // Construction CAD desk
-      addBox(boxes, spec.cx + 7.4, spec.cz + 5.2, 2.54, 1.08);
-      // Interior design material rack, sofa & coffee table
-      addBox(boxes, spec.cx + 7.4, spec.cz - 5.2, 3.66, 0.56);
-      addBox(boxes, spec.cx + 7.4, spec.cz - 1.6, 2.88, 1.14);
-      addBox(boxes, spec.cx + 7.4, spec.cz - 0.3, 1.64, 0.88);
+
+      // North exterior entrance canopy columns
+      circles.push(
+        { x: spec.doorX - 5.6, z: spec.doorZ - 2.45, r: 0.24 },
+        { x: spec.doorX + 5.6, z: spec.doorZ - 2.45, r: 0.24 }
+      );
+      // Four interior/storefront cylindrical corner columns
+      [-1, 1].forEach((side) => {
+        circles.push(
+          { x: spec.cx + side * 12.52, z: spec.cz - 8.47, r: 0.36 },
+          { x: spec.cx + side * 12.52, z: spec.cz + 8.53, r: 0.32 }
+        );
+      });
+
+      // NW corner lounge: 4 cognac leather armchairs + marble coffee table + corner plants
+      circles.push(
+        { x: spec.cx - 9.8, z: spec.cz - 6.7, r: 1.62 },
+        { x: spec.cx - 11.8, z: spec.cz - 7.8, r: 0.45 },
+        { x: spec.cx - 8.65, z: spec.cz - 2.15, r: 0.42 }
+      );
+
+      // Giant vertical LED property showcase screen along west entrance glass
+      addBox(boxes, spec.cx - 12.25, spec.cz - 3.6, 0.28, 4.16);
+
+      // Curved crescent marble reception counter (arc around recCx/recCz leaving SW chair bay open)
+      const recCx = spec.cx - 5.1;
+      const recCz = spec.cz - 4.8;
+      [-0.24, -0.05, 0.14, 0.33, 0.52, 0.69].forEach((angFrac) => {
+        const a = angFrac * Math.PI;
+        circles.push({
+          x: recCx + Math.cos(a) * 1.67,
+          z: recCz - Math.sin(a) * 1.67,
+          r: 0.38,
+        });
+      });
+      // Inner receptionist desk
+      addBox(boxes, recCx + 0.15, recCz - 0.18, 1.56, 0.66);
+
+      // Illuminated 3D masterplan scale-model vitrine
+      addBox(boxes, spec.cx - 0.25, spec.cz - 1.45, 3.45, 2.15);
+
+      // Sage-green client consultation booth (mustard + teal sofas, table, credenza/kiosk, plant)
+      addBox(boxes, spec.cx - 5.95, spec.cz + 2.2, 4.35, 0.22);
+      addBox(boxes, spec.cx - 7.4, spec.cz + 0.55, 0.9, 2.05);
+      addBox(boxes, spec.cx - 4.5, spec.cz + 0.55, 0.9, 2.05);
+      circles.push(
+        { x: spec.cx - 5.95, z: spec.cz + 0.55, r: 0.58 },
+        { x: spec.cx - 3.7, z: spec.cz + 2.25, r: 0.42 }
+      );
+      addBox(boxes, spec.cx - 3.82, spec.cz + 0.55, 0.76, 1.5);
+
+      // Central lounge (north/south sage dividers, coral sofa, armchairs, coffee table)
+      addBox(boxes, spec.cx + 3.2, spec.cz - 2.45, 3.05, 0.22);
+      addBox(boxes, spec.cx + 3.2, spec.cz + 2.15, 3.05, 0.22);
+      addBox(boxes, spec.cx + 4.15, spec.cz - 0.1, 0.92, 2.15);
+      addBox(boxes, spec.cx + 2.85, spec.cz - 0.1, 0.82, 1.15);
+      addBox(boxes, spec.cx + 2.75, spec.cz - 1.35, 0.95, 0.9);
+      addBox(boxes, spec.cx + 2.75, spec.cz + 1.15, 0.95, 0.9);
+
+      // East open-plan workstation wing: 3 pods, secondary pod chairs & 2 Ficus trees
+      [-5.4, -0.4, 5.0].forEach((pdz) => {
+        const px = spec.cx + 8.9;
+        const pz = spec.cz + pdz;
+        addBox(boxes, px, pz, 2.84, 1.4);
+        circles.push(
+          { x: px + 0.68, z: pz - 1.05, r: 0.34 },
+          { x: px - 0.68, z: pz + 1.05, r: 0.34 },
+          { x: px + 0.68, z: pz + 1.05, r: 0.34 }
+        );
+      });
+      circles.push(
+        { x: spec.cx + 5.6, z: spec.cz - 3.0, r: 0.52 },
+        { x: spec.cx + 5.6, z: spec.cz + 2.4, r: 0.52 }
+      );
+
+      // Two glass-fronted executive meeting rooms along south back wall
+      [spec.cx - 1.9, spec.cx + 2.7].forEach((mx, mi) => {
+        const mz = spec.cz + 6.4;
+        const frontZRoom = spec.cz + 4.2;
+        addBox(boxes, mx - 1.4, frontZRoom, 1.48, 0.14);
+        addBox(boxes, mx + 1.4, frontZRoom, 1.48, 0.14);
+        if (mi === 0) {
+          addBox(boxes, spec.cx + 0.4, mz, 0.16, 4.4);
+        }
+        addBox(boxes, mi === 0 ? spec.cx - 4.15 : spec.cx + 4.95, mz, 0.18, 4.4);
+        circles.push(
+          { x: mx, z: mz, r: 0.96 },
+          { x: mx - 1.12, z: mz, r: 0.32 },
+          { x: mx + 1.12, z: mz, r: 0.32 },
+          { x: mx, z: mz - 1.12, r: 0.32 },
+          { x: mx, z: mz + 1.12, r: 0.32 },
+          { x: mx - 1.65, z: spec.cz + 4.85, r: 0.36 }
+        );
+      });
+
+      // SW Coffee Bar & Marble Island + 4 bar stools
+      const barCx = spec.cx - 8.5;
+      addBox(boxes, barCx, spec.cz + 8.15, 7.25, 0.95);
+      addBox(boxes, barCx, spec.cz + 5.55, 3.72, 1.12);
+      [-1.1, -0.36, 0.36, 1.1].forEach((sx) => {
+        circles.push({ x: barCx + sx * 1.15, z: spec.cz + 4.6, r: 0.25 });
+      });
     }
+  } else if (spec.id === 'realestate' && lv === 1) {
+    // NW double-height atrium stairwell void boundary (keeps L1 actors out of empty stair shaft drop)
+    addBox(boxes, spec.cx - 6.35, spec.cz - 5.125, 11.6, 6.75);
+
+    // Front-Left & Center-Left 4-Seat Workstation Pods
+    [spec.cx + 8.9, spec.cx + 2.4].forEach((px) => {
+      const pz = spec.cz - 5.3;
+      addBox(boxes, px, pz, 2.84, 1.4);
+      circles.push(
+        { x: px + 0.68, z: pz - 1.05, r: 0.34 },
+        { x: px - 0.68, z: pz + 1.05, r: 0.34 },
+        { x: px + 0.68, z: pz + 1.05, r: 0.34 }
+      );
+    });
+    addBox(boxes, spec.cx + 2.3, spec.cz - 2.85, 3.24, 0.22);
+    circles.push(
+      { x: spec.cx + 5.15, z: spec.cz - 4.1, r: 0.45 },
+      { x: spec.cx + 5.15, z: spec.cz - 2.5, r: 0.45 },
+      { x: spec.cx + 5.15, z: spec.cz - 0.9, r: 0.45 }
+    );
+
+    // East wall credenza, bookcase & corner plant
+    addBox(boxes, spec.cx + 12.05, spec.cz - 4.8, 0.62, 3.24);
+    addBox(boxes, spec.cx + 12.05, spec.cz - 2.35, 0.62, 1.56);
+    circles.push({ x: spec.cx + 11.75, z: spec.cz - 7.8, r: 0.42 });
+
+    // Mid-Left Enclosed Glass Studio Pod
+    addBox(boxes, spec.cx + 9.0, spec.cz + 3.45, 6.74, 0.24);
+    addBox(boxes, spec.cx + 5.6, spec.cz - 1.1, 0.14, 1.24);
+    addBox(boxes, spec.cx + 5.6, spec.cz + 2.25, 0.14, 2.44);
+    addBox(boxes, spec.cx + 10.6, spec.cz - 1.7, 3.64, 0.14);
+    addBox(boxes, spec.cx + 9.2, spec.cz + 1.6, 2.24, 1.24);
+    addBox(boxes, spec.cx + 7.45, spec.cz - 0.55, 1.68, 0.82);
+    circles.push(
+      { x: spec.cx + 9.85, z: spec.cz + 0.55, r: 0.34 },
+      { x: spec.cx + 7.45, z: spec.cz - 1.28, r: 0.34 },
+      { x: spec.cx + 9.25, z: spec.cz - 0.45, r: 0.46 },
+      { x: spec.cx + 10.75, z: spec.cz - 0.45, r: 0.46 },
+      { x: spec.cx + 10.0, z: spec.cz - 0.78, r: 0.4 },
+      { x: spec.cx + 6.35, z: spec.cz + 2.55, r: 0.42 }
+    );
+
+    // Back-Left Executive Director Suite
+    addBox(boxes, spec.cx + 5.45, spec.cz + 7.0, 0.2, 3.28);
+    addBox(boxes, spec.cx + 6.95, spec.cz + 8.15, 1.6, 0.52);
+    addBox(boxes, spec.cx + 10.85, spec.cz + 8.15, 1.6, 0.52);
+    addBox(boxes, spec.cx + 8.9, spec.cz + 5.75, 2.54, 1.1);
+    addBox(boxes, spec.cx + 12.08, spec.cz + 6.1, 0.58, 2.44);
+    circles.push({ x: spec.cx + 11.7, z: spec.cz + 4.35, r: 0.46 });
+
+    // Center Collaborative Review Table & Tall Sage Divider
+    addBox(boxes, spec.cx + 2.25, spec.cz + 0.65, 3.6, 1.16);
+    addBox(boxes, spec.cx + 2.25, spec.cz + 3.15, 4.64, 0.24);
+    circles.push(
+      { x: spec.cx + 0.85, z: spec.cz - 0.35, r: 0.32 },
+      { x: spec.cx + 3.65, z: spec.cz - 0.35, r: 0.32 },
+      { x: spec.cx + 0.85, z: spec.cz + 1.65, r: 0.32 },
+      { x: spec.cx + 2.25, z: spec.cz + 1.65, r: 0.32 },
+      { x: spec.cx + 3.65, z: spec.cz + 1.65, r: 0.32 }
+    );
+
+    // Back Center Two Glass-Fronted Executive Meeting Rooms
+    [spec.cx - 1.9, spec.cx + 2.7].forEach((mx, mi) => {
+      const mz = spec.cz + 6.4;
+      const frontZRoom = spec.cz + 4.2;
+      addBox(boxes, mx - 1.4, frontZRoom, 1.48, 0.14);
+      addBox(boxes, mx + 1.4, frontZRoom, 1.48, 0.14);
+      if (mi === 0) {
+        addBox(boxes, spec.cx + 0.4, mz, 0.16, 4.4);
+      }
+      addBox(boxes, mi === 0 ? spec.cx - 4.15 : spec.cx + 4.95, mz, 0.18, 4.4);
+      circles.push(
+        { x: mx, z: mz, r: 0.96 },
+        { x: mx - 1.12, z: mz, r: 0.32 },
+        { x: mx + 1.12, z: mz, r: 0.32 },
+        { x: mx, z: mz - 1.12, r: 0.32 },
+        { x: mx, z: mz + 1.12, r: 0.32 },
+        { x: mx - 1.65, z: spec.cz + 4.85, r: 0.36 }
+      );
+    });
+
+    // Center-Right Collaboration Lounge & Bistro Nook
+    addBox(boxes, spec.cx - 2.45, spec.cz + 1.53, 2.15, 0.9);
+    addBox(boxes, spec.cx - 1.48, spec.cz + 0.7, 0.86, 1.72);
+    circles.push(
+      { x: spec.cx - 4.2, z: spec.cz + 0.5, r: 0.46 },
+      { x: spec.cx - 3.0, z: spec.cz + 0.65, r: 0.58 },
+      { x: spec.cx - 3.0, z: spec.cz + 2.95, r: 0.42 },
+      { x: spec.cx - 3.88, z: spec.cz + 2.95, r: 0.44 },
+      { x: spec.cx - 2.12, z: spec.cz + 2.95, r: 0.44 }
+    );
+
+    // SW Kitchenette, L-Peninsula, Bar Stools & West Corner Lounge
+    addBox(boxes, spec.cx - 8.5, spec.cz + 8.15, 5.48, 0.96);
+    addBox(boxes, spec.cx - 6.05, spec.cz + 6.05, 1.16, 3.78);
+    [4.55, 5.3, 6.05, 6.8].forEach((szOff) => {
+      circles.push({ x: spec.cx - 5.15, z: spec.cz + szOff, r: 0.25 });
+    });
+    circles.push(
+      { x: spec.cx - 11.1, z: spec.cz + 4.45, r: 0.46 },
+      { x: spec.cx - 11.1, z: spec.cz + 6.25, r: 0.46 },
+      { x: spec.cx - 11.1, z: spec.cz + 5.35, r: 0.4 },
+      { x: spec.cx - 8.45, z: spec.cz + 3.25, r: 0.48 }
+    );
+  } else if (spec.id === 'realestate' && lv === 2) {
+    // Dual VR Experience Pods (cx + 10.95, cz - 6.35 / -4.15)
+    circles.push(
+      { x: spec.cx + 10.95, z: spec.cz - 6.35, r: 0.86 },
+      { x: spec.cx + 10.95, z: spec.cz - 4.15, r: 0.86 }
+    );
+
+    // Two Angled Interactive Touchscreen Masterplan Kiosks (cx + 7.25, cz - 6.4 / -4.2)
+    circles.push(
+      { x: spec.cx + 7.25, z: spec.cz - 6.4, r: 0.52 },
+      { x: spec.cx + 7.25, z: spec.cz - 4.2, r: 0.52 }
+    );
+
+    // Material Atelier Racks + Specifier Desk between Racks
+    addBox(boxes, spec.cx + 9.4, spec.cz - 1.85, 2.84, 0.62);
+    addBox(boxes, spec.cx + 9.4, spec.cz + 2.05, 2.88, 0.34);
+    addBox(boxes, spec.cx + 9.5, spec.cz + 0.15, 1.78, 0.86);
+
+    // Back-Left 4-Seat Styling Pod + Corner Ficus
+    addBox(boxes, spec.cx + 8.9, spec.cz + 5.55, 2.84, 1.4);
+    circles.push(
+      { x: spec.cx + 9.58, z: spec.cz + 4.5, r: 0.34 },
+      { x: spec.cx + 8.22, z: spec.cz + 6.6, r: 0.34 },
+      { x: spec.cx + 5.7, z: spec.cz + 6.95, r: 0.48 }
+    );
+
+    // Front-Center-Left High-Rise Towers 3D Vitrine
+    addBox(boxes, spec.cx + 3.1, spec.cz - 5.55, 3.45, 2.15);
+
+    // Center Lounge + Tiered Tile/Wood Rack + Sage Dividers + Ficus
+    addBox(boxes, spec.cx + 3.2, spec.cz - 2.65, 2.88, 0.62);
+    addBox(boxes, spec.cx + 3.2, spec.cz - 2.25, 3.1, 0.22);
+    addBox(boxes, spec.cx + 3.2, spec.cz + 2.2, 3.14, 0.22);
+    addBox(boxes, spec.cx + 4.15, spec.cz - 0.1, 0.92, 2.15);
+    addBox(boxes, spec.cx + 2.85, spec.cz - 0.1, 0.82, 1.15);
+    addBox(boxes, spec.cx + 2.75, spec.cz - 1.2, 0.92, 0.9);
+    addBox(boxes, spec.cx + 2.75, spec.cz + 1.05, 0.92, 0.9);
+    circles.push({ x: spec.cx + 5.75, z: spec.cz - 1.15, r: 0.52 });
+
+    // Center-Right Horizontal 3D Masterplan Vitrine + Model Concierge Desk
+    addBox(boxes, spec.cx - 2.3, spec.cz - 0.85, 3.55, 2.2);
+    addBox(boxes, spec.cx - 2.3, spec.cz - 3.05, 1.78, 0.82);
+
+    // Front-Right Consultation Booth & Explorer Kiosk
+    addBox(boxes, spec.cx - 7.6, spec.cz - 3.7, 5.45, 0.22);
+    addBox(boxes, spec.cx - 9.35, spec.cz - 5.45, 0.9, 2.05);
+    addBox(boxes, spec.cx - 5.85, spec.cz - 5.45, 0.9, 2.05);
+    addBox(boxes, spec.cx - 4.7, spec.cz - 5.45, 0.72, 1.5);
+    circles.push(
+      { x: spec.cx - 7.6, z: spec.cz - 5.45, r: 0.58 },
+      { x: spec.cx - 4.65, z: spec.cz - 3.67, r: 0.42 }
+    );
+
+    // Back Center Two Executive Closing Meeting Rooms
+    [spec.cx - 1.9, spec.cx + 2.7].forEach((mx, mi) => {
+      const mz = spec.cz + 6.4;
+      const frontZRoom = spec.cz + 4.2;
+      addBox(boxes, mx - 1.4, frontZRoom, 1.48, 0.14);
+      addBox(boxes, mx + 1.4, frontZRoom, 1.48, 0.14);
+      if (mi === 0) {
+        addBox(boxes, spec.cx + 0.4, mz, 0.16, 4.4);
+      }
+      addBox(boxes, mi === 0 ? spec.cx - 4.15 : spec.cx + 4.95, mz, 0.18, 4.4);
+      circles.push(
+        { x: mx, z: mz, r: 0.96 },
+        { x: mx - 1.12, z: mz, r: 0.32 },
+        { x: mx + 1.12, z: mz, r: 0.32 },
+        { x: mx, z: mz - 1.12, r: 0.32 },
+        { x: mx, z: mz + 1.12, r: 0.32 },
+        { x: mx - 1.65, z: spec.cz + 4.85, r: 0.36 }
+      );
+    });
+
+    // Back-Right Refreshment Bar, Stools & Waiting Corner
+    addBox(boxes, spec.cx - 7.8, spec.cz + 8.15, 6.2, 0.96);
+    addBox(boxes, spec.cx - 8.5, spec.cz + 5.55, 3.54, 1.12);
+    [-1.0, -0.32, 0.32, 1.0].forEach((sx) => {
+      circles.push({ x: spec.cx - 8.5 + sx * 1.1, z: spec.cz + 4.65, r: 0.25 });
+    });
+    circles.push(
+      { x: spec.cx - 3.55, z: spec.cz + 2.1, r: 0.46 },
+      { x: spec.cx - 2.15, z: spec.cz + 2.1, r: 0.46 },
+      { x: spec.cx - 2.85, z: spec.cz + 2.45, r: 0.4 },
+      { x: spec.cx - 4.7, z: spec.cz + 2.45, r: 0.52 }
+    );
+  } else if (spec.id === 'realestate' && lv === 3) {
+    // East wall foreground ficus
+    circles.push({ x: spec.cx + 11.45, z: spec.cz - 7.75, r: 0.45 });
+
+    // Front-Left (East Wing) 4-Seat Workstation Pod + secondary chairs
+    addBox(boxes, spec.cx + 9.1, spec.cz - 4.8, 2.84, 1.4);
+    circles.push(
+      { x: spec.cx + 9.78, z: spec.cz - 5.85, r: 0.34 },
+      { x: spec.cx + 8.42, z: spec.cz - 3.75, r: 0.34 }
+    );
+
+    // Back-Left (SE) Managing Partner Closing Suite
+    addBox(boxes, spec.cx + 7.1, spec.cz + 6.85, 0.22, 3.45);
+    addBox(boxes, spec.cx + 8.15, spec.cz + 8.34, 1.38, 0.5);
+    addBox(boxes, spec.cx + 11.25, spec.cz + 8.34, 1.38, 0.5);
+    addBox(boxes, spec.cx + 9.7, spec.cz + 6.0, 2.54, 1.1);
+    circles.push(
+      { x: spec.cx + 8.9, z: spec.cz + 4.78, r: 0.48 },
+      { x: spec.cx + 10.5, z: spec.cz + 4.78, r: 0.48 },
+      { x: spec.cx + 11.75, z: spec.cz + 4.25, r: 0.46 }
+    );
+
+    // Center-Left Marble/Oak/Stone Slab Feature Partition & Flanking Plants
+    addBox(boxes, spec.cx + 3.4, spec.cz + 1.15, 3.7, 0.32);
+    circles.push(
+      { x: spec.cx + 5.58, z: spec.cz + 1.25, r: 0.46 },
+      { x: spec.cx + 1.22, z: spec.cz + 1.25, r: 0.44 }
+    );
+
+    // Foreground Center-Left Cognac Club Lounge (Table + 4 Armchairs)
+    circles.push(
+      { x: spec.cx + 3.3, z: spec.cz - 4.4, r: 0.56 },
+      { x: spec.cx + 3.3 - 1.05, z: spec.cz - 4.4 - 0.88, r: 0.46 },
+      { x: spec.cx + 3.3 + 1.05, z: spec.cz - 4.4 - 0.88, r: 0.46 },
+      { x: spec.cx + 3.3 - 1.05, z: spec.cz - 4.4 + 0.88, r: 0.46 },
+      { x: spec.cx + 3.3 + 1.05, z: spec.cz - 4.4 + 0.88, r: 0.46 }
+    );
+
+    // Back Center Twin Glass-Fronted Executive Boardrooms
+    [
+      { mx: spec.cx + 4.0, w: 5.2, rectangular: true },
+      { mx: spec.cx - 1.5, w: 5.5, rectangular: false },
+    ].forEach((br, bi) => {
+      const mz = spec.cz + 6.4;
+      const frontZRoom = spec.cz + 4.2;
+      const halfW = br.w * 0.5;
+      const glassPaneW = (br.w - 1.5) * 0.5;
+      addBox(boxes, br.mx - halfW + glassPaneW * 0.5, frontZRoom, glassPaneW + 0.08, 0.14);
+      addBox(boxes, br.mx + halfW - glassPaneW * 0.5, frontZRoom, glassPaneW + 0.08, 0.14);
+      addBox(boxes, br.mx - halfW, mz, 0.18, 4.44);
+      if (bi === 0) {
+        addBox(boxes, br.mx + halfW, mz, 0.18, 4.44);
+      }
+      if (br.rectangular) {
+        addBox(boxes, br.mx, mz, 3.14, 1.2);
+        [-1.05, 0, 1.05].forEach((ox) => {
+          circles.push(
+            { x: br.mx + ox, z: mz - 0.92, r: 0.34 },
+            { x: br.mx + ox, z: mz + 0.92, r: 0.34 }
+          );
+        });
+      } else {
+        circles.push(
+          { x: br.mx, z: mz, r: 1.04 },
+          { x: br.mx - 1.2, z: mz, r: 0.34 },
+          { x: br.mx + 1.2, z: mz, r: 0.34 },
+          { x: br.mx, z: mz - 1.2, r: 0.34 },
+          { x: br.mx, z: mz + 1.2, r: 0.34 }
+        );
+      }
+      circles.push({ x: br.mx - halfW + 0.45, z: spec.cz + 4.85, r: 0.38 });
+    });
+    // Divider pedestal planter between boardrooms
+    addBox(boxes, spec.cx + 1.25, spec.cz + 3.65, 0.72, 0.72);
+
+    // Foreground Center Coral Sofa + Teal Armchairs Collaboration Lounge
+    addBox(boxes, spec.cx - 0.15, spec.cz - 4.2, 0.92, 2.15);
+    addBox(boxes, spec.cx - 1.2, spec.cz - 4.2, 0.86, 1.22);
+    circles.push(
+      { x: spec.cx - 2.05, z: spec.cz - 4.95, r: 0.46 },
+      { x: spec.cx - 2.05, z: spec.cz - 3.45, r: 0.46 }
+    );
+
+    // Foreground Right Oval Deal Table + Non-Registered Swivel Chairs + NW Olive Tree
+    circles.push(
+      { x: spec.cx - 5.9, z: spec.cz - 4.6, r: 1.08 },
+      { x: spec.cx - 5.9 - 1.25, z: spec.cz - 4.6, r: 0.34 },
+      { x: spec.cx - 5.9 + 1.25, z: spec.cz - 4.6, r: 0.34 },
+      { x: spec.cx - 5.9, z: spec.cz - 4.6 - 1.25, r: 0.34 },
+      { x: spec.cx - 11.1, z: spec.cz - 6.8, r: 0.46 }
+    );
+
+    // Back-Right (SW) Architectural Blueprint/Print & Espresso Counter
+    addBox(boxes, spec.cx - 8.5, spec.cz + 8.1, 5.26, 0.92);
+    addBox(boxes, spec.cx - 8.5, spec.cz + 5.85, 2.44, 1.0);
+    circles.push({ x: spec.cx - 5.2, z: spec.cz + 4.95, r: 0.46 });
+  } else if (spec.id === 'realestate' && lv === 4) {
+    // East Half: Grand 12-Seat Executive Boardroom
+    addBox(boxes, spec.cx + 2.5, spec.cz - 4.3, 0.16, 4.24);
+    addBox(boxes, spec.cx + 2.5, spec.cz + 4.05, 0.16, 8.94);
+    addBox(boxes, spec.cx + 7.4, spec.cz + 8.02, 5.46, 0.68);
+    addBox(boxes, spec.cx + 7.4, spec.cz + 0.2, 2.94, 7.04);
+    const brTableZ = spec.cz + 0.2;
+    circles.push({ x: spec.cx + 7.4, z: brTableZ + 4.05, r: 0.34 });
+    [-2.6, -0.2, 1.0, 2.2].forEach((czo) => {
+      circles.push({ x: spec.cx + 7.4 - 2.1, z: brTableZ + czo, r: 0.34 });
+    });
+    [-2.6, -1.4, -0.2, 1.0, 2.2].forEach((czo) => {
+      circles.push({ x: spec.cx + 7.4 + 2.1, z: brTableZ + czo, r: 0.34 });
+    });
+    circles.push(
+      { x: spec.cx + 11.4, z: spec.cz - 7.25, r: 0.46 },
+      { x: spec.cx + 11.4, z: spec.cz + 7.1, r: 0.46 }
+    );
+
+    // Back Center: CEO Corner Penthouse Suite
+    addBox(boxes, spec.cx - 3.45, spec.cz + 2.1, 2.34, 0.16);
+    addBox(boxes, spec.cx + 0.7, spec.cz + 2.1, 3.24, 0.16);
+    addBox(boxes, spec.cx - 4.6, spec.cz + 5.3, 0.16, 6.44);
+    addBox(boxes, spec.cx - 1.15, spec.cz + 8.38, 6.4, 0.5);
+    addBox(boxes, spec.cx - 1.15, spec.cz + 5.75, 2.74, 1.14);
+    addBox(boxes, spec.cx + 0.55, spec.cz + 6.45, 0.9, 1.54);
+    circles.push(
+      { x: spec.cx - 1.85, z: spec.cz + 4.45, r: 0.48 },
+      { x: spec.cx - 0.45, z: spec.cz + 4.45, r: 0.48 },
+      { x: spec.cx + 1.45, z: spec.cz + 4.3, r: 0.46 },
+      { x: spec.cx + 1.3, z: spec.cz + 3.45, r: 0.36 },
+      { x: spec.cx + 1.65, z: spec.cz + 7.55, r: 0.46 }
+    );
+
+    // Back-Right / SW: CFO & Capital Strategy Head Office
+    addBox(boxes, spec.cx - 10.19, spec.cz + 4.05, 4.22, 0.16);
+    addBox(boxes, spec.cx - 5.6, spec.cz + 4.05, 2.04, 0.16);
+    addBox(boxes, spec.cx - 8.5, spec.cz + 6.3, 2.44, 1.08);
+    addBox(boxes, spec.cx - 8.5, spec.cz + 8.24, 3.84, 0.6);
+    circles.push(
+      { x: spec.cx - 9.25, z: spec.cz + 5.05, r: 0.46 },
+      { x: spec.cx - 7.75, z: spec.cz + 5.05, r: 0.46 },
+      { x: spec.cx - 11.45, z: spec.cz + 7.45, r: 0.46 }
+    );
+
+    // Front-Right / NW: Head of Developments & Architecture Office
+    addBox(boxes, spec.cx - 9.85, spec.cz - 3.5, 4.94, 0.16);
+    addBox(boxes, spec.cx - 5.5, spec.cz - 3.5, 1.04, 0.16);
+    addBox(boxes, spec.cx - 5.0, spec.cz - 5.85, 0.16, 4.74);
+    addBox(boxes, spec.cx - 8.7, spec.cz - 5.85, 2.54, 1.14);
+    addBox(boxes, spec.cx - 11.55, spec.cz - 5.65, 0.86, 2.34);
+    circles.push(
+      { x: spec.cx - 9.45, z: spec.cz - 4.6, r: 0.46 },
+      { x: spec.cx - 7.95, z: spec.cz - 4.6, r: 0.46 },
+      { x: spec.cx - 11.45, z: spec.cz - 7.55, r: 0.46 }
+    );
+
+    // Center Executive Concierge, VIP Board Lounge & Espresso Console
+    addBox(boxes, spec.cx - 1.2, spec.cz - 5.6, 2.26, 1.08);
+    addBox(boxes, spec.cx - 2.35, spec.cz - 1.6, 0.9, 2.1);
+    addBox(boxes, spec.cx - 8.75, spec.cz + 2.55, 0.64, 2.04);
+    circles.push(
+      { x: spec.cx - 0.85, z: spec.cz - 1.6, r: 0.54 },
+      { x: spec.cx + 0.45, z: spec.cz - 2.45, r: 0.46 },
+      { x: spec.cx + 0.45, z: spec.cz - 0.75, r: 0.46 },
+      { x: spec.cx + 1.55, z: spec.cz + 1.2, r: 0.46 }
+    );
+  } else if (spec.id === 'travel' && lv === 1) {
+    // Cabin-window acoustic partition (open doorway dz -1.2..+0.4)
+    addBox(boxes, spec.cx - 3.6, spec.cz - 4.3, 0.22, 6.24);
+    addBox(boxes, spec.cx - 3.6, spec.cz + 4.0, 0.22, 7.24);
+    // Twin 4-seat charter pods + secondary non-registered seats
+    const pod1X = spec.cx - 8.6;
+    [spec.cz - 4.2, spec.cz + 3.0].forEach((pz, pi) => {
+      addBox(boxes, pod1X, pz, 3.24, 1.4);
+      if (pi === 0) {
+        circles.push(
+          { x: pod1X + 0.8, z: pz - 1.05, r: 0.34 },
+          { x: pod1X - 0.8, z: pz + 1.05, r: 0.34 },
+          { x: pod1X + 0.8, z: pz + 1.05, r: 0.34 }
+        );
+      } else {
+        circles.push(
+          { x: pod1X - 0.8, z: pz - 1.05, r: 0.34 },
+          { x: pod1X + 0.8, z: pz - 1.05, r: 0.34 },
+          { x: pod1X - 0.8, z: pz + 1.05, r: 0.34 }
+        );
+      }
+    });
+    circles.push({ x: spec.cx - 12.2, z: spec.cz - 7.1, r: 0.46 });
+    // Center Visa Consultation Booth & Registered Visa Desk
+    circles.push(
+      { x: spec.cx + 0.2, z: spec.cz - 4.2, r: 0.82 },
+      { x: spec.cx - 0.75, z: spec.cz - 4.2, r: 0.44 },
+      { x: spec.cx + 1.15, z: spec.cz - 4.2, r: 0.44 },
+      { x: spec.cx + 0.2, z: spec.cz - 3.25, r: 0.44 },
+      { x: spec.cx - 0.55, z: spec.cz + 3.2, r: 0.44 },
+      { x: spec.cx + 0.95, z: spec.cz + 3.2, r: 0.44 }
+    );
+    addBox(boxes, spec.cx + 0.2, spec.cz + 4.4, 2.64, 1.1);
+    // East Gallery coffee credenza, lounge bench & plants
+    addBox(boxes, spec.cx + 6.8, spec.cz - 4.8, 2.58, 0.96);
+    addBox(boxes, spec.cx + 6.8, spec.cz + 7.2, 3.24, 0.78);
+    circles.push(
+      { x: spec.cx + 12.0, z: spec.cz - 7.1, r: 0.46 },
+      { x: spec.cx + 12.0, z: spec.cz + 7.1, r: 0.46 }
+    );
+  } else if (spec.id === 'travel' && lv === 2) {
+    // West Wing: 3 First-Class Aircraft Cabin Suite Pods
+    addBox(boxes, spec.cx - 10.6, spec.cz - 5.2, 2.32, 2.32);
+    addBox(boxes, spec.cx - 10.6, spec.cz - 0.8, 2.32, 2.32);
+    addBox(boxes, spec.cx - 5.2, spec.cz - 3.0, 2.32, 2.32);
+    // SW Champagne & Espresso Tasting Bar + 4 Barstools
+    addBox(boxes, spec.cx - 8.2, spec.cz + 8.15, 4.44, 0.9);
+    addBox(boxes, spec.cx - 8.2, spec.cz + 5.75, 4.34, 1.02);
+    [-1.35, -0.45, 0.45, 1.35].forEach((ox) => {
+      circles.push({ x: spec.cx - 8.2 + ox, z: spec.cz + 4.75, r: 0.24 });
+    });
+    // Center Operations Control Bridge desks
+    addBox(boxes, spec.cx + 0.8, spec.cz - 3.6, 2.84, 1.18);
+    addBox(boxes, spec.cx + 0.8, spec.cz + 1.8, 2.84, 1.18);
+    // East Panorama Lounge & Quiet Rest Sofa
+    circles.push(
+      { x: spec.cx + 5.8, z: spec.cz - 5.2, r: 0.46 },
+      { x: spec.cx + 7.8, z: spec.cz - 5.2, r: 0.46 },
+      { x: spec.cx + 6.8, z: spec.cz - 5.2, r: 0.44 },
+      { x: spec.cx + 11.8, z: spec.cz - 7.0, r: 0.46 },
+      { x: spec.cx + 11.8, z: spec.cz + 7.0, r: 0.46 }
+    );
+    addBox(boxes, spec.cx + 6.8, spec.cz + 6.8, 2.64, 0.98);
+  } else if (spec.id === 'travel' && lv === 3) {
+    // 1. West Wing: Airline Alliances Boardroom (open portal dz -2.0..-0.2)
+    addBox(boxes, spec.cx - 3.2, spec.cz - 4.3, 0.16, 4.64);
+    addBox(boxes, spec.cx - 3.2, spec.cz + 4.15, 0.16, 8.74);
+    const avBrX = spec.cx - 8.4;
+    const avBrZ = spec.cz + 0.2;
+    addBox(boxes, avBrX, avBrZ, 2.94, 6.84);
+    circles.push({ x: avBrX, z: avBrZ + 3.85, r: 0.34 });
+    [-2.5, -0.2, 1.0, 2.2].forEach((czo) => circles.push({ x: avBrX + 2.1, z: avBrZ + czo, r: 0.34 }));
+    [-2.5, -1.4, -0.2, 1.0, 2.2].forEach((czo) => circles.push({ x: avBrX - 2.1, z: avBrZ + czo, r: 0.34 }));
+    circles.push(
+      { x: spec.cx - 12.2, z: spec.cz - 7.1, r: 0.46 },
+      { x: spec.cx - 12.2, z: spec.cz + 7.1, r: 0.46 }
+    );
+
+    // 2. Back Center: CEO & Aviation Command Suite (portal dx -0.4..+1.1)
+    const ceoAvX = spec.cx + 0.8;
+    addBox(boxes, spec.cx - 1.6, spec.cz + 2.2, 2.44, 0.16);
+    addBox(boxes, spec.cx + 2.75, spec.cz + 2.2, 3.34, 0.16);
+    addBox(boxes, spec.cx + 4.4, spec.cz + 5.35, 0.16, 6.34);
+    addBox(boxes, ceoAvX, spec.cz + 8.36, 5.44, 0.5);
+    addBox(boxes, ceoAvX, spec.cz + 5.75, 2.84, 1.16);
+    circles.push(
+      { x: spec.cx + 0.05, z: spec.cz + 4.4, r: 0.46 },
+      { x: spec.cx + 1.55, z: spec.cz + 4.4, r: 0.46 },
+      { x: spec.cx + 3.7, z: spec.cz + 7.5, r: 0.46 }
+    );
+
+    // 3. SE Corner: Head of Fleet & Safety Office (portal dx +6.0..+7.5)
+    addBox(boxes, spec.cx + 5.4, spec.cz + 4.3, 1.24, 0.16);
+    addBox(boxes, spec.cx + 10.5, spec.cz + 4.3, 6.04, 0.16);
+    const safX = spec.cx + 9.2;
+    addBox(boxes, safX, spec.cz + 6.4, 2.44, 1.08);
+    circles.push(
+      { x: safX - 0.75, z: spec.cz + 5.15, r: 0.46 },
+      { x: safX + 0.75, z: spec.cz + 5.15, r: 0.46 }
+    );
+
+    // 4. Front Center & NE: Concierge, Sky Lounge & Galley Espresso Bar
+    addBox(boxes, ceoAvX, spec.cz - 5.65, 2.26, 1.1);
+    addBox(boxes, spec.cx - 0.75, spec.cz - 1.6, 0.9, 2.1);
+    circles.push(
+      { x: spec.cx + 0.75, z: spec.cz - 1.6, r: 0.54 },
+      { x: spec.cx + 2.05, z: spec.cz - 2.35, r: 0.46 },
+      { x: spec.cx + 2.05, z: spec.cz - 0.85, r: 0.46 },
+      { x: spec.cx + 3.6, z: spec.cz + 1.2, r: 0.46 }
+    );
+    addBox(boxes, spec.cx + 11.2, spec.cz - 5.8, 3.68, 0.96);
+    circles.push(
+      { x: spec.cx + 10.4, z: spec.cz - 4.7, r: 0.24 },
+      { x: spec.cx + 12.0, z: spec.cz - 4.7, r: 0.24 }
+    );
+  } else if (spec.id === 'tourism' && lv === 1) {
+    // Arched Terracotta & Acacia-Louver Partition (open central archway dz -1.2..+0.6)
+    addBox(boxes, spec.cx - 3.5, spec.cz - 4.6, 0.24, 6.84);
+    addBox(boxes, spec.cx - 3.5, spec.cz + 4.3, 0.24, 7.44);
+    // Twin 4-seat Itinerary Design Pods & non-registered pod chairs
+    const s1PodX = spec.cx - 9.0;
+    [spec.cz - 4.0, spec.cz + 3.2].forEach((pz, pi) => {
+      addBox(boxes, s1PodX, pz, 3.34, 1.42);
+      if (pi === 0) {
+        circles.push(
+          { x: s1PodX + 0.8, z: pz - 1.05, r: 0.34 },
+          { x: s1PodX - 0.8, z: pz + 1.05, r: 0.34 },
+          { x: s1PodX + 0.8, z: pz + 1.05, r: 0.34 }
+        );
+      } else {
+        circles.push(
+          { x: s1PodX - 0.8, z: pz - 1.05, r: 0.34 },
+          { x: s1PodX + 0.8, z: pz - 1.05, r: 0.34 },
+          { x: s1PodX - 0.8, z: pz + 1.05, r: 0.34 }
+        );
+      }
+    });
+    // SW Safari Field Gear Rack & NW Terracotta Urn
+    addBox(boxes, spec.cx - 12.2, spec.cz + 7.9, 3.24, 0.6);
+    circles.push({ x: spec.cx - 13.4, z: spec.cz - 7.1, r: 0.36 });
+    // Center Circular Bushcraft Hearth Table, 4 Rattan Chairs, Cartographer Desk & Visitor Chairs
+    circles.push(
+      { x: spec.cx + 1.0, z: spec.cz - 3.6, r: 1.0 },
+      { x: spec.cx + 1.0 - 1.35, z: spec.cz - 3.6, r: 0.44 },
+      { x: spec.cx + 1.0 + 1.35, z: spec.cz - 3.6, r: 0.44 },
+      { x: spec.cx + 1.0, z: spec.cz - 3.6 - 1.35, r: 0.44 },
+      { x: spec.cx + 1.0, z: spec.cz - 3.6 + 1.35, r: 0.44 },
+      { x: spec.cx + 0.25, z: spec.cz + 3.2, r: 0.44 },
+      { x: spec.cx + 1.75, z: spec.cz + 3.2, r: 0.44 }
+    );
+    addBox(boxes, spec.cx + 1.0, spec.cz + 4.4, 2.74, 1.12);
+    // East-North Kenyan Highlands Coffee & Chai Bar, 3 Stools & Plants
+    addBox(boxes, spec.cx + 9.4, spec.cz - 5.2, 4.36, 1.04);
+    [-1.2, 0, 1.2].forEach((ox) => {
+      circles.push({ x: spec.cx + 9.4 + ox, z: spec.cz - 4.1, r: 0.24 });
+    });
+    circles.push(
+      { x: spec.cx + 13.2, z: spec.cz - 7.1, r: 0.46 },
+      { x: spec.cx + 6.4, z: spec.cz + 6.9, r: 0.46 }
+    );
+  } else if (spec.id === 'tourism' && lv === 2) {
+    // West North: Full-Scale Luxury Canvas Tent Suite Mockup
+    addBox(boxes, spec.cx - 8.8, spec.cz - 4.4, 4.64, 3.84);
+    // West South: Rift-Valley Live-Edge Bush Dining Table & 6 Rattan Chairs
+    const dineX = spec.cx - 8.8;
+    const dineZ = spec.cz + 3.8;
+    addBox(boxes, dineX, dineZ, 4.24, 1.3);
+    [-1.35, 0, 1.35].forEach((ox) => {
+      circles.push(
+        { x: dineX + ox, z: dineZ - 0.98, r: 0.42 },
+        { x: dineX + ox, z: dineZ + 0.98, r: 0.42 }
+      );
+    });
+    // Center: Eco-Lodge Architectural Scale Model, 2 Specialist Desks & Sustainable Material Rack
+    addBox(boxes, spec.cx + 1.0, spec.cz - 3.6, 3.14, 1.94);
+    addBox(boxes, spec.cx + 1.0, spec.cz + 2.4, 2.74, 1.12);
+    addBox(boxes, spec.cx + 7.4, spec.cz - 5.2, 2.74, 1.12);
+    addBox(boxes, spec.cx + 1.0, spec.cz + 7.2, 3.64, 0.48);
+    // East Mid: Bronze Giraffe Gallery Sculpture, Viewing Chair & Corner Plants
+    circles.push(
+      { x: spec.cx + 7.4, z: spec.cz - 0.6, r: 0.68 },
+      { x: spec.cx + 9.4, z: spec.cz - 0.6, r: 0.46 },
+      { x: spec.cx + 13.0, z: spec.cz - 7.0, r: 0.46 },
+      { x: spec.cx - 13.4, z: spec.cz + 7.0, r: 0.46 }
+    );
+  } else if (spec.id === 'tourism' && lv === 3) {
+    // 1. West Wing: Wildlife & Conservation Boardroom (open portal dz -1.8..0.0)
+    addBox(boxes, spec.cx - 3.4, spec.cz - 4.3, 0.16, 5.04);
+    addBox(boxes, spec.cx - 3.4, spec.cz + 4.25, 0.16, 8.54);
+    const sfBrX = spec.cx - 8.8;
+    const sfBrZ = spec.cz + 0.2;
+    addBox(boxes, sfBrX, sfBrZ, 2.84, 6.84);
+    circles.push({ x: sfBrX, z: sfBrZ + 3.85, r: 0.34 });
+    [-2.5, -0.2, 1.0, 2.2].forEach((czo) => circles.push({ x: sfBrX + 2.05, z: sfBrZ + czo, r: 0.34 }));
+    [-2.5, -1.4, -0.2, 1.0, 2.2].forEach((czo) => circles.push({ x: sfBrX - 2.05, z: sfBrZ + czo, r: 0.34 }));
+    circles.push(
+      { x: spec.cx - 13.4, z: spec.cz - 7.1, r: 0.36 },
+      { x: spec.cx - 13.4, z: spec.cz + 7.1, r: 0.46 }
+    );
+
+    // 2. Back Center: Founder & Chief Safari Officer Study (portal dx -0.2..+1.4)
+    const ceoSfX = spec.cx + 1.0;
+    addBox(boxes, spec.cx - 1.5, spec.cz + 2.0, 2.64, 0.16);
+    addBox(boxes, spec.cx + 3.1, spec.cz + 2.0, 3.44, 0.16);
+    addBox(boxes, spec.cx + 4.8, spec.cz + 5.2, 0.16, 6.44);
+    addBox(boxes, ceoSfX, spec.cz + 8.36, 5.64, 0.5);
+    addBox(boxes, ceoSfX, spec.cz + 5.75, 2.84, 1.18);
+    circles.push(
+      { x: spec.cx + 0.25, z: spec.cz + 4.4, r: 0.46 },
+      { x: spec.cx + 1.75, z: spec.cz + 4.4, r: 0.46 },
+      { x: spec.cx + 4.0, z: spec.cz + 7.5, r: 0.46 }
+    );
+
+    // 3. NE Corner: Head of Expeditions & Bush Aviation Office (portal dx +6.2..+7.8)
+    addBox(boxes, spec.cx + 5.8, spec.cz - 1.8, 0.84, 0.16);
+    addBox(boxes, spec.cx + 11.1, spec.cz - 1.8, 6.64, 0.16);
+    addBox(boxes, spec.cx + 5.4, spec.cz - 5.0, 0.16, 6.44);
+    const expX = spec.cx + 9.8;
+    addBox(boxes, expX, spec.cz - 5.2, 2.54, 1.08);
+    circles.push(
+      { x: expX - 0.75, z: spec.cz - 3.9, r: 0.46 },
+      { x: expX + 0.75, z: spec.cz - 3.9, r: 0.46 }
+    );
+
+    // 4. Front Center & South-Center: Reception, Sundowner Lounge & Kenyan Tea Bar
+    addBox(boxes, ceoSfX, spec.cz - 5.6, 2.34, 1.0);
+    addBox(boxes, spec.cx - 0.75, spec.cz - 1.6, 0.9, 2.1);
+    circles.push(
+      { x: spec.cx + 0.75, z: spec.cz - 1.6, r: 0.56 },
+      { x: spec.cx + 2.05, z: spec.cz - 2.35, r: 0.46 },
+      { x: spec.cx + 2.05, z: spec.cz - 0.85, r: 0.46 },
+      { x: spec.cx + 4.0, z: spec.cz + 1.1, r: 0.46 }
+    );
+    addBox(boxes, spec.cx + 7.6, spec.cz + 5.8, 3.48, 0.96);
+    circles.push(
+      { x: spec.cx + 6.8, z: spec.cz + 4.7, r: 0.24 },
+      { x: spec.cx + 8.4, z: spec.cz + 4.7, r: 0.24 }
+    );
+  } else if (spec.id === 'logistics' && lv === 1) {
+    // Cutaway Navy Shipping Container Partition (open portal dz -1.2..+0.6)
+    addBox(boxes, spec.cx - 3.4, spec.cz - 5.1, 0.28, 7.84);
+    addBox(boxes, spec.cx - 3.4, spec.cz + 4.8, 0.28, 8.44);
+    // Twin 4-seat Route Planning & Customs Pods + non-registered pod chairs
+    const l1PodX = spec.cx - 8.6;
+    [spec.cz - 4.6, spec.cz + 0.2].forEach((pz, pi) => {
+      addBox(boxes, l1PodX, pz, 3.34, 1.42);
+      if (pi === 0) {
+        circles.push(
+          { x: l1PodX + 0.8, z: pz - 1.05, r: 0.34 },
+          { x: l1PodX - 0.8, z: pz + 1.05, r: 0.34 },
+          { x: l1PodX + 0.8, z: pz + 1.05, r: 0.34 }
+        );
+      } else {
+        circles.push(
+          { x: l1PodX - 0.8, z: pz - 1.05, r: 0.34 },
+          { x: l1PodX + 0.8, z: pz - 1.05, r: 0.34 },
+          { x: l1PodX - 0.8, z: pz + 1.05, r: 0.34 }
+        );
+      }
+    });
+    // Stenciled Archive Crate Console East of SW stairwell
+    addBox(boxes, spec.cx - 7.4, spec.cz + 6.8, 3.28, 0.84);
+    // Center Drum Huddle Table, 4 Static Chairs, Cold-Chain Telemetry Desk & Visitor Chairs
+    circles.push(
+      { x: spec.cx + 1.4, z: spec.cz - 3.8, r: 1.0 },
+      { x: spec.cx + 1.4 - 1.32, z: spec.cz - 3.8, r: 0.36 },
+      { x: spec.cx + 1.4 + 1.32, z: spec.cz - 3.8, r: 0.36 },
+      { x: spec.cx + 1.4, z: spec.cz - 3.8 - 1.32, r: 0.36 },
+      { x: spec.cx + 1.4, z: spec.cz - 3.8 + 1.32, r: 0.36 },
+      { x: spec.cx + 0.65, z: spec.cz + 3.1, r: 0.44 },
+      { x: spec.cx + 2.15, z: spec.cz + 3.1, r: 0.44 }
+    );
+    addBox(boxes, spec.cx + 1.4, spec.cz + 4.4, 2.74, 1.12);
+    // East Burnt-Orange Driver Briefing Bar, 3 Stools, Galvanized Phone Booth & Corner Plant
+    addBox(boxes, spec.cx + 10.2, spec.cz - 4.8, 4.54, 1.04);
+    [-1.2, 0, 1.2].forEach((ox) => {
+      circles.push({ x: spec.cx + 10.2 + ox, z: spec.cz - 3.7, r: 0.24 });
+    });
+    addBox(boxes, spec.cx + 10.8, spec.cz + 4.8, 1.7, 1.7);
+    circles.push({ x: spec.cx + 14.0, z: spec.cz - 7.8, r: 0.46 });
+  } else if (spec.id === 'logistics' && lv === 2) {
+    // West North: Scale Container Port & Vessel Diorama
+    addBox(boxes, spec.cx - 8.8, spec.cz - 4.4, 4.86, 2.86);
+    // Mid-West South: Autonomous AGV & Smart-Rack Demo Bay
+    addBox(boxes, spec.cx - 6.8, spec.cz + 5.85, 3.46, 0.82);
+    circles.push(
+      { x: spec.cx - 7.45, z: spec.cz + 4.35, r: 0.68 },
+      { x: spec.cx - 8.5, z: spec.cz + 4.35, r: 0.14 },
+      { x: spec.cx - 5.1, z: spec.cz + 4.35, r: 0.14 }
+    );
+    // Center: Packaging Engineering Rack & 2 Automation Specialist Desks
+    addBox(boxes, spec.cx + 1.8, spec.cz - 3.6, 3.44, 0.48);
+    addBox(boxes, spec.cx + 1.8, spec.cz + 3.2, 2.74, 1.12);
+    addBox(boxes, spec.cx + 9.8, spec.cz - 5.2, 2.74, 1.12);
+    // East Mid: Barrel & Leather Lounge + Corner Plant
+    addBox(boxes, spec.cx + 11.4, spec.cz + 1.8, 0.96, 2.1);
+    circles.push(
+      { x: spec.cx + 9.4, z: spec.cz + 1.8, r: 0.46 },
+      { x: spec.cx + 8.0, z: spec.cz + 0.9, r: 0.46 },
+      { x: spec.cx + 8.0, z: spec.cz + 2.7, r: 0.46 },
+      { x: spec.cx + 14.0, z: spec.cz + 7.6, r: 0.46 }
+    );
+  } else if (spec.id === 'logistics' && lv === 3) {
+    // 1. East Wing: Global Trade & Port Alliances Boardroom (open portal dz -1.6..+0.2)
+    addBox(boxes, spec.cx + 4.4, spec.cz - 4.7, 0.16, 6.24);
+    addBox(boxes, spec.cx + 4.4, spec.cz + 4.6, 0.16, 8.84);
+    const lgBrX = spec.cx + 9.8;
+    const lgBrZ = spec.cz + 0.0;
+    addBox(boxes, lgBrX, lgBrZ, 2.94, 7.24);
+    circles.push({ x: lgBrX, z: lgBrZ + 4.05, r: 0.34 });
+    [-2.6, -0.2, 1.0, 2.2].forEach((czo) => circles.push({ x: lgBrX - 2.05, z: lgBrZ + czo, r: 0.34 }));
+    [-2.6, -1.4, -0.2, 1.0, 2.2].forEach((czo) => circles.push({ x: lgBrX + 2.05, z: lgBrZ + czo, r: 0.34 }));
+    circles.push(
+      { x: spec.cx + 14.0, z: spec.cz - 7.8, r: 0.46 },
+      { x: spec.cx + 14.0, z: spec.cz + 7.8, r: 0.46 }
+    );
+
+    // 2. Back Center: CEO & Chief Logistics Officer Command Suite (portal dx -1.2..+0.4)
+    const ceoLgX = spec.cx - 0.3;
+    addBox(boxes, spec.cx - 2.7, spec.cz + 2.2, 3.04, 0.16);
+    addBox(boxes, spec.cx + 2.0, spec.cz + 2.2, 3.24, 0.16);
+    addBox(boxes, spec.cx - 4.2, spec.cz + 5.7, 0.16, 7.04);
+    addBox(boxes, ceoLgX, spec.cz + 9.05, 5.84, 0.5);
+    addBox(boxes, ceoLgX, spec.cz + 5.8, 2.84, 1.18);
+    circles.push(
+      { x: spec.cx - 1.05, z: spec.cz + 4.4, r: 0.46 },
+      { x: spec.cx + 0.45, z: spec.cz + 4.4, r: 0.46 }
+    );
+
+    // 3. NW Corner: Head of Fleet & Aviation Cargo Office (portal dx -7.6..-6.0)
+    addBox(boxes, spec.cx - 11.4, spec.cz - 2.0, 7.64, 0.16);
+    addBox(boxes, spec.cx - 5.6, spec.cz - 2.0, 0.84, 0.16);
+    addBox(boxes, spec.cx - 5.2, spec.cz - 5.6, 0.16, 7.24);
+    const fltX = spec.cx - 10.2;
+    addBox(boxes, fltX, spec.cz - 5.6, 2.54, 1.08);
+    circles.push(
+      { x: fltX - 0.75, z: spec.cz - 4.3, r: 0.46 },
+      { x: fltX + 0.75, z: spec.cz - 4.3, r: 0.46 }
+    );
+
+    // 4. Front Center & SW Cafe: Reception, Port Executive Lounge & Container Cafe Bar
+    addBox(boxes, ceoLgX, spec.cz - 5.8, 2.34, 1.0);
+    addBox(boxes, spec.cx + 1.4, spec.cz - 1.5, 0.9, 2.1);
+    circles.push(
+      { x: spec.cx - 0.2, z: spec.cz - 1.5, r: 0.46 },
+      { x: spec.cx - 1.55, z: spec.cz - 2.25, r: 0.46 },
+      { x: spec.cx - 1.55, z: spec.cz - 0.75, r: 0.46 }
+    );
+    addBox(boxes, spec.cx - 7.4, spec.cz + 6.4, 3.48, 0.96);
+    circles.push(
+      { x: spec.cx - 8.2, z: spec.cz + 5.2, r: 0.24 },
+      { x: spec.cx - 6.6, z: spec.cz + 5.2, r: 0.24 }
+    );
+  } else if (spec.id === 'restaurant' && lv === 1) {
+    // NW Artisan Copper Coffee Drum Roaster + Roasting Pod + Divider
+    addBox(boxes, spec.cx - 7.8, spec.cz - 6.4, 1.4, 1.35);
+    addBox(boxes, spec.cx - 4.2, spec.cz - 4.8, 2.44, 1.1);
+    circles.push(
+      { x: spec.cx - 4.85, z: spec.cz - 3.65, r: 0.44 },
+      { x: spec.cx - 3.55, z: spec.cz - 3.65, r: 0.44 }
+    );
+    addBox(boxes, spec.cx - 1.2, spec.cz - 4.4, 0.26, 5.26);
+    // NE Tapas Bar + 3 Stools + Pastry/Sommelier Desks
+    addBox(boxes, spec.cx + 6.4, spec.cz - 6.4, 4.94, 1.14);
+    [4.8, 6.4, 8.0].forEach((bx) => circles.push({ x: spec.cx + bx, z: spec.cz - 5.3, r: 0.24 }));
+    addBox(boxes, spec.cx + 7.2, spec.cz - 1.8, 2.24, 1.04);
+    addBox(boxes, spec.cx - 2.6, spec.cz + 4.7, 2.04, 1.0);
+    // Mezzanine Velvet Dining Tables + Static Chairs + SE Olive Tree
+    [
+      [spec.cx + 1.2, spec.cz + 0.6],
+      [spec.cx + 6.2, spec.cz + 4.8],
+    ].forEach(([tx, tz]) => {
+      circles.push(
+        { x: tx, z: tz, r: 0.72 },
+        { x: tx - 1.08, z: tz, r: 0.42 },
+        { x: tx + 1.08, z: tz, r: 0.42 }
+      );
+    });
+    circles.push({ x: spec.cx + 8.6, z: spec.cz + 7.4, r: 0.45 });
+  } else if (spec.id === 'restaurant' && lv === 2) {
+    // NW Amber-Glass Wine Vault Perimeter & Decanting Island (portal dz -3.2..-1.4)
+    addBox(boxes, spec.cx - 6.3, spec.cz - 0.6, 6.24, 0.16);
+    addBox(boxes, spec.cx - 3.2, spec.cz - 5.9, 0.16, 5.44);
+    addBox(boxes, spec.cx - 3.2, spec.cz - 1.0, 0.16, 0.84);
+    addBox(boxes, spec.cx - 6.3, spec.cz - 8.2, 5.24, 0.5);
+    addBox(boxes, spec.cx - 9.1, spec.cz - 4.6, 0.5, 5.24);
+    addBox(boxes, spec.cx - 6.4, spec.cz - 4.6, 2.24, 1.18);
+    // East-North Chef's Interactive Tasting Table & Static Chairs
+    const ctX = spec.cx + 5.2;
+    const ctZ = spec.cz - 3.6;
+    addBox(boxes, ctX, ctZ, 2.4, 5.46);
+    circles.push({ x: ctX, z: ctZ + 3.35, r: 0.34 });
+    [-1.8, 0.8, 2.0].forEach((czo) => circles.push({ x: ctX - 1.85, z: ctZ + czo, r: 0.34 }));
+    [-1.8, -0.5, 0.8, 2.0].forEach((czo) => circles.push({ x: ctX + 1.85, z: ctZ + czo, r: 0.34 }));
+    // South-Center Charcuterie Cabinet & SE Sommelier Lounge + Plants
+    addBox(boxes, spec.cx - 2.6, spec.cz + 6.8, 3.04, 0.86);
+    addBox(boxes, spec.cx + 7.2, spec.cz + 4.8, 0.9, 2.0);
+    circles.push(
+      { x: spec.cx + 5.2, z: spec.cz + 4.8, r: 0.48 },
+      { x: spec.cx + 3.8, z: spec.cz + 3.9, r: 0.44 },
+      { x: spec.cx + 3.8, z: spec.cz + 5.7, r: 0.44 },
+      { x: spec.cx + 8.6, z: spec.cz - 7.6, r: 0.45 },
+      { x: spec.cx + 8.6, z: spec.cz + 7.6, r: 0.45 }
+    );
+  } else if (spec.id === 'restaurant' && lv === 3) {
+    // 1. East Wing: Private Dining Boardroom (portal dz -1.6..+0.2)
+    addBox(boxes, spec.cx + 2.2, spec.cz - 5.0, 0.16, 6.84);
+    addBox(boxes, spec.cx + 2.2, spec.cz + 4.3, 0.16, 8.24);
+    const brX = spec.cx + 5.8;
+    const brZ = spec.cz + 0.0;
+    addBox(boxes, brX, brZ, 2.2, 6.3);
+    circles.push({ x: brX, z: brZ + 3.75, r: 0.34 });
+    [-2.4, 0.2, 1.6].forEach((czo) => circles.push({ x: brX - 1.65, z: brZ + czo, r: 0.34 }));
+    [-2.4, -1.0, 0.4, 1.8].forEach((czo) => circles.push({ x: brX + 1.65, z: brZ + czo, r: 0.34 }));
+    circles.push(
+      { x: spec.cx + 8.6, z: spec.cz - 7.4, r: 0.45 },
+      { x: spec.cx + 8.6, z: spec.cz + 7.4, r: 0.45 }
+    );
+    // 2. NW Culinary CEO Studio (portal dx -5.2..-3.6)
+    addBox(boxes, spec.cx - 7.3, spec.cz - 2.4, 4.24, 0.16);
+    addBox(boxes, spec.cx - 3.0, spec.cz - 2.4, 1.24, 0.16);
+    addBox(boxes, spec.cx - 2.4, spec.cz - 5.4, 0.16, 6.04);
+    const ceoBsX = spec.cx - 5.9;
+    addBox(boxes, ceoBsX, spec.cz - 8.2, 4.64, 0.5);
+    addBox(boxes, ceoBsX, spec.cz - 5.6, 2.54, 1.12);
+    circles.push(
+      { x: ceoBsX - 0.75, z: spec.cz - 4.35, r: 0.44 },
+      { x: ceoBsX + 0.75, z: spec.cz - 4.35, r: 0.44 }
+    );
+    // 3. South-Center Head of Events Office (portal dx -2.2..-0.6)
+    addBox(boxes, spec.cx - 3.2, spec.cz + 2.8, 2.04, 0.16);
+    addBox(boxes, spec.cx + 0.6, spec.cz + 2.8, 2.44, 0.16);
+    addBox(boxes, spec.cx - 4.2, spec.cz + 5.6, 0.16, 5.64);
+    const evX = spec.cx - 1.2;
+    addBox(boxes, evX, spec.cz + 5.6, 2.44, 1.08);
+    circles.push(
+      { x: evX - 0.75, z: spec.cz + 4.35, r: 0.44 },
+      { x: evX + 0.75, z: spec.cz + 4.35, r: 0.44 }
+    );
+    // 4. Central Mezzanine Reception & Martini Lounge
+    addBox(boxes, spec.cx - 0.1, spec.cz - 6.2, 2.08, 1.0);
+    addBox(boxes, spec.cx + 1.0, spec.cz - 1.2, 0.88, 1.9);
+    circles.push(
+      { x: spec.cx - 0.3, z: spec.cz - 1.2, r: 0.46 },
+      { x: spec.cx - 1.4, z: spec.cz - 2.0, r: 0.44 },
+      { x: spec.cx - 1.4, z: spec.cz - 0.4, r: 0.44 },
+      { x: spec.cx - 5.4, z: spec.cz + 7.4, r: 0.45 }
+    );
   } else {
     // Upper floors: desks, shelf unit & 2 corner plants
     const deskXs = spec.w >= 30 ? [-10, 0, 10] : [-4.8, 4.8];
@@ -1182,6 +2115,111 @@ function populateDistrictBuildingGeometry(
       { x: spec.cx - spec.w * 0.42, z: spec.cz + spec.d * 0.34, r: 0.46 },
       { x: spec.cx + spec.w * 0.42, z: spec.cz + spec.d * 0.34, r: 0.46 }
     );
+  }
+
+  // Real Estate continuous G-L4 stairwell core colliders across every level (0..4)
+  if (spec.id === 'realestate') {
+    // Glazed stairwell shaft perimeter walls (West, North, South, East south-of-doorway)
+    addBox(boxes, spec.cx - 12.28, spec.cz + 1.25, 0.16, 5.18);
+    addBox(boxes, spec.cx - 10.73, spec.cz - 1.32, 3.14, 0.16);
+    addBox(boxes, spec.cx - 10.73, spec.cz + 3.82, 3.14, 0.16);
+    addBox(boxes, spec.cx - 9.18, spec.cz + 1.9, 0.16, 3.84);
+    // Stairwell doorway gate: blocks autonomous NPC pathing while First-Person Walk passes freely
+    addBox(boxes, spec.cx - 9.18, spec.cz - 0.63, 0.22, 1.22, undefined, true);
+    // Center flight divider separating West (up) & East (arrival) lanes
+    addBox(boxes, spec.cx - 10.71, spec.cz + 1.25, 0.12, 2.6);
+    if (lv === 0) {
+      // Ground-floor under-stair screen across East lane
+      addBox(boxes, spec.cx - 9.96, spec.cz - 0.05, 1.48, 0.14);
+    } else if (lv === spec.floors - 1) {
+      // Top floor (L4) safety balustrade guarding the open West shaft drop
+      addBox(boxes, spec.cx - 11.46, spec.cz - 0.05, 1.5, 0.14);
+      addBox(boxes, spec.cx - 10.71, spec.cz + 3.15, 0.12, 1.2);
+    }
+  }
+
+  // Skyline Travel & Aviation continuous G-L3 East Boarding Stairwell core colliders (0..3)
+  if (spec.id === 'travel') {
+    // Glazed stairwell shaft perimeter walls (East, North, South, West south-of-doorway)
+    addBox(boxes, spec.cx + 13.32, spec.cz + 1.25, 0.16, 5.18);
+    addBox(boxes, spec.cx + 11.77, spec.cz - 1.32, 3.14, 0.16);
+    addBox(boxes, spec.cx + 11.77, spec.cz + 3.82, 3.14, 0.16);
+    addBox(boxes, spec.cx + 10.22, spec.cz + 1.9, 0.16, 3.84);
+    // Doorway gate: blocks autonomous NPCs while First-Person Walk passes freely
+    addBox(boxes, spec.cx + 10.22, spec.cz - 0.63, 0.22, 1.22, undefined, true);
+    // Center flight divider separating East (up) & West (arrival) lanes
+    addBox(boxes, spec.cx + 11.75, spec.cz + 1.25, 0.12, 2.6);
+    if (lv === 0) {
+      // Ground-floor under-stair glass guard across West arrival lane
+      addBox(boxes, spec.cx + 10.98, spec.cz - 0.05, 1.48, 0.14);
+    } else if (lv === spec.floors - 1) {
+      // Top floor (L3) safety balustrade guarding open East shaft drop
+      addBox(boxes, spec.cx + 12.5, spec.cz - 0.05, 1.5, 0.14);
+      addBox(boxes, spec.cx + 11.75, spec.cz + 3.15, 0.12, 1.2);
+    }
+  }
+
+  // Kenya Safari & Tourism continuous G-L3 SE Acacia & Bronze Stairwell core colliders (0..3)
+  if (spec.id === 'tourism') {
+    // Glazed stairwell shaft perimeter walls (East, North, South, West south-of-doorway)
+    addBox(boxes, spec.cx + 14.32, spec.cz + 5.4, 0.16, 5.24);
+    addBox(boxes, spec.cx + 12.76, spec.cz + 2.8, 3.16, 0.16);
+    addBox(boxes, spec.cx + 12.76, spec.cz + 8.0, 3.16, 0.16);
+    addBox(boxes, spec.cx + 11.2, spec.cz + 6.06, 0.16, 3.88);
+    // Doorway gate: blocks autonomous NPCs while First-Person Walk passes freely
+    addBox(boxes, spec.cx + 11.2, spec.cz + 3.49, 0.22, 1.26, undefined, true);
+    // Center flight divider separating East (up) & West (arrival) lanes
+    addBox(boxes, spec.cx + 12.75, spec.cz + 5.45, 0.12, 2.6);
+    if (lv === 0) {
+      // Ground-floor under-stair screen across West arrival lane
+      addBox(boxes, spec.cx + 11.98, spec.cz + 4.15, 1.48, 0.14);
+    } else if (lv === spec.floors - 1) {
+      // Top floor (L3) safety balustrade guarding open East shaft drop
+      addBox(boxes, spec.cx + 13.52, spec.cz + 4.15, 1.5, 0.14);
+      addBox(boxes, spec.cx + 12.75, spec.cz + 7.35, 0.12, 1.2);
+    }
+  }
+
+  // SwiftPort Cargo & Logistics continuous G-L3 SW Steel-Mesh & Birch Stairwell core colliders (0..3)
+  if (spec.id === 'logistics') {
+    // Glazed & galvanized stairwell shaft perimeter walls (West, North, South, East south-of-doorway)
+    addBox(boxes, spec.cx - 14.35, spec.cz + 5.4, 0.16, 5.24);
+    addBox(boxes, spec.cx - 12.8, spec.cz + 2.8, 3.14, 0.16);
+    addBox(boxes, spec.cx - 12.8, spec.cz + 8.0, 3.14, 0.16);
+    addBox(boxes, spec.cx - 11.25, spec.cz + 6.06, 0.16, 3.88);
+    // Doorway gate: blocks autonomous NPCs while First-Person Walk passes freely
+    addBox(boxes, spec.cx - 11.25, spec.cz + 3.49, 0.22, 1.26, undefined, true);
+    // Center flight divider separating West (up) & East (arrival) lanes
+    addBox(boxes, spec.cx - 12.8, spec.cz + 5.45, 0.12, 2.6);
+    if (lv === 0) {
+      // Ground-floor under-stair screen across East arrival lane
+      addBox(boxes, spec.cx - 12.03, spec.cz + 4.15, 1.48, 0.14);
+    } else if (lv === spec.floors - 1) {
+      // Top floor (L3) safety balustrade guarding open West shaft drop
+      addBox(boxes, spec.cx - 13.57, spec.cz + 4.15, 1.5, 0.14);
+      addBox(boxes, spec.cx - 12.8, spec.cz + 7.35, 0.12, 1.2);
+    }
+  }
+
+  // Savanna Bistro & Grill continuous G-L3 SW Iron & Copper Stairwell core colliders (0..3)
+  if (spec.id === 'restaurant') {
+    // Amber-glass & iron shaft perimeter walls (West, North, South, East south-of-doorway)
+    addBox(boxes, spec.cx - 9.55, spec.cz + 4.1, 0.16, 5.24);
+    addBox(boxes, spec.cx - 8.0, spec.cz + 1.5, 3.14, 0.16);
+    addBox(boxes, spec.cx - 8.0, spec.cz + 6.7, 3.14, 0.16);
+    addBox(boxes, spec.cx - 6.45, spec.cz + 4.76, 0.16, 3.88);
+    // Doorway gate: blocks autonomous NPCs while First-Person Walk passes freely
+    addBox(boxes, spec.cx - 6.45, spec.cz + 2.19, 0.22, 1.26, undefined, true);
+    // Center flight divider separating West (up) & East (arrival) lanes
+    addBox(boxes, spec.cx - 8.0, spec.cz + 4.15, 0.12, 2.6);
+    if (lv === 0) {
+      // Ground-floor under-stair screen across East arrival lane
+      addBox(boxes, spec.cx - 7.23, spec.cz + 2.85, 1.48, 0.14);
+    } else if (lv === spec.floors - 1) {
+      // Top floor (L3) safety balustrade guarding open West shaft drop
+      addBox(boxes, spec.cx - 8.77, spec.cz + 2.85, 1.5, 0.14);
+      addBox(boxes, spec.cx - 8.0, spec.cz + 6.05, 0.12, 1.2);
+    }
   }
 }
 
@@ -1280,6 +2318,9 @@ function resolveWithColliderSet(
   for (let pass = 0; pass < 3; pass++) {
     for (let i = 0; i < col.boxes.length; i++) {
       const b = col.boxes[i];
+      if (b.stairwellGate && options?.allowStairwell) {
+        continue;
+      }
       const exMinX = b.minX - r;
       const exMaxX = b.maxX + r;
       const exMinZ = b.minZ - r;
@@ -1381,8 +2422,8 @@ export function getDistrictChairDockPoint(
   if (!isRegisteredChair) return null;
 
   const dir = swivelDir >= 0 ? 1 : -1;
-  // Dining chairs sit beside round tables at tx ± 1.15 -> step out perpendicular in Z
-  if (buildingId === 'restaurant' && lv === 0 && homeZ < spec.cz + 5.8 && homeZ > spec.cz - 1.5) {
+  // Dining chairs sit beside round tables at tx ± 1.1 -> step out perpendicular in Z
+  if (buildingId === 'restaurant' && lv === 0 && homeZ < spec.cz + 5.8 && homeZ > spec.cz - 2.4) {
     const cand = { x: homeX, z: homeZ + dir * 0.68 };
     const chk = resolveDistrictObstacle(buildingId, lv, cand.x, cand.z, { radius: 0.2 });
     return !chk.blocked ? cand : { x: homeX, z: homeZ - dir * 0.68 };
