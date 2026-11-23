@@ -13,9 +13,11 @@ import {
   Compass,
   Crosshair,
   DoorOpen,
+  Download,
   Eye,
   Footprints,
   Lightbulb,
+  Loader2,
   Megaphone,
   MessageSquare,
   Navigation,
@@ -185,10 +187,34 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
   const [liveNairobiTemp, setLiveNairobiTemp] = useState<string | null>(null);
   const [nairobiLoading, setNairobiLoading] = useState(false);
   const [nairobiError, setNairobiError] = useState<string | null>(null);
+  const [exportingHtml, setExportingHtml] = useState(false);
   const joyRef = useRef<HTMLDivElement | null>(null);
   const [joyKnob, setJoyKnob] = useState({ x: 0, y: 0 });
   const joyActive = useRef(false);
   const driveTouchState = useRef({ throttle: 0, steer: 0, brake: false });
+  const isStandalone = Boolean((window as unknown as { __DTH_STANDALONE__?: boolean }).__DTH_STANDALONE__);
+
+  const handleDownloadStandaloneHtml = async () => {
+    if (exportingHtml) return;
+    setExportingHtml(true);
+    try {
+      const res = await fetch('/api/download-html');
+      if (!res.ok) throw new Error(`Export failed (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'domaintechhub-office-3d.html';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (err) {
+      console.error('Standalone HTML export failed:', err);
+    } finally {
+      setExportingHtml(false);
+    }
+  };
 
   useEffect(() => socialNetwork.subscribe(() => setSocialVer((v) => v + 1)), []);
 
@@ -368,6 +394,22 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
         <div className="flex items-center gap-2">
           {!hud.walking && !hud.driving && (
             <>
+              {!isStandalone && (
+                <button
+                  type="button"
+                  onClick={handleDownloadStandaloneHtml}
+                  disabled={exportingHtml}
+                  title="Download self-contained HTML file for your website"
+                  className="pointer-events-auto flex items-center gap-1.5 border border-amber-400/35 bg-[#0d121a]/92 px-3 py-2 text-xs font-medium text-amber-200 hover:bg-amber-500/20 hover:text-white disabled:opacity-60 rounded-md transition-colors cursor-pointer"
+                >
+                  {exportingHtml ? (
+                    <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5 text-amber-400" />
+                  )}
+                  <span>{exportingHtml ? 'Packing…' : 'Download HTML'}</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onOpenSocialChannels}
@@ -924,6 +966,32 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-white">
                     <Car className="w-3.5 h-3.5 text-sky-400 shrink-0" />
                     <span className="truncate">{hud.driveStreetLabel}</span>
+                    {hud.driveTrafficSignal && (
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded border text-[10px] font-mono-tabular uppercase shrink-0 ${
+                          hud.driveTrafficSignal.aspect === 'red'
+                            ? 'border-rose-400/50 bg-rose-500/18 text-rose-200'
+                            : hud.driveTrafficSignal.aspect === 'amber'
+                              ? 'border-amber-400/50 bg-amber-500/18 text-amber-200'
+                              : 'border-emerald-400/50 bg-emerald-500/18 text-emerald-200'
+                        }`}
+                        title={`Boulevard signal: ${hud.driveTrafficSignal.label}`}
+                      >
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            hud.driveTrafficSignal.aspect === 'red'
+                              ? 'bg-rose-400 shadow-[0_0_6px_rgba(251,113,133,0.9)]'
+                              : hud.driveTrafficSignal.aspect === 'amber'
+                                ? 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.9)]'
+                                : 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]'
+                          }`}
+                        />
+                        <span>
+                          {hud.driveTrafficSignal.label} · {hud.driveTrafficSignal.aspect} ·{' '}
+                          {hud.driveTrafficSignal.distance}m
+                        </span>
+                      </span>
+                    )}
                   </div>
                   {hud.driveTargetBuilding && (
                     <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-300 font-mono-tabular">

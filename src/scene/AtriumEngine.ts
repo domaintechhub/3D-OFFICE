@@ -324,6 +324,7 @@ export class AtriumEngine {
       this.arch.cabs,
       this.arch.officeChairs,
       this.arch.districtBuildings,
+      this.arch.trafficLights,
       () => this.audio.playFootstep(),
       () => this.audio.playCarHorn(),
       (high) => this.audio.playRelayClick(high)
@@ -400,7 +401,9 @@ export class AtriumEngine {
     this.renderer.domElement.addEventListener('webglcontextrestored', this.handleContextRestored);
 
     const initW = this.weather.update(0.016, this.elapsed, this.sim.simMin, this.activeLevel, this.arch.roofShellGroup.visible);
+    this.sim.setWeatherCondition(initW.activeWeather);
     this.sim.setWeatherTimeMultiplier(this.weather.getTimeMultiplier());
+    this.sim.snapAll();
     this.updateTimeOfDayLighting(this.sim.simMin, initW);
     this.emitHud();
     const now = performance.now();
@@ -1275,6 +1278,7 @@ export class AtriumEngine {
         this.activeLevel,
         this.arch.roofShellGroup.visible
       );
+      this.sim.setWeatherCondition(wState.activeWeather);
       this.sim.setWeatherTimeMultiplier(this.weather.getTimeMultiplier());
       this.updateTimeOfDayLighting(this.sim.simMin, wState);
 
@@ -1695,15 +1699,17 @@ export class AtriumEngine {
 
   public jumpToTime(minutes: number) {
     this.markInteraction();
-    this.sim.setClock(minutes);
+    const wrappedMinutes = ((minutes % 1440) + 1440) % 1440;
     const wState = this.weather.update(
       0.016,
       this.elapsed,
-      this.sim.simMin,
+      wrappedMinutes,
       this.activeLevel,
       this.arch.roofShellGroup.visible
     );
+    this.sim.setWeatherCondition(wState.activeWeather);
     this.sim.setWeatherTimeMultiplier(this.weather.getTimeMultiplier());
+    this.sim.setClock(wrappedMinutes);
     this.updateTimeOfDayLighting(this.sim.simMin, wState);
     this.emitHud();
   }
@@ -1718,6 +1724,7 @@ export class AtriumEngine {
       this.activeLevel,
       this.arch.roofShellGroup.visible
     );
+    this.sim.setWeatherCondition(wState.activeWeather);
     this.sim.setWeatherTimeMultiplier(this.weather.getTimeMultiplier());
     this.updateTimeOfDayLighting(this.sim.simMin, wState);
     this.emitHud();
@@ -1820,17 +1827,19 @@ export class AtriumEngine {
 
   public applyLiveNairobiSync(minutes: number, weatherMode: WeatherMode) {
     this.markInteraction();
-    this.sim.setClock(minutes);
+    const wrappedMinutes = ((minutes % 1440) + 1440) % 1440;
     this.sim.setRate(1);
     this.weather.setMode(weatherMode);
     const wState = this.weather.update(
       0.016,
       this.elapsed,
-      this.sim.simMin,
+      wrappedMinutes,
       this.activeLevel,
       this.arch.roofShellGroup.visible
     );
+    this.sim.setWeatherCondition(wState.activeWeather);
     this.sim.setWeatherTimeMultiplier(this.weather.getTimeMultiplier());
+    this.sim.setClock(wrappedMinutes);
     this.updateTimeOfDayLighting(this.sim.simMin, wState);
     this.emitHud();
   }
@@ -1853,6 +1862,7 @@ export class AtriumEngine {
     this.renderer.domElement.removeEventListener('webglcontextrestored', this.handleContextRestored);
     this.unwireWalk();
     this.weather.dispose();
+    this.arch.trafficLights.dispose();
     this.sim.dispose();
     this.audio.dispose();
     for (const b of this.overheadBadges) {

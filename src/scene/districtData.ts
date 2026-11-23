@@ -9,7 +9,8 @@ export type BuildingId =
   | 'travel'
   | 'tourism'
   | 'medical'
-  | 'logistics';
+  | 'logistics'
+  | 'realestate';
 
 export interface DistrictBuildingSpec {
   id: BuildingId;
@@ -223,6 +224,27 @@ export const DISTRICT_BUILDINGS: DistrictBuildingSpec[] = [
     description: 'Automated parcel sorting conveyor, east loading dock freight yard, GPS fleet control tower and customs dispatch.',
     overviewCam: { p: [54, 15, 55], t: [56, 4.8, 92] },
   },
+  {
+    id: 'realestate',
+    name: 'TerraCraft Estates, Build & Interiors',
+    shortName: 'Real Estate',
+    niche: 'Real Estate, Construction & Interiors',
+    accent: '#e07a5f',
+    accentHex: 0xe07a5f,
+    cx: -84,
+    cz: 94,
+    w: 26,
+    d: 18,
+    h: 21.0,
+    floors: 5,
+    floorH: 4.2,
+    groundY: -0.62,
+    doorX: -84,
+    doorZ: 85.0,
+    doorSide: 'north',
+    description: 'Integrated property brokerage, structural construction engineering & bespoke interior design atelier with 3D masterplan gallery and rooftop crane.',
+    overviewCam: { p: [-84, 15.5, 52], t: [-84, 6.2, 92] },
+  },
 ];
 
 export const DISTRICT_BUILDING_MAP: Record<BuildingId, DistrictBuildingSpec> = Object.fromEntries(
@@ -306,6 +328,12 @@ export const DISTRICT_WORK_THOUGHTS: Record<string, string[]> = {
     'Parcel sorting conveyor is moving 420 waybills per hour with zero jam alerts.',
     'Updating GPS corridor ETAs along the Nairobi–Mombasa and Kampala freight routes.',
     'Clearing customs airway bills before the afternoon JKIA cargo transfer.',
+  ],
+  realestate: [
+    'Walking a buyer around the 3D Karen masterplan scale model before site handover.',
+    'Reviewing structural rebar schedules and concrete cure strength for Block C.',
+    'Matching honed travertine marble, smoked oak, and brushed bronze swatches for the penthouse fit-out.',
+    'Coordinating real estate escrow, building permits, and turnkey interior styling under one roof.',
   ],
   client: [
     'Reviewing my service options and waiting comfortably in the main hall.',
@@ -892,6 +920,80 @@ export const DISTRICT_WORKSTATIONS: Record<string, WorkstationProfile> = {
         { title: 'Parcel Sorting Conveyor', meta: 'High-speed barcode scan belt live', status: 'Running' },
         { title: 'East Freight Loading Yard', meta: '2 roll-up dock bays & pallet staging', status: 'Active' },
         { title: 'Customs & Waybill Desk', meta: 'Real-time corridor GPS tracking', status: 'Online' },
+      ],
+    },
+  },
+  realestate: {
+    stationKey: 'realestate',
+    projectTitle: 'TerraCraft · Property Brokerage, Construction BIM & Interiors',
+    clientName: 'TerraCraft Estates, Build & Interiors',
+    primaryMode: 'project',
+    browserSessions: [
+      {
+        tabTitle: 'Sustainable Architecture & Mixed-Use Development',
+        url: 'https://en.wikipedia.org/wiki/Sustainable_architecture',
+        searchQuery: 'tropical modern architecture structural concrete interiors nairobi',
+        articleTitle: 'Turnkey Real Estate Development, Structural Build & Interior Fit-Out',
+        articleDomain: 'en.wikipedia.org',
+        sections: [
+          {
+            heading: 'Integrated Design-Build Delivery',
+            excerpt: 'Combining land acquisition, structural engineering, and bespoke interior curation cuts residential & commercial handover timelines by 28%.',
+            highlight: 'Karen Ridge Villa Phase II structural frame 100% topped out; interior travertine & cedar joinery underway.',
+          },
+        ],
+        researchNote: 'Updated material BoQ & apartment yield projections for Q4 investor pack.',
+      },
+    ],
+    dataEntry: {
+      sheetTitle: 'Unified Property Listings, Site Works & Interior Fit-Outs',
+      columns: ['Project / Unit', 'Division', 'Milestone', 'Status'],
+      initialRows: [
+        ['Karen Ridge Villa 04', 'Real Estate', 'KES 82.0M · Title Ready', 'Under Offer'],
+        ['Upper Hill Lofts B2', 'Construction', 'Slab Pour & MEP Rough-In', 'On Track 84%'],
+        ['Hub Exec Suite Refit', 'Interiors', 'Smoked Oak & Marble Joinery', 'Installing'],
+        ['Kilimani Sky Duplex', 'Turnkey 3-in-1', 'Staging & Handover Pack', 'Ready'],
+      ],
+      incomingQueue: [
+        ['Westlands Office Pod', 'Interiors', 'Acoustic Baffles & Lighting', 'Approved'],
+        ['Lavington Townhouse 9', 'Construction', 'Structural Steel Roof Truss', 'Inspection OK'],
+      ],
+    },
+    projectWork: {
+      fileName: 'bim/terracraft-turnkey-schedule.ts',
+      language: 'BIM & Costing',
+      accent: '#e07a5f',
+      codeLines: [
+        'export const turnkeyProject = {',
+        '  asset: "Karen Ridge Villa 04", grossYieldPct: 9.4,',
+        '  structuralPhase: "Roof & Glazing Complete",',
+        '  interiorPackage: "Travertine + Cedar + Warm Bronze"',
+        '};',
+      ],
+      terminalOutput: 'BIM clash check: 0 conflicts · 14 active builds · 9 turnkey units listed',
+      deliverables: [
+        { label: '3D masterplan scale model updated with Phase II villas', done: true },
+        { label: 'Structural steel & concrete cube strength sign-off', done: true },
+        { label: 'Bespoke furniture & lighting installation schedule', done: false },
+      ],
+    },
+    jobApp: {
+      appType: 'design',
+      appTabLabel: '3-in-1 Studio',
+      appName: 'TerraCraft · Real Estate, Construction & Interior Pipeline',
+      kpis: [
+        { label: 'Portfolio', value: 'KES 1.4B', delta: '9 Active' },
+        { label: 'Sites Active', value: '14 Builds', delta: '96% SLA' },
+        { label: 'Fit-Outs', value: '11 Studios', delta: 'On Spec' },
+      ],
+      chartBars: [0.82, 0.91, 0.76, 0.94, 0.88, 0.96],
+      chartLabels: ['Listings', 'Escrow', 'Excavation', 'Structure', 'Joinery', 'Styling'],
+      visualHeadline: 'TerraCraft Hub · Brokerage Gallery, Construction BIM & Material Atelier',
+      visualSubline: '3D property scale model live · Structural & interior fit-out teams synced',
+      visualItems: [
+        { title: 'Real Estate & Masterplan Desk', meta: 'Commercial & luxury villa portfolio', status: 'Closing' },
+        { title: 'Structural Build & Yard Ops', meta: 'Tower crane & concrete QA active', status: 'Building' },
+        { title: 'Interior Design Material Atelier', meta: 'Stone, oak & bespoke furniture curation', status: 'Styling' },
       ],
     },
   },

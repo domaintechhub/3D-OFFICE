@@ -166,6 +166,15 @@ export const DISTRICT_SOCIAL_DIRECTORY: Record<BuildingId, CompanySocialDirector
     accent: '#f97316',
     niche: 'Freight & Express Fleet',
   },
+  realestate: {
+    id: 'realestate',
+    name: 'TerraCraft Estates, Build & Interiors',
+    shortName: 'TerraCraft',
+    handle: '@terracraft.ke',
+    channel: '#terracraft-build',
+    accent: '#e07a5f',
+    niche: 'Real Estate, Build & Interiors',
+  },
 };
 
 export const DISTRICT_SOCIAL_CHANNELS: string[] = [
@@ -179,6 +188,7 @@ export const DISTRICT_SOCIAL_CHANNELS: string[] = [
   '#safari-tours',
   '#vitalcare-rx',
   '#swiftport-cargo',
+  '#terracraft-build',
 ];
 
 function formatSimClock(simMin: number): string {
@@ -260,6 +270,15 @@ const ORGANIC_JOB_TEMPLATES: Array<{
     to: 'bank',
     title: 'Clear Institutional KES Liquidity Settlement',
     brief: 'Match OTC desk wire reference NT-8841 against Nairobi Trust treasury desk.',
+    device: 'Monitor',
+    priority: 'Normal',
+  },
+  {
+    platform: 'hubpulse',
+    from: 'hub',
+    to: 'realestate',
+    title: 'Executive Floor Acoustic Timber & Interior Fit-Out',
+    brief: 'Supply smoked oak slats, honed stone lobby panels, and CAD lighting plans for Level 5.',
     device: 'Monitor',
     priority: 'Normal',
   },
@@ -596,6 +615,22 @@ class DistrictSocialNetwork {
         likes: 41,
         replies: 9,
         linkedJobCode: 'JOB-105',
+      },
+      {
+        id: 'post-8',
+        platform: 'hubpulse',
+        channel: '#terracraft-build',
+        buildingId: 'realestate',
+        buildingName: 'TerraCraft Estates, Build & Interiors',
+        accent: '#e07a5f',
+        authorName: 'TerraCraft Design-Build',
+        authorHandle: '@terracraft.ke',
+        authorRole: 'Real Estate, Construction & Interiors',
+        device: 'Monitor',
+        body: 'Karen Ridge Phase II topped out today! Walk into our 3D masterplan gallery, structural CAD studio & interior material library under one roof.',
+        timeLabel: '08:52',
+        likes: 34,
+        replies: 6,
       },
     ];
 

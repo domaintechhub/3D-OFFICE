@@ -57,6 +57,7 @@ const INITIAL_HUD: HudSnapshot = {
   driveNearbyBuilding: 'hub',
   driveNearbyName: 'DomainTechHub',
   nearPlayerCarInWalk: false,
+  driveTrafficSignal: null,
 };
 
 interface BoundaryState {

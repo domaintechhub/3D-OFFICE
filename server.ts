@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import express, { type NextFunction, type Request, type Response } from 'express';
+import { buildStandaloneHtml } from './standaloneExport.ts';
 
 dotenv.config();
 
@@ -516,6 +517,19 @@ async function startServer() {
 
   app.get('/api/health', (_req: Request, res: Response) => {
     res.json({ ok: true, service: 'DomainTechHub Full-Stack Server', time: new Date().toISOString() });
+  });
+
+  app.get('/api/download-html', async (_req: Request, res: Response) => {
+    try {
+      const html = await buildStandaloneHtml(IS_PROD);
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="domaintechhub-office-3d.html"');
+      res.setHeader('Cache-Control', 'no-store');
+      res.send(html);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to build standalone HTML file.';
+      res.status(500).json({ ok: false, error: message });
+    }
   });
 
   app.get('/api/browse', apiBrowseLimiter, async (req: Request, res: Response) => {

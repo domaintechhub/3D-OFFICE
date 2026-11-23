@@ -16,6 +16,13 @@ import {
   LIFT_SVC,
   LIFTX,
   LV,
+  RING_CORNER_R,
+  RING_CX,
+  RING_CZ_N,
+  RING_CZ_S,
+  RING_X,
+  RING_Z_NORTH,
+  RING_Z_SOUTH,
   ROAD_Z,
   ROOMS,
   ROOF,
@@ -71,6 +78,7 @@ import {
 } from './districtBuildings';
 import type { BuildingId } from './districtData';
 import { makeCanvasTex, plateTex, svcSignTex } from './textures';
+import { TrafficLightSystem } from './trafficLights';
 
 export interface PickTarget {
   mesh: THREE.Object3D;
@@ -147,6 +155,7 @@ export interface ArchitectureHandles {
   interiorWarmLights: THREE.PointLight[];
   roofFans: THREE.Group[];
   districtBuildings: Map<BuildingId, DistrictBuildingHandle>;
+  trafficLights: TrafficLightSystem;
 }
 
 function rndN(n: number): number {
@@ -3251,7 +3260,7 @@ export function buildSceneArchitecture(
   const plazaGroup = new THREE.Group();
   scene.add(plazaGroup);
 
-  const grdGeo = new THREE.PlaneGeometry(340, 280, 96, 80);
+  const grdGeo = new THREE.PlaneGeometry(420, 360, 112, 96);
   grdGeo.rotateX(-Math.PI / 2);
   {
     const pos = grdGeo.attributes.position;
@@ -3263,12 +3272,12 @@ export function buildSceneArchitecture(
 
     for (let i = 0; i < pos.count; i++) {
       const gx = pos.getX(i);
-      const gz = pos.getZ(i) + 24;
-      // Compute normalized distance outside paved district rectangle (|x| <= 112, z in [-38..106])
-      const dx = Math.max(0, Math.abs(gx) - 112);
-      const dz = Math.max(0, gz < -38 ? -38 - gz : gz > 106 ? gz - 106 : 0);
+      const gz = pos.getZ(i) + 30;
+      // Keep the entire district + outer Perimeter Ring Road flat (|x| <= 135, z in [-66..134])
+      const dx = Math.max(0, Math.abs(gx) - 135);
+      const dz = Math.max(0, gz < -66 ? -66 - gz : gz > 134 ? gz - 134 : 0);
       const edgeDist = Math.hypot(dx, dz);
-      const ramp = Math.min(1, Math.max(0, edgeDist / 26));
+      const ramp = Math.min(1, Math.max(0, edgeDist / 28));
       const smoothRamp = ramp * ramp * (3 - 2 * ramp);
 
       const wave =
@@ -3277,17 +3286,17 @@ export function buildSceneArchitecture(
         Math.sin((gx + gz) * 0.065) * 0.65;
       let elev = Math.max(0, smoothRamp * (2.6 + wave));
 
-      // Gentle raised berm inside the 4 corner green parks (outside buildings & paved lots)
+      // Gentle raised berm inside the 4 inner corner green parks (clear of buildings & ring road)
       const corners: Array<[number, number]> = [
-        [-108, 38],
-        [108, 38],
-        [-108, -24],
-        [108, -24],
+        [-96, 36],
+        [96, 36],
+        [-96, -28],
+        [96, -28],
       ];
       for (const [cx, cz] of corners) {
         const dCorner = Math.hypot(gx - cx, gz - cz);
-        if (dCorner < 10.5) {
-          const u = 1 - dCorner / 10.5;
+        if (dCorner < 10.0) {
+          const u = 1 - dCorner / 10.0;
           elev = Math.max(elev, u * u * 0.14);
         }
       }
@@ -3306,10 +3315,10 @@ export function buildSceneArchitecture(
   const grd = new THREE.Mesh(
     grdGeo,
     new THREE.MeshStandardMaterial({
-      map: repTex(M.textures.lawnTex, 36, 30),
-      normalMap: repTex(M.textures.grassNormal, 36, 30),
+      map: repTex(M.textures.lawnTex, 44, 38),
+      normalMap: repTex(M.textures.grassNormal, 44, 38),
       normalScale: new THREE.Vector2(0.7, 0.7),
-      roughnessMap: repTex(M.textures.roughTex, 36, 30),
+      roughnessMap: repTex(M.textures.roughTex, 44, 38),
       vertexColors: true,
       color: 0xffffff,
       roughness: 0.94,
@@ -3317,7 +3326,7 @@ export function buildSceneArchitecture(
       envMapIntensity: 0.18,
     })
   );
-  grd.position.set(0, -0.64, 24);
+  grd.position.set(0, -0.64, 30);
   grd.receiveShadow = true;
   plazaGroup.add(grd);
 
@@ -3427,13 +3436,174 @@ export function buildSceneArchitecture(
     interiorWarmLights.push(...db.warmLights);
   }
 
-  // Main street, cobblestones, terracotta promenade borders, curved curbs, drainage grates, lamps, bollards, hedges & trees
+  // Main Central Boulevard + Perimeter Ring Road rotating continuously around the district land
   const ySt = -0.62;
-  const road = new THREE.Mesh(new THREE.PlaneGeometry(310, 15), M.asphalt);
-  road.rotation.x = -Math.PI / 2;
-  road.position.set(0, ySt, ROAD_Z);
-  road.receiveShadow = true;
-  cityGroup.add(road);
+  const worldAsphaltMat = std({
+    map: repTex(M.textures.asphaltTex, 1, 1),
+    normalMap: repTex(M.textures.asphaltNormal, 1, 1),
+    normalScale: new THREE.Vector2(0.75, 0.75),
+    roughnessMap: repTex(M.textures.asphaltRoughness, 1, 1),
+    color: 0xffffff,
+    roughness: 0.92,
+    metalness: 0,
+    envMapIntensity: 0.22,
+  });
+  const worldBrickMat = std({
+    map: repTex(M.textures.brickPaverTex, 1, 1),
+    normalMap: repTex(M.textures.brickPaverNormal, 1, 1),
+    normalScale: new THREE.Vector2(0.75, 0.75),
+    roughnessMap: repTex(M.textures.roughTex, 1, 1),
+    color: 0xffffff,
+    roughness: 0.84,
+  });
+  const worldGrassMat = new THREE.MeshStandardMaterial({
+    map: repTex(M.textures.lawnTex, 1, 1),
+    normalMap: repTex(M.textures.grassNormal, 1, 1),
+    normalScale: new THREE.Vector2(0.7, 0.7),
+    roughnessMap: repTex(M.textures.roughTex, 1, 1),
+    color: 0xffffff,
+    roughness: 0.94,
+    envMapIntensity: 0.16,
+  });
+  const kerbPlaneMat = std({
+    normalMap: M.textures.concreteNormal,
+    normalScale: new THREE.Vector2(0.45, 0.45),
+    roughnessMap: M.textures.roughTex,
+    color: 0xafb2b6,
+    roughness: 0.82,
+  });
+
+  const applyWorldUv = (geo: THREE.BufferGeometry, cx: number, cz: number, tileU: number, tileV: number) => {
+    const pos = geo.attributes.position;
+    const uv = geo.attributes.uv;
+    if (!pos || !uv) return;
+    for (let i = 0; i < pos.count; i++) {
+      const wx = cx + pos.getX(i);
+      const wz = cz - pos.getY(i);
+      uv.setXY(i, wx / tileU, wz / tileV);
+    }
+    uv.needsUpdate = true;
+  };
+
+  const addWorldRect = (
+    w: number,
+    d: number,
+    cx: number,
+    cz: number,
+    y: number,
+    mat: THREE.Material,
+    tileU: number,
+    tileV: number
+  ) => {
+    const geo = new THREE.PlaneGeometry(w, d);
+    applyWorldUv(geo, cx, cz, tileU, tileV);
+    const m = new THREE.Mesh(geo, mat);
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(cx, y, cz);
+    m.receiveShadow = true;
+    cityGroup.add(m);
+    return m;
+  };
+
+  const addRingArc = (
+    cx: number,
+    cz: number,
+    y: number,
+    rIn: number,
+    rOut: number,
+    a0: number,
+    a1: number,
+    mat: THREE.Material,
+    tileU: number,
+    tileV: number
+  ) => {
+    const geo = new THREE.ShapeGeometry(annularSector(rIn, rOut, a0, a1), 28);
+    applyWorldUv(geo, cx, cz, tileU, tileV);
+    const m = new THREE.Mesh(geo, mat);
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(cx, y, cz);
+    m.receiveShadow = true;
+    cityGroup.add(m);
+    return m;
+  };
+
+  const addJunctionFillet = (
+    cx: number,
+    cz: number,
+    y: number,
+    r: number,
+    qSignX: -1 | 1,
+    qSignZ: -1 | 1,
+    a0: number,
+    a1: number,
+    mat: THREE.Material,
+    tileU: number,
+    tileV: number
+  ) => {
+    const s = new THREE.Shape();
+    s.moveTo(qSignX * r, -qSignZ * r);
+    if (qSignX < 0 && qSignZ > 0) {
+      // NW: (-r, 0) -> (0, -r)
+      s.lineTo(-r, 0);
+      s.absarc(0, 0, r, a0, a1, false);
+    } else if (qSignX < 0 && qSignZ < 0) {
+      // SW: (0, +r) -> (-r, 0)
+      s.lineTo(0, r);
+      s.absarc(0, 0, r, a0, a1, false);
+    } else if (qSignX > 0 && qSignZ < 0) {
+      // SE: (+r, 0) -> (0, +r)
+      s.lineTo(r, 0);
+      s.absarc(0, 0, r, a0, a1, false);
+    } else {
+      // NE: (0, -r) -> (+r, 0)
+      s.lineTo(0, -r);
+      s.absarc(0, 0, r, a0, a1, false);
+    }
+    s.closePath();
+    const geo = new THREE.ShapeGeometry(s, 14);
+    applyWorldUv(geo, cx, cz, tileU, tileV);
+    const m = new THREE.Mesh(geo, mat);
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(cx, y, cz);
+    m.receiveShadow = true;
+    cityGroup.add(m);
+    return m;
+  };
+
+  const ringW = 15;
+  const ringHW = ringW * 0.5; // 7.5
+  const ringHorizLen = RING_CX * 2; // 204
+  const ringVertLen = RING_CZ_S - RING_CZ_N; // 134
+  const ringVertMidZ = (RING_CZ_N + RING_CZ_S) * 0.5; // 33
+
+  // Central Boulevard (x = -112.5 .. +112.5) + 4 Perimeter Straight Roads + 4 Corner Arcs
+  addWorldRect(RING_X * 2 - ringW, ringW, 0, ROAD_Z, ySt, worldAsphaltMat, 7.5, 4.2);
+  addWorldRect(ringHorizLen, ringW, 0, RING_Z_NORTH, ySt, worldAsphaltMat, 7.5, 4.2);
+  addWorldRect(ringHorizLen, ringW, 0, RING_Z_SOUTH, ySt, worldAsphaltMat, 7.5, 4.2);
+  addWorldRect(ringW, ringVertLen, -RING_X, ringVertMidZ, ySt, worldAsphaltMat, 4.2, 7.5);
+  addWorldRect(ringW, ringVertLen, RING_X, ringVertMidZ, ySt, worldAsphaltMat, 4.2, 7.5);
+
+  const ringCorners: Array<{ cx: number; cz: number; a0: number; a1: number }> = [
+    { cx: RING_CX, cz: RING_CZ_N, a0: 0, a1: Math.PI * 0.5 }, // NE
+    { cx: -RING_CX, cz: RING_CZ_N, a0: Math.PI * 0.5, a1: Math.PI }, // NW
+    { cx: -RING_CX, cz: RING_CZ_S, a0: Math.PI, a1: Math.PI * 1.5 }, // SW
+    { cx: RING_CX, cz: RING_CZ_S, a0: Math.PI * 1.5, a1: Math.PI * 2 }, // SE
+  ];
+  ringCorners.forEach(({ cx, cz, a0, a1 }) => {
+    addRingArc(cx, cz, ySt, RING_CORNER_R - ringHW, RING_CORNER_R + ringHW, a0, a1, worldAsphaltMat, 6.0, 6.0);
+  });
+
+  // Swept T-junction asphalt fillets connecting Central Boulevard into West & East Ring Roads
+  const juncR = 5.0;
+  const juncCorners: Array<{ cx: number; cz: number; qx: -1 | 1; qz: -1 | 1; a0: number; a1: number }> = [
+    { cx: -(RING_X - ringHW - juncR), cz: ROAD_Z - ringHW - juncR, qx: -1, qz: 1, a0: Math.PI, a1: Math.PI * 1.5 }, // West-North
+    { cx: -(RING_X - ringHW - juncR), cz: ROAD_Z + ringHW + juncR, qx: -1, qz: -1, a0: Math.PI * 0.5, a1: Math.PI }, // West-South
+    { cx: RING_X - ringHW - juncR, cz: ROAD_Z - ringHW - juncR, qx: 1, qz: 1, a0: Math.PI * 1.5, a1: Math.PI * 2 }, // East-North
+    { cx: RING_X - ringHW - juncR, cz: ROAD_Z + ringHW + juncR, qx: 1, qz: -1, a0: 0, a1: Math.PI * 0.5 }, // East-South
+  ];
+  juncCorners.forEach(({ cx, cz, qx, qz, a0, a1 }) => {
+    addJunctionFillet(cx, cz, ySt - 0.0005, juncR, qx, qz, a0, a1, worldAsphaltMat, 6.0, 6.0);
+  });
 
   const addWalkStrip = (w: number, d: number, x: number, z: number, y = ySt + 0.004) => {
     const rx = Math.max(1, w / 3.4);
@@ -3463,7 +3633,8 @@ export function buildSceneArchitecture(
   // North-South pedestrian footwalks aligned with x = ±32 crosswalks (clear of ±36.5 driveways)
   addWalkStrip(3.2, 50, -32.0, 33.0);
   addWalkStrip(3.2, 50, 32.0, 33.0);
-  // South entrance sidewalks for Travel (-48), Tourism (0), and Logistics (54)
+  // South entrance sidewalks for TerraCraft Real Estate (-84), Travel (-48), Tourism (0), and Logistics (54)
+  addWalkStrip(54, 2.0, -72, 84.0);
   addWalkStrip(32, 2.0, -48, 83.0);
   addWalkStrip(34, 2.0, 0, 83.0);
   addWalkStrip(34, 2.0, 54, 83.0);
@@ -3471,29 +3642,24 @@ export function buildSceneArchitecture(
   addWalkStrip(3.2, 9.8, -32.0, 79.1);
   addWalkStrip(3.2, 9.8, 32.0, 79.1);
 
-  // Concrete kerb apron + rounded bullnose kerbs + 90-deg curved driveway returns + terracotta promenade borders (Reference Image 2 & 4)
-  const kerbPlaneMat = std({
-    normalMap: M.textures.concreteNormal,
-    normalScale: new THREE.Vector2(0.45, 0.45),
-    roughnessMap: M.textures.roughTex,
-    color: 0xafb2b6,
-    roughness: 0.82,
-  });
+  // Central Boulevard curbs (terminate cleanly at ±107.5 for T-junction curb fillets)
   const northSegments: Array<[number, number]> = [
-    [-134, -76.8],
+    [-107.5, -76.8],
     [-70.2, -39.6],
     [-33.4, 33.4],
     [39.6, 70.2],
-    [76.8, 134],
+    [76.8, 107.5],
   ];
   const southSegments: Array<[number, number]> = [
-    [-134, -62.8],
+    [-107.5, -96.8],
+    [-91.2, -76.8],
+    [-71.2, -62.8],
     [-57.2, -38.8],
     [-33.2, -16.8],
     [-11.2, 11.2],
     [16.8, 35.2],
     [40.8, 73.8],
-    [80.2, 134],
+    [80.2, 107.5],
   ];
 
   // Quarter-circle bullnose curb return elbow geometry turning outward from boulevard into driveway edges
@@ -3522,22 +3688,20 @@ export function buildSceneArchitecture(
       k.position.set(cx, ySt + 0.005, ROAD_Z + s * 8.1);
       cityGroup.add(k);
 
-      // Rounded bullnose curb stone
       const curbMesh = new THREE.Mesh(getRoundedSlabGeo(len, 0.34, 0.14, 0.18, 0.055), M.concrete);
       curbMesh.position.set(cx, ySt + 0.09, ROAD_Z + s * 8.32);
       curbMesh.castShadow = true;
       curbMesh.receiveShadow = true;
       cityGroup.add(curbMesh);
 
-      // Curved 90-degree bullnose curb return elbows at inner driveway openings
-      if (x0 > -130) {
+      if (x0 > -107) {
         const elbL = new THREE.Mesh(curbElbowGeo, M.concrete);
         elbL.position.set(x0, ySt + 0.09, ROAD_Z + s * 8.32);
         elbL.scale.set(-1, 1, s);
         elbL.castShadow = true;
         cityGroup.add(elbL);
       }
-      if (x1 < 130) {
+      if (x1 < 107) {
         const elbR = new THREE.Mesh(curbElbowGeo, M.concrete);
         elbR.position.set(x1, ySt + 0.09, ROAD_Z + s * 8.32);
         elbR.scale.set(1, 1, s);
@@ -3545,7 +3709,6 @@ export function buildSceneArchitecture(
         cityGroup.add(elbR);
       }
 
-      // Warm terracotta herringbone brick promenade border right behind the bullnose curb (Reference Image 2)
       const brickMat = std({
         map: repTex(M.textures.brickPaverTex, Math.max(2, len * 0.52), 0.7),
         normalMap: repTex(M.textures.brickPaverNormal, Math.max(2, len * 0.52), 0.7),
@@ -3562,7 +3725,74 @@ export function buildSceneArchitecture(
     });
   });
 
-  // Galvanized slotted steel drainage grates across main driveway mouths (Reference Image 4)
+  // Perimeter Ring Road straight & curved bullnose curbs, brick promenade borders & grass verges
+  const addRingHorizEdge = (zRoad: number, sideSign: -1 | 1) => {
+    const cx = 0;
+    const len = ringHorizLen;
+    addWorldRect(len, 1.2, cx, zRoad + sideSign * 8.1, ySt + 0.005, kerbPlaneMat, 4, 4);
+    const curbMesh = new THREE.Mesh(getRoundedSlabGeo(len, 0.34, 0.14, 0.18, 0.055), M.concrete);
+    curbMesh.position.set(cx, ySt + 0.09, zRoad + sideSign * 8.32);
+    curbMesh.castShadow = true;
+    curbMesh.receiveShadow = true;
+    cityGroup.add(curbMesh);
+    addWorldRect(len, 1.15, cx, zRoad + sideSign * 9.08, ySt + 0.008, worldBrickMat, 2.2, 2.2);
+    addWorldRect(len, 4.0, cx, zRoad + sideSign * 11.4, ySt + 0.006, worldGrassMat, 12, 12);
+  };
+  addRingHorizEdge(RING_Z_NORTH, -1); // North outer
+  addRingHorizEdge(RING_Z_NORTH, 1); // North inner
+  addRingHorizEdge(RING_Z_SOUTH, -1); // South inner
+  addRingHorizEdge(RING_Z_SOUTH, 1); // South outer
+
+  const addRingVertSpan = (xCurbBase: number, sideSign: -1 | 1, z0: number, z1: number) => {
+    const len = z1 - z0;
+    const cz = (z0 + z1) * 0.5;
+    addWorldRect(1.2, len, xCurbBase + sideSign * 8.1, cz, ySt + 0.005, kerbPlaneMat, 4, 4);
+    const curbMesh = new THREE.Mesh(getRoundedSlabGeo(0.34, len, 0.14, 0.18, 0.055), M.concrete);
+    curbMesh.position.set(xCurbBase + sideSign * 8.32, ySt + 0.09, cz);
+    curbMesh.castShadow = true;
+    curbMesh.receiveShadow = true;
+    cityGroup.add(curbMesh);
+    addWorldRect(1.15, len, xCurbBase + sideSign * 9.08, cz, ySt + 0.008, worldBrickMat, 2.2, 2.2);
+    addWorldRect(4.0, len, xCurbBase + sideSign * 11.4, cz, ySt + 0.006, worldGrassMat, 12, 12);
+  };
+  // West & East Outer Edges (uninterrupted)
+  addRingVertSpan(-RING_X, -1, RING_CZ_N, RING_CZ_S);
+  addRingVertSpan(RING_X, 1, RING_CZ_N, RING_CZ_S);
+  // West & East Inner Edges (split neatly at T-junction z = 53.5..78.5)
+  const juncGapN = ROAD_Z - ringHW - juncR; // 53.5
+  const juncGapS = ROAD_Z + ringHW + juncR; // 78.5
+  addRingVertSpan(-RING_X, 1, RING_CZ_N, juncGapN);
+  addRingVertSpan(-RING_X, 1, juncGapS, RING_CZ_S);
+  addRingVertSpan(RING_X, -1, RING_CZ_N, juncGapN);
+  addRingVertSpan(RING_X, -1, juncGapS, RING_CZ_S);
+
+  // 4 Ring Corner Curbs, Brick Borders & Grass Verges
+  ringCorners.forEach(({ cx, cz, a0, a1 }) => {
+    // Inner arc edge
+    addRingArc(cx, cz, ySt + 0.005, 9.3, 10.5, a0, a1, kerbPlaneMat, 4, 4);
+    const inCurb = curvedSlab(9.51, 9.85, a0, a1, 0.18, ySt, cx, cz, M.concrete, 0.055);
+    cityGroup.add(inCurb);
+    addRingArc(cx, cz, ySt + 0.008, 8.35, 9.5, a0, a1, worldBrickMat, 2.2, 2.2);
+    addRingArc(cx, cz, ySt + 0.006, 5.4, 8.35, a0, a1, worldGrassMat, 12, 12);
+
+    // Outer arc edge
+    addRingArc(cx, cz, ySt + 0.005, 25.5, 26.7, a0, a1, kerbPlaneMat, 4, 4);
+    const outCurb = curvedSlab(26.15, 26.49, a0, a1, 0.18, ySt, cx, cz, M.concrete, 0.055);
+    cityGroup.add(outCurb);
+    addRingArc(cx, cz, ySt + 0.008, 26.5, 27.65, a0, a1, worldBrickMat, 2.2, 2.2);
+    addRingArc(cx, cz, ySt + 0.006, 27.65, 31.65, a0, a1, worldGrassMat, 12, 12);
+  });
+
+  // 4 T-Junction Curved Curb Fillets connecting West/East Inner Ring Curbs to Central Boulevard Curbs
+  juncCorners.forEach(({ cx, cz, a0, a1 }) => {
+    addRingArc(cx, cz, ySt + 0.005, 4.3, 5.0, a0, a1, kerbPlaneMat, 4, 4);
+    const jCurb = curvedSlab(4.01, 4.35, a0, a1, 0.18, ySt, cx, cz, M.concrete, 0.055);
+    cityGroup.add(jCurb);
+    addRingArc(cx, cz, ySt + 0.008, 2.86, 4.0, a0, a1, worldBrickMat, 2.2, 2.2);
+    addRingArc(cx, cz, ySt + 0.006, 0.2, 2.86, a0, a1, worldGrassMat, 12, 12);
+  });
+
+  // Galvanized slotted steel drainage grates across main driveway mouths
   const grateMat = std({ color: 0x8f979e, roughness: 0.36, metalness: 0.72 });
   [-73.5, -36.5, 36.5, 73.5].forEach((dx) => {
     boxAt(cityGroup, 5.2, 0.025, 0.42, dx, ySt + 0.01, ROAD_Z - 7.85, M.concrete, false, true, 0.006);
@@ -3577,12 +3807,43 @@ export function buildSceneArchitecture(
     }
   });
 
-  for (let x = -144; x <= 144; x += 8) {
-    const d = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 0.25), new THREE.MeshBasicMaterial({ color: 0xe6e1c8 }));
+  // Center dashed lane markings along Central Boulevard + full Perimeter Ring Road
+  const dashMat = new THREE.MeshBasicMaterial({ color: 0xe6e1c8 });
+  const dashGeoH = new THREE.PlaneGeometry(3.6, 0.25);
+  const dashGeoV = new THREE.PlaneGeometry(0.25, 3.6);
+  const addDash = (x: number, z: number, rotY = 0) => {
+    const d = new THREE.Mesh(dashGeoH, dashMat);
     d.rotation.x = -Math.PI / 2;
-    d.position.set(x, ySt + 0.01, ROAD_Z);
+    d.rotation.z = rotY;
+    d.position.set(x, ySt + 0.01, z);
     cityGroup.add(d);
+  };
+  for (let x = -108; x <= 108; x += 8) addDash(x, ROAD_Z, 0);
+  for (let x = -98; x <= 98; x += 8) {
+    addDash(x, RING_Z_NORTH, 0);
+    addDash(x, RING_Z_SOUTH, 0);
   }
+  for (let z = RING_CZ_N + 4; z <= RING_CZ_S - 4; z += 8) {
+    if (Math.abs(z - ROAD_Z) > 9.5) {
+      const dW = new THREE.Mesh(dashGeoV, dashMat);
+      dW.rotation.x = -Math.PI / 2;
+      dW.position.set(-RING_X, ySt + 0.01, z);
+      cityGroup.add(dW);
+      const dE = new THREE.Mesh(dashGeoV, dashMat);
+      dE.rotation.x = -Math.PI / 2;
+      dE.position.set(RING_X, ySt + 0.01, z);
+      cityGroup.add(dE);
+    }
+  }
+  ringCorners.forEach(({ cx, cz, a0, a1 }) => {
+    for (let k = 0; k < 4; k++) {
+      const a = a0 + ((k + 0.5) / 4) * (a1 - a0);
+      const dx = cx + Math.cos(a) * RING_CORNER_R;
+      const dz = cz - Math.sin(a) * RING_CORNER_R;
+      addDash(dx, dz, a + Math.PI * 0.5);
+    }
+  });
+
   const link = new THREE.Mesh(
     new THREE.PlaneGeometry(8, ROAD_Z - 55),
     std({
@@ -3599,19 +3860,27 @@ export function buildSceneArchitecture(
   link.receiveShadow = true;
   cityGroup.add(link);
 
+  // Zebra crosswalks & stop bars on Central Boulevard (-32, 0, +32) and North/South Ring (0)
   const stripeMat = new THREE.MeshBasicMaterial({ color: 0xf0ede0 });
-  [-32, 0, 32].forEach((cx) => {
+  const paintCrosswalk = (cx: number, roadZ: number) => {
     for (let k = 0; k < 8; k++) {
       const s = new THREE.Mesh(new THREE.PlaneGeometry(1.05, 13), stripeMat);
       s.rotation.x = -Math.PI / 2;
-      s.position.set(cx - 4.2 + k * 1.2, ySt + 0.012, ROAD_Z);
+      s.position.set(cx - 4.2 + k * 1.2, ySt + 0.012, roadZ);
       cityGroup.add(s);
     }
-    const sl = new THREE.Mesh(new THREE.PlaneGeometry(13, 0.4), stripeMat);
-    sl.rotation.x = -Math.PI / 2;
-    sl.position.set(cx, ySt + 0.012, ROAD_Z - 7.4);
-    cityGroup.add(sl);
-  });
+    const slW = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 6.4), stripeMat);
+    slW.rotation.x = -Math.PI / 2;
+    slW.position.set(cx + 6.5, ySt + 0.012, roadZ - 3.6);
+    cityGroup.add(slW);
+    const slE = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 6.4), stripeMat);
+    slE.rotation.x = -Math.PI / 2;
+    slE.position.set(cx - 6.5, ySt + 0.012, roadZ + 3.6);
+    cityGroup.add(slE);
+  };
+  [-32, 0, 32].forEach((cx) => paintCrosswalk(cx, ROAD_Z));
+  paintCrosswalk(0, RING_Z_NORTH);
+  paintCrosswalk(0, RING_Z_SOUTH);
 
   const grassMat = new THREE.MeshStandardMaterial({
     map: repTex(M.textures.lawnTex, 6, 1.4),
@@ -3637,7 +3906,7 @@ export function buildSceneArchitecture(
     });
   });
 
-  // Lush manicured hedges & flowering edge shrubs along boulevard median verges (Reference Image 2 & 4)
+  // Lush manicured hedges & flowering edge shrubs along boulevard median verges
   [
     [-96, 16, -1],
     [-55, 14, -1],
@@ -3645,7 +3914,7 @@ export function buildSceneArchitecture(
     [19, 13, -1],
     [55, 14, -1],
     [96, 16, -1],
-    [-90, 14, 1],
+    [-84, 10, 1],
     [95, 12, 1],
   ].forEach(([hx, hLen, side], idx) => {
     buildManicuredHedge(cityGroup, hx, ySt, ROAD_Z + side * 10.65, hLen, 0.95, 0.85, 0, 410 + idx * 13, M, archMats);
@@ -3654,27 +3923,47 @@ export function buildSceneArchitecture(
     }
   });
 
-  // Outer corner green gardens with river-stone beds & multi-stemmed flowering/leafy shrubs
+  // Inner corner green gardens with river-stone beds & multi-stemmed flowering/leafy shrubs (tucked inside ring road)
   [
-    [-108, 38],
-    [108, 38],
-    [-108, -24],
-    [108, -24],
+    [-96, 36],
+    [96, 36],
+    [-96, -28],
+    [96, -28],
   ].forEach((p, idx) => {
-    buildOrganicShrub(cityGroup, p[0] - 4.5, ySt + 0.04, p[1] - 3.5, 1.65, 1.75, 620 + idx * 11, M, archMats, false);
-    buildOrganicShrub(cityGroup, p[0] + 4.2, ySt + 0.04, p[1] + 3.2, 1.45, 1.55, 640 + idx * 13, M, archMats, true);
-    buildRiverStoneBed(cityGroup, p[0], ySt + 0.08, p[1], 4.8, 3.6, 660 + idx * 17, M, archMats, true);
+    buildOrganicShrub(cityGroup, p[0] - 4.2, ySt + 0.04, p[1] - 3.2, 1.55, 1.65, 620 + idx * 11, M, archMats, false);
+    buildOrganicShrub(cityGroup, p[0] + 3.9, ySt + 0.04, p[1] + 2.9, 1.38, 1.48, 640 + idx * 13, M, archMats, true);
+    buildRiverStoneBed(cityGroup, p[0], ySt + 0.08, p[1], 4.5, 3.4, 660 + idx * 17, M, archMats, true);
   });
 
-  // Curved gooseneck lamps placed strictly clear of every driveway & forecourt road
+  // Curved gooseneck lamps along Central Boulevard & Perimeter Ring Road (clear of driveways)
   [-98, -56, -32, 32, 56, 98].forEach((x) => {
     gooseneckLamp(cityGroup, x, ySt, ROAD_Z - 11.4, -1, M);
   });
   [-82, -68, -24, 24, 86].forEach((x) => {
     gooseneckLamp(cityGroup, x, ySt, ROAD_Z + 11.2, 1, M);
   });
+  [-84, -42, 42, 84].forEach((x) => {
+    gooseneckLamp(cityGroup, x, ySt, RING_Z_NORTH - 11.2, -1, M);
+    gooseneckLamp(cityGroup, x, ySt, RING_Z_SOUTH + 11.2, 1, M);
+  });
+  [-24, 14, 48, 90].forEach((z) => {
+    const lx = new THREE.Group();
+    lx.position.set(-RING_X - 11.2, ySt, z);
+    lx.rotation.y = Math.PI / 2;
+    gooseneckLamp(lx, 0, 0, 0, 1, M);
+    cityGroup.add(lx);
+    const rx = new THREE.Group();
+    rx.position.set(RING_X + 11.2, ySt, z);
+    rx.rotation.y = -Math.PI / 2;
+    gooseneckLamp(rx, 0, 0, 0, 1, M);
+    cityGroup.add(rx);
+  });
 
-  // Brushed stainless cylindrical bollards along Hub plaza edge & boulevard terracotta promenade (Reference Image 2)
+  // Automated Boulevard & Ring Crosswalk Traffic Lights & Pedestrian Signals
+  const trafficLights = new TrafficLightSystem(M, ySt);
+  cityGroup.add(trafficLights.group);
+
+  // Brushed stainless cylindrical bollards along Hub plaza edge & boulevard terracotta promenade
   const bolMat = std({ color: 0xd6dde4, roughness: 0.24, metalness: 0.88 });
   for (let x = -21; x <= 21; x += 3) {
     if (Math.abs(x) < 4) continue;
@@ -3707,10 +3996,10 @@ export function buildSceneArchitecture(
     buildOrganicShrub(cityGroup, sx, ySt, 47.0, 0.88, 0.98, 750 + sIdx * 13, M, archMats, true);
   });
 
-  // Sculpted street trees with curved trunks and 3D canopies (clear of all roads & driveways)
+  // Sculpted street trees along Central Boulevard (inside ±104) & Perimeter Ring outer verges
   const rndT = (n: number) => (((Math.sin(n * 12.9898) * 43758.5453) % 1) + 1) % 1;
   let ti = 0;
-  for (let x = -114; x <= 114; x += 13.5) {
+  for (let x = -102; x <= 102; x += 13.5) {
     if (
       Math.abs(x) < 7 ||
       Math.abs(Math.abs(x) - 36.5) < 4.5 ||
@@ -3723,12 +4012,29 @@ export function buildSceneArchitecture(
     tree(cityGroup, x, ySt, ROAD_Z - 11.4 + r * 1.0, 5.4 + r * 2.6, 2.0 + r * 0.9, ti * 7 + 3, M);
     ti++;
   }
-  // South street trees only in open green medians between company forecourts
-  [-92, -76, -26, -21, 21, 26, 88, 102].forEach((x) => {
+  [-102, -67, -26, -21, 21, 26, 88, 102].forEach((x) => {
     const r = rndT(x * 0.71 + ti * 2.3);
     tree(cityGroup, x, ySt, ROAD_Z + 11.4 + r * 0.9, 6.2 + r * 2.8, 2.2 + r * 0.9, ti * 7 + 91, M);
     ti++;
   });
+  // Perimeter Ring outer street trees
+  for (let x = -98; x <= 98; x += 22) {
+    if (Math.abs(x) < 9) continue;
+    const rN = rndT(x * 0.43 + 11);
+    tree(cityGroup, x, ySt, RING_Z_NORTH - 11.6 - rN * 0.8, 5.8 + rN * 2.4, 2.1 + rN * 0.8, ti * 7 + 19, M);
+    ti++;
+    const rS = rndT(x * 0.59 + 29);
+    tree(cityGroup, x, ySt, RING_Z_SOUTH + 11.6 + rS * 0.8, 5.8 + rS * 2.4, 2.1 + rS * 0.8, ti * 7 + 31, M);
+    ti++;
+  }
+  for (let z = -30; z <= 96; z += 24) {
+    const rW = rndT(z * 0.51 + 41);
+    tree(cityGroup, -RING_X - 11.6 - rW * 0.8, ySt, z, 5.6 + rW * 2.4, 2.0 + rW * 0.8, ti * 7 + 43, M);
+    ti++;
+    const rE = rndT(z * 0.67 + 53);
+    tree(cityGroup, RING_X + 11.6 + rE * 0.8, ySt, z, 5.6 + rE * 2.4, 2.0 + rE * 0.8, ti * 7 + 57, M);
+    ti++;
+  }
   for (let i = 0; i < 9; i++) {
     const x = -34 + i * 8.6 + (rndT(i * 3.1) - 0.5) * 3;
     if (Math.abs(x) < 7 || Math.abs(Math.abs(x) - 36.5) < 4.5 || Math.abs(x) > 29.0) continue;
@@ -3829,7 +4135,14 @@ export function buildSceneArchitecture(
   paintRowStalls([84, 88, 92, 96], 13.8, 4.0, 3.8);
   [84, 88, 92, 96].forEach((bx) => addWheelStop(bx, 12.2));
 
-  // 5. South Company Forecourt Roads (Travel, Tourism, Logistics + East Freight Yard)
+  // 5. South Company Forecourt Roads (TerraCraft Real Estate, Travel, Tourism, Logistics + East Freight Yard)
+  // TerraCraft Real Estate, Build & Interiors Forecourt Loop (cx = -84)
+  flat(4.6, 8.0, -94.0, 75.5, -0.604, asphaltMat);
+  flat(4.6, 8.0, -74.0, 75.5, -0.604, asphaltMat);
+  flat(24.6, 4.6, -84.0, 77.2, -0.604, asphaltMat);
+  flat(18.0, 3.2, -84.0, 79.2, -0.604, asphaltMat);
+  paintRowStalls([-90, -84, -78], 79.2, 6.0, 3.2);
+
   // Travel Drop-off Loop (cx = -48)
   flat(4.6, 8.0, -60.0, 75.5, -0.604, asphaltMat);
   flat(4.6, 8.0, -36.0, 75.5, -0.604, asphaltMat);
@@ -3881,5 +4194,6 @@ export function buildSceneArchitecture(
     interiorWarmLights,
     roofFans,
     districtBuildings,
+    trafficLights,
   };
 }

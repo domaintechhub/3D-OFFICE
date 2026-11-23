@@ -203,7 +203,7 @@ type DistrictArchStyle = 'tower' | 'blade' | 'stone_pergola' | 'shed_seam';
 function getBuildingArchStyle(id: BuildingId): DistrictArchStyle {
   if (id === 'bank' || id === 'crypto') return 'tower';
   if (id === 'medical' || id === 'travel') return 'blade';
-  if (id === 'restaurant' || id === 'tourism') return 'stone_pergola';
+  if (id === 'restaurant' || id === 'tourism' || id === 'realestate') return 'stone_pergola';
   return 'shed_seam';
 }
 
@@ -463,7 +463,7 @@ export function buildDistrictBuildings(
         ? terracottaMat
         : spec.id === 'dealership'
           ? frameDarkMat
-          : spec.id === 'bank'
+          : spec.id === 'bank' || spec.id === 'realestate'
             ? bankStoneMat
             : spec.id === 'crypto'
               ? cryptoWallMat
@@ -476,13 +476,14 @@ export function buildDistrictBuildings(
                     : medicalWallMat;
 
     const slabFloorMat =
-      spec.id === 'restaurant' || spec.id === 'tourism'
+      spec.id === 'restaurant' || spec.id === 'tourism' || spec.id === 'realestate'
         ? floorWarmOak
         : spec.id === 'crypto' || spec.id === 'logistics'
           ? floorSlate
           : floorTerrazzo;
 
-    const buildingGlass = spec.id === 'restaurant' || spec.id === 'tourism' ? warmGlassMat : glassMat;
+    const buildingGlass =
+      spec.id === 'restaurant' || spec.id === 'tourism' || spec.id === 'realestate' ? warmGlassMat : glassMat;
 
     const registerMonitor = (
       lv: number,
@@ -1658,6 +1659,180 @@ export function buildDistrictBuildings(
       logMesh.rotation.y = Math.PI;
       g0.add(logMesh);
       logBoard.setMesh(logMesh);
+    } else if (spec.id === 'realestate') {
+      // TerraCraft Estates, Build & Interiors:
+      // 1. North Cantilevered Architectural Portico & Cedar Soffit Canopy
+      const reCanopy = new THREE.Mesh(
+        getRoundedSlabGeo(12.8, 3.3, 0.7, 0.32, 0.05),
+        archMats.stuccoWhite
+      );
+      reCanopy.position.set(spec.doorX, spec.groundY + spec.floorH - 0.15, spec.doorZ - 1.6);
+      reCanopy.castShadow = true;
+      g0.add(reCanopy);
+      const reSoffit = new THREE.Mesh(
+        getRoundedSlabGeo(12.2, 2.8, 0.55, 0.07, 0.015),
+        archMats.timberSoffit
+      );
+      reSoffit.position.set(spec.doorX, spec.groundY + spec.floorH - 0.31, spec.doorZ - 1.6);
+      g0.add(reSoffit);
+      [-5.1, 5.1].forEach((px) => {
+        cylAt(g0, 0.16, 0.18, spec.floorH - 0.3, spec.doorX + px, spec.groundY + (spec.floorH - 0.3) * 0.5, spec.doorZ - 2.7, archMats.ashlarStone, true, true, 14);
+      });
+
+      // 2. Rooftop Architectural Tower Crane (signals Construction & Development across the skyline)
+      const craneYellow = std({ color: 0xf59e0b, roughness: 0.42, metalness: 0.28 });
+      const craneSteel = std({ color: 0x334155, roughness: 0.46, metalness: 0.52 });
+      const craneBaseX = spec.cx - spec.w * 0.24;
+      const craneBaseZ = spec.cz - spec.d * 0.14;
+      const roofBaseY = spec.groundY + spec.h + 0.18;
+      boxAt(roofShellGroup, 1.9, 0.32, 1.9, craneBaseX, roofBaseY + 0.16, craneBaseZ, craneSteel, true, true, 0.03);
+      // Mast lattice shaft
+      boxAt(roofShellGroup, 0.72, 4.8, 0.72, craneBaseX, roofBaseY + 2.55, craneBaseZ, craneYellow, true, false, 0.02);
+      const craneTop = new THREE.Group();
+      craneTop.position.set(craneBaseX, roofBaseY + 5.05, craneBaseZ);
+      // Operator cab + counter-jib + main slewing jib + trolley hook
+      boxAt(craneTop, 0.85, 0.85, 0.95, 0.48, 0.25, 0.3, frameDarkMat, true, false, 0.03);
+      boxAt(craneTop, 9.2, 0.36, 0.44, 2.2, 0.75, 0, craneYellow, true, false, 0.02);
+      boxAt(craneTop, 1.25, 0.72, 0.82, -2.0, 0.75, 0, craneSteel, true, false, 0.03); // counterweight
+      cylAt(craneTop, 0.04, 0.24, 1.05, 0, 1.38, 0, craneYellow, true, false, 4); // A-frame apex
+      cylAt(craneTop, 0.025, 0.025, 1.4, 5.8, 0.0, 0, craneSteel, false, false, 8); // hoist cable
+      boxAt(craneTop, 0.36, 0.22, 0.36, 5.8, -0.75, 0, accentMat, true, false, 0.02); // hook block
+      roofShellGroup.add(craneTop);
+      rotatingProps.push({ obj: craneTop, speed: 0.18, axis: 'y' });
+
+      // 3. Outdoor West Construction & Material Staging Yard (x = cx - 16.2, grounded at spec.groundY)
+      const yardX = spec.cx - 16.2;
+      const yardMat = std({ color: 0x949aa1, roughness: 0.88 });
+      const timberYardMat = std({ color: 0xb67b44, roughness: 0.72 });
+      const coneMat = std({ color: 0xf97316, roughness: 0.45 });
+      boxAt(g0, 3.4, 0.08, 7.2, yardX, spec.groundY + 0.04, spec.cz, yardMat, false, true, 0.02);
+      // Timber beams stack
+      for (let ti = 0; ti < 3; ti++) {
+        boxAt(g0, 1.8, 0.18, 2.6, yardX - 0.3, spec.groundY + 0.17 + ti * 0.2, spec.cz - 1.8, timberYardMat, true, true, 0.015);
+      }
+      // Dressed stone block pallet + steel beams
+      boxAt(g0, 1.6, 0.12, 1.8, yardX + 0.2, spec.groundY + 0.14, spec.cz + 1.4, woodCedarMat, true, true, 0.01);
+      boxAt(g0, 1.25, 0.62, 1.35, yardX + 0.2, spec.groundY + 0.51, spec.cz + 1.4, bankStoneMat, true, true, 0.02);
+      boxAt(g0, 0.45, 0.18, 3.2, yardX - 0.85, spec.groundY + 0.18, spec.cz + 1.5, craneSteel, true, true, 0.01);
+      // Safety cones framing yard
+      [spec.cz - 3.3, spec.cz + 3.3].forEach((czCone) => {
+        cylAt(g0, 0.05, 0.22, 0.56, yardX + 1.4, spec.groundY + 0.28, czCone, coneMat, true, true, 12);
+      });
+
+      // 4. INTERIOR WEST WING: Real Estate 3D Masterplan Scale-Model Table & Broker Desk
+      const modX = spec.cx - 6.8;
+      const modZ = spec.cz - 0.8;
+      boxAt(g0, 4.3, 0.78, 2.7, modX, fy + 0.39, modZ, M.walnut, true, true, 0.04);
+      boxAt(g0, 4.0, 0.06, 2.4, modX, fy + 0.81, modZ, std({ color: 0x4b7447, roughness: 0.85 }), false, true);
+      // Miniature architectural towers, pitched villas & turquoise pool on scale-model table
+      boxAt(g0, 0.75, 1.15, 0.65, modX - 1.1, fy + 1.41, modZ - 0.35, M.white, true, false, 0.02);
+      boxAt(g0, 0.62, 0.82, 0.62, modX - 0.15, fy + 1.25, modZ - 0.45, accentMat, true, false, 0.02);
+      boxAt(g0, 0.85, 0.48, 0.7, modX + 0.95, fy + 1.08, modZ + 0.25, M.white, true, false, 0.02);
+      boxAt(g0, 0.78, 0.04, 0.55, modX - 0.2, fy + 0.86, modZ + 0.55, std({ color: 0x38bdf8, roughness: 0.2, emissive: 0x0284c7, emissiveIntensity: 0.3 }), false, false);
+
+      // Real Estate Broker Desk
+      makeDeskAt(g0, spec.cx - 6.8, fy, spec.cz + 5.2, 2.5, 1.05, M);
+      registerChair(0, spec.cx - 6.8, fy, spec.cz + 6.08, Math.PI, 1);
+      registerMonitor(
+        0,
+        0,
+        [spec.cx - 6.8, fy + 0.77, spec.cz + 5.05],
+        0,
+        spec.cx - 6.8,
+        spec.cz + 6.08,
+        'Senior Property Broker',
+        'Real Estate Masterplan Gallery'
+      );
+
+      // 5. INTERIOR CENTER: Bi-Level Reception Desk & Client Lounge
+      boxAt(g0, 4.8, 1.04, 0.52, spec.cx + 0.2, fy + 0.52, spec.cz + 2.86, bankStoneMat, true, true, 0.04);
+      boxAt(g0, 4.95, 0.07, 0.6, spec.cx + 0.2, fy + 1.06, spec.cz + 2.86, accentMat, false, false);
+      boxAt(g0, 4.8, 0.06, 0.88, spec.cx + 0.2, fy + 0.75, spec.cz + 3.55, M.walnut, true, true, 0.02);
+      [-1.4, 1.8].forEach((ox) => {
+        armchair(g0, spec.cx + ox, fy, spec.cz - 2.6, 0, M.fabricCognac, M);
+      });
+
+      // 6. INTERIOR EAST WING: Construction Engineering Desk + Interior Design Material Library
+      makeDeskAt(g0, spec.cx + 7.4, fy, spec.cz + 5.2, 2.5, 1.05, M);
+      registerChair(0, spec.cx + 7.4, fy, spec.cz + 6.08, Math.PI, -1);
+      registerMonitor(
+        0,
+        1,
+        [spec.cx + 7.4, fy + 0.77, spec.cz + 5.05],
+        0,
+        spec.cx + 7.4,
+        spec.cz + 6.08,
+        'Lead Structural Engineer',
+        'Construction CAD & Interior Atelier'
+      );
+      // Yellow hard-hat & rolled blueprint tubes on Construction Desk
+      cylAt(g0, 0.12, 0.18, 0.14, spec.cx + 8.15, fy + 0.84, spec.cz + 5.2, craneYellow, true, false, 12);
+      boxAt(g0, 0.62, 0.07, 0.07, spec.cx + 6.5, fy + 0.8, spec.cz + 5.3, M.white, false, false);
+
+      // Interior Design Material Library Rack & Designer Showcase Vignette
+      shelfUnit(g0, spec.cx + 7.4, fy, spec.cz - 5.2, 3.6, M);
+      const swatchCols = [0xe07a5f, 0xd4a373, 0x3d5a80, 0x81b29a, 0xf2cc8f, 0x6b7280];
+      swatchCols.forEach((sc, si) => {
+        boxAt(
+          g0,
+          0.42,
+          0.46,
+          0.12,
+          spec.cx + 6.1 + si * 0.52,
+          fy + 1.48,
+          spec.cz - 5.08,
+          std({ color: sc, roughness: 0.55 }),
+          false,
+          false
+        );
+      });
+      sofaWide(g0, spec.cx + 7.4, fy, spec.cz - 1.6, Math.PI, M.fabricCognac, M);
+      boxAt(g0, 1.6, 0.38, 0.85, spec.cx + 7.4, fy + 0.19, spec.cz - 0.3, M.walnut, true, true, 0.03);
+
+      // 7. Live 3-in-1 Real Estate, Construction & Interiors Telemetry Wall Board
+      const reBoard = createCustomBoardScreen(screenReg, 720, 230, (g, w, h, t) => {
+        g.fillStyle = '#12100e';
+        g.fillRect(0, 0, w, h);
+        g.fillStyle = '#e07a5f';
+        g.fillRect(0, 0, w, 34);
+        g.fillStyle = '#12100e';
+        g.font = '800 17px "Plus Jakarta Sans", sans-serif';
+        g.textAlign = 'left';
+        g.textBaseline = 'middle';
+        g.fillText('TERRACRAFT · REAL ESTATE, CONSTRUCTION & INTERIOR DESIGN', 16, 17);
+        const rows = [
+          ['ESTATES', 'Karen Ridge Villa 04', 'KES 82.0M · Title Ready', 'UNDER OFFER'],
+          ['CONSTRUCTION', 'Upper Hill Lofts B2', 'Slab & MEP Rough-In', '84% ON SPEC'],
+          ['INTERIORS', 'Hub Exec Suite Refit', 'Travertine & Smoked Oak', 'INSTALLING'],
+          ['TURNKEY 3-IN-1', 'Kilimani Sky Duplex', 'Full Build + Styling', 'HANDOVER'],
+        ];
+        rows.forEach((r, i) => {
+          const y = 52 + i * 42;
+          g.fillStyle = i === Math.floor(t / 2.8) % 4 ? 'rgba(224,122,95,0.22)' : 'rgba(255,255,255,0.05)';
+          rr(g, 14, y, w - 28, 36, 5);
+          g.fill();
+          g.fillStyle = '#f4a261';
+          g.font = '700 14px monospace';
+          g.fillText(r[0], 24, y + 18);
+          g.fillStyle = '#f8fafc';
+          g.font = '700 15px sans-serif';
+          g.fillText(r[1], 165, y + 18);
+          g.fillStyle = '#cbd5e1';
+          g.font = '600 14px sans-serif';
+          g.fillText(r[2], 370, y + 18);
+          g.fillStyle = i === 3 ? '#4ade80' : '#facc15';
+          g.textAlign = 'right';
+          g.font = '700 14px monospace';
+          g.fillText(r[3], w - 24, y + 18);
+          g.textAlign = 'left';
+        });
+      });
+      boxAt(g0, 7.6, 2.35, 0.14, spec.cx, fy + 2.35, spec.cz + 8.7, frameDarkMat, false, false);
+      const reMesh = new THREE.Mesh(new THREE.PlaneGeometry(7.3, 2.1), reBoard.mat);
+      reMesh.position.set(spec.cx, fy + 2.35, spec.cz + 8.62);
+      reMesh.rotation.y = Math.PI;
+      g0.add(reMesh);
+      reBoard.setMesh(reMesh);
     }
 
     // Architectural Rooftop Crowns (4 cohesive tropical-modern silhouettes replacing boxy flat roofs)

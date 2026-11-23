@@ -1148,6 +1148,24 @@ function populateDistrictBuildingGeometry(
       // East loading bay interior staging pallets
       addBox(boxes, spec.cx + 12.6, spec.cz - 3.5, 1.6, 1.7);
       addBox(boxes, spec.cx + 12.6, spec.cz + 3.5, 1.6, 1.7);
+    } else if (spec.id === 'realestate') {
+      // Outdoor West construction & material staging yard
+      addBox(boxes, spec.cx - 16.2, spec.cz, 3.6, 7.4);
+      // 3D masterplan scale-model table
+      addBox(boxes, spec.cx - 6.8, spec.cz - 0.8, 4.34, 2.74);
+      // Real Estate Broker desk
+      addBox(boxes, spec.cx - 6.8, spec.cz + 5.2, 2.54, 1.08);
+      // Central bi-level reception desk
+      addBox(boxes, spec.cx + 0.2, spec.cz + 3.2, 4.9, 1.32);
+      // Reception lounge armchairs
+      addBox(boxes, spec.cx - 1.4, spec.cz - 2.6, 1.18, 1.18);
+      addBox(boxes, spec.cx + 1.8, spec.cz - 2.6, 1.18, 1.18);
+      // Construction CAD desk
+      addBox(boxes, spec.cx + 7.4, spec.cz + 5.2, 2.54, 1.08);
+      // Interior design material rack, sofa & coffee table
+      addBox(boxes, spec.cx + 7.4, spec.cz - 5.2, 3.66, 0.56);
+      addBox(boxes, spec.cx + 7.4, spec.cz - 1.6, 2.88, 1.14);
+      addBox(boxes, spec.cx + 7.4, spec.cz - 0.3, 1.64, 0.88);
     }
   } else {
     // Upper floors: desks, shelf unit & 2 corner plants

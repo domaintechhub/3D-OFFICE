@@ -11,7 +11,7 @@ import {
   type CharacterIdentity,
   type FreeGoal,
 } from './characterMind';
-import type { FloorActivitySummary, FloorZoneActivity } from './constants';
+import { ROAD_Z, type FloorActivitySummary, type FloorZoneActivity, type WeatherCondition } from './constants';
 import {
   makePerson,
   MODES,
@@ -32,6 +32,7 @@ import {
   type TrackedChairCollider,
 } from './obstacles';
 import { socialNetwork } from './socialNetwork';
+import type { TrafficLightSystem } from './trafficLights';
 
 interface DistrictChairPair {
   handle: DistrictChairHandle;
@@ -62,6 +63,16 @@ export type DistrictActor = PersonActor & {
   waypoints?: Array<{ x: number; z: number; wait?: number }>;
   wpIndex?: number;
   waitTimer?: number;
+  shelter?: {
+    buildingId: BuildingId;
+    entryX: number;
+    entryZ: number;
+    x: number;
+    z: number;
+    face: number;
+    label: string;
+  };
+  shelterPhase?: 'patrol' | 'toEntry' | 'toShelter' | 'sheltered' | 'toExit';
 };
 
 export class DistrictSim {
@@ -76,15 +87,18 @@ export class DistrictSim {
   private cutawayMinY: number | null = null;
   private cutawayMaxY: number | null = null;
   private staffVisible = true;
+  private readonly trafficLights?: TrafficLightSystem;
 
   constructor(
     scene: THREE.Scene,
     M: MaterialLibrary,
     P_LIB: HumanPalette,
-    buildings: Map<BuildingId, DistrictBuildingHandle>
+    buildings: Map<BuildingId, DistrictBuildingHandle>,
+    trafficLights?: TrafficLightSystem
   ) {
     this.P_LIB = P_LIB;
     this.buildings = buildings;
+    this.trafficLights = trafficLights;
     scene.add(this.peopleGroup);
 
     // Register all district chair handles per buildingId & floor
@@ -745,7 +759,83 @@ export class DistrictSim {
       'Dispatch & Waybill Control', M, 0.95
     );
 
-    // Upper floor office staff across all 8 district buildings (staff every registered desk chair)
+    // 9. TerraCraft Estates, Build & Interiors (Real Estate + Construction + Interior Design in 1 building)
+    const re = DISTRICT_BUILDING_MAP.realestate;
+    this.spawnActor(
+      'realestate', 0, re.cx - 6.8, re.cz + 6.08, Math.PI, 'type',
+      nextPersonOpts(true, 0x3b2f2f, { outfit: 'suit', lanyard: true }),
+      {
+        id: 'realestate-broker',
+        name: generateCharacterName(true, 131),
+        role: 'Senior Property Broker',
+        department: `${re.name} · Real Estate Gallery`,
+        seniority: 'Lead',
+        accentColor: re.accent,
+        personality: pickPersonality(131),
+        topicKey: 'realestate',
+      },
+      'Real Estate Masterplan Gallery', M
+    );
+    this.spawnActor(
+      'realestate', 0, re.cx + 7.4, re.cz + 6.08, Math.PI, 'monitorLook',
+      nextPersonOpts(false, 0xd97706, { outfit: 'smartCasual', sleeve: 'rolled', lanyard: true }),
+      {
+        id: 'realestate-engineer',
+        name: generateCharacterName(false, 132),
+        role: 'Lead Structural Engineer',
+        department: `${re.name} · Construction BIM`,
+        seniority: 'Senior',
+        accentColor: re.accent,
+        personality: pickPersonality(132),
+        topicKey: 'realestate',
+      },
+      'Construction CAD & Interior Atelier', M
+    );
+    this.spawnActor(
+      'realestate', 0, re.cx + 5.6, re.cz - 3.6, Math.PI / 4, 'inspectPanel',
+      nextPersonOpts(true, 0x8338ec, { outfit: 'blouseSkirt', lanyard: true }),
+      {
+        id: 'realestate-interior',
+        name: generateCharacterName(true, 133),
+        role: 'Interior Design Director',
+        department: `${re.name} · Material Atelier`,
+        seniority: 'Lead',
+        accentColor: re.accent,
+        personality: pickPersonality(133),
+        topicKey: 'realestate',
+      },
+      'Construction CAD & Interior Atelier', M
+    );
+    this.spawnActor(
+      'realestate', 0, re.cx + 0.2, re.cz + 3.9, Math.PI, 'standCounter',
+      nextPersonOpts(false, 0x1e293b, { outfit: 'shirtTrousers', lanyard: true }),
+      {
+        id: 'realestate-concierge',
+        name: generateCharacterName(false, 134),
+        role: 'Turnkey Project Concierge',
+        department: `${re.name} · Reception`,
+        accentColor: re.accent,
+        personality: pickPersonality(134),
+        topicKey: 'realestate',
+      },
+      '3-in-1 Reception & Pipeline', M
+    );
+    this.spawnActor(
+      'realestate', 0, re.cx - 4.1, re.cz - 0.8, -Math.PI / 2, 'stand',
+      nextPersonOpts(true),
+      {
+        id: 'realestate-client',
+        name: generateCharacterName(true, 135),
+        role: 'Homebuyer & Fit-Out Client',
+        department: `${re.name} · 3D Scale Model`,
+        accentColor: re.accent,
+        personality: pickPersonality(135),
+        topicKey: 'client',
+      },
+      'Real Estate Masterplan Gallery', M, 0.96
+    );
+
+    // Upper floor office staff across all district buildings (staff every registered desk chair)
     const upperPoses = ['type', 'sitPhone', 'monitorLook'];
     for (const [bId, handle] of this.buildings) {
       const spec = handle.spec;
@@ -783,6 +873,7 @@ export class DistrictSim {
       role: string;
       accent: string;
       pts: Array<{ x: number; z: number; wait?: number }>;
+      shelter: NonNullable<DistrictActor['shelter']>;
     }> = [
       {
         name: generateCharacterName(true, 301),
@@ -795,6 +886,7 @@ export class DistrictSim {
           { x: 16, z: 14.5, wait: 1.5 },
           { x: 0, z: 15.2, wait: 1.5 },
         ],
+        shelter: { buildingId: 'hub', entryX: 0, entryZ: 13.0, x: -4.8, z: 7.4, face: 0, label: 'DomainTechHub Lobby' },
       },
       {
         name: generateCharacterName(false, 302),
@@ -811,6 +903,7 @@ export class DistrictSim {
           { x: -32, z: 83.0, wait: 1 },
           { x: -32, z: 9.8, wait: 1 },
         ],
+        shelter: { buildingId: 'restaurant', entryX: -57, entryZ: 7.8, x: -58.2, z: 4.5, face: 0, label: 'Savanna Bistro Lobby' },
       },
       {
         name: generateCharacterName(true, 303),
@@ -823,6 +916,7 @@ export class DistrictSim {
           { x: 30, z: 83.0, wait: 1.5 },
           { x: 0, z: 83.0, wait: 1.5 },
         ],
+        shelter: { buildingId: 'tourism', entryX: 0, entryZ: 83.4, x: 0, z: 86.4, face: Math.PI, label: 'Kenya Safari Lobby' },
       },
       {
         name: generateCharacterName(false, 304),
@@ -839,6 +933,7 @@ export class DistrictSim {
           { x: 32, z: 83.0, wait: 1 },
           { x: 32, z: 9.8, wait: 1 },
         ],
+        shelter: { buildingId: 'dealership', entryX: 57, entryZ: 7.8, x: 57, z: 4.4, face: 0, label: 'Apex Motors Showroom' },
       },
       {
         name: generateCharacterName(true, 305),
@@ -853,6 +948,7 @@ export class DistrictSim {
           { x: 32.2, z: 13.5, wait: 1.5 },
           { x: -32.2, z: 13.5, wait: 1 },
         ],
+        shelter: { buildingId: 'medical', entryX: 0, entryZ: -19.2, x: -2.2, z: -24.5, face: 0, label: 'VitalCare Medical Hall' },
       },
       {
         name: generateCharacterName(false, 306),
@@ -865,6 +961,20 @@ export class DistrictSim {
           { x: 68, z: 83.0, wait: 2 },
           { x: 54, z: 83.0, wait: 1.5 },
         ],
+        shelter: { buildingId: 'logistics', entryX: 54, entryZ: 83.4, x: 54, z: 86.6, face: Math.PI, label: 'SwiftPort Logistics Lobby' },
+      },
+      {
+        name: generateCharacterName(true, 307),
+        fem: true,
+        role: 'Property & Design Client',
+        accent: '#e07a5f',
+        pts: [
+          { x: -94, z: 84.0, wait: 2 },
+          { x: -84, z: 84.0, wait: 2.5 },
+          { x: -64, z: 84.0, wait: 1.5 },
+          { x: -84, z: 84.0, wait: 1.5 },
+        ],
+        shelter: { buildingId: 'realestate', entryX: -84, entryZ: 84.4, x: -84, z: 87.2, face: Math.PI, label: 'TerraCraft Build & Estates' },
       },
     ];
 
@@ -897,7 +1007,28 @@ export class DistrictSim {
       p.waypoints = rt.pts;
       p.wpIndex = 1 % rt.pts.length;
       p.waitTimer = 0;
+      p.shelter = rt.shelter;
+      p.shelterPhase = 'patrol';
     });
+  }
+
+  private streetElevationAt(x: number, z: number, shelter?: DistrictActor['shelter']): number {
+    if (!shelter) return -0.608;
+    if (shelter.buildingId === 'hub') {
+      if (Math.abs(x) <= 12.5 && z <= 11.2) return 0;
+      if (Math.abs(x) <= 12.5 && z < 14.0) {
+        return THREE.MathUtils.lerp(0, -0.608, (z - 11.2) / 2.8);
+      }
+      return -0.608;
+    }
+    const spec = DISTRICT_BUILDING_MAP[shelter.buildingId];
+    if (
+      Math.abs(x - spec.cx) <= spec.w * 0.5 &&
+      Math.abs(z - spec.cz) <= spec.d * 0.5
+    ) {
+      return spec.groundY + 0.12;
+    }
+    return -0.608;
   }
 
   private isBuildingOpen(bId: BuildingId, simMin: number): boolean {
@@ -906,7 +1037,7 @@ export class DistrictSim {
     return simMin >= 450 && simMin < 1110; // 07:30 – 18:30 commercial hours
   }
 
-  public snapAll(simMin: number) {
+  public snapAll(simMin: number, weather: WeatherCondition = 'clear') {
     for (const pair of this.chairPairs) {
       const ch = pair.handle;
       ch.curX = ch.restX;
@@ -919,13 +1050,36 @@ export class DistrictSim {
       pair.collider.curZ = ch.restZ;
     }
 
+    const badWeather = weather === 'rain' || weather === 'storm' || weather === 'snow';
+    const streetDaytime = simMin >= 390 && simMin < 1320;
+
     for (const a of this.ACTORS) {
       if (a.buildingId === 'street') {
-        a.g.visible = true;
-        a.g.position.set(a.homeX, -0.608, a.homeZ);
-        a.wpIndex = 1;
+        a.g.visible = streetDaytime;
         a.waitTimer = 0;
-        this.setSafePose(a, 'stand');
+        if (badWeather && a.shelter) {
+          a.shelterPhase = 'sheltered';
+          const sy = this.streetElevationAt(a.shelter.x, a.shelter.z, a.shelter);
+          a.g.position.set(a.shelter.x, sy, a.shelter.z);
+          a.yaw = a.tyaw = a.shelter.face;
+          a.g.rotation.y = a.shelter.face;
+          this.setSafePose(a, 'standPhone');
+          if (a.brain) {
+            setBrainThought(
+              a.brain,
+              'Relaxed',
+              `Sheltering inside ${a.shelter.label}`,
+              weather === 'snow'
+                ? `Waiting indoors out of the cold snowfall inside ${a.shelter.label}.`
+                : `Stepped inside ${a.shelter.label} to stay dry while it passes.`
+            );
+          }
+        } else {
+          a.shelterPhase = 'patrol';
+          a.g.position.set(a.homeX, -0.608, a.homeZ);
+          a.wpIndex = 1;
+          this.setSafePose(a, 'stand');
+        }
         continue;
       }
       const open = this.isBuildingOpen(a.buildingId, simMin);
@@ -1003,7 +1157,9 @@ export class DistrictSim {
 
     a.g.position.x = nx;
     a.g.position.z = nz;
-    if (a.buildingId !== 'street') {
+    if (a.buildingId === 'street') {
+      a.g.position.y = this.streetElevationAt(nx, nz, a.shelter);
+    } else {
       a.g.position.y = this.floorSurfaceY(DISTRICT_BUILDING_MAP[a.buildingId], a.lv, nx, nz);
     }
     a.tyaw = Math.atan2(dx, dz);
@@ -1265,7 +1421,7 @@ export class DistrictSim {
     this.peopleGroup.visible = visible;
   }
 
-  public update(dt: number, t: number, simMin: number, camera: THREE.Camera) {
+  public update(dt: number, t: number, simMin: number, camera: THREE.Camera, weather: WeatherCondition = 'clear') {
     // Animate showroom car turntable, travel globe & medical cross beacon
     for (const [, handle] of this.buildings) {
       for (const rp of handle.rotatingProps) {
@@ -1277,21 +1433,127 @@ export class DistrictSim {
 
     this.updateChairs(dt);
 
+    const badWeather = weather === 'rain' || weather === 'storm' || weather === 'snow';
+    const streetDaytime = simMin >= 390 && simMin < 1320;
+
     for (let i = 0; i < this.ACTORS.length; i++) {
       const a = this.ACTORS[i];
 
       if (a.buildingId === 'street') {
-        a.g.visible = true;
+        a.g.visible = streetDaytime;
+        if (!streetDaytime) continue;
         for (let c = 0; c < a.g.children.length; c++) a.g.children[c].visible = true;
-        if (a.waypoints && a.waypoints.length > 0) {
-          if ((a.waitTimer || 0) > 0) {
-            a.waitTimer! -= dt;
-            a.moving = false;
+
+        const sh = a.shelter;
+        const moveWithSignal = (tx: number, tz: number, speedMult = 1): boolean => {
+          const curX = a.g.position.x;
+          const curZ = a.g.position.z;
+          // Check if crossing boulevard (ROAD_Z = 66, curbs at 58.5 and 73.5)
+          const northOfRoad = curZ < ROAD_Z - 7.8;
+          const southOfRoad = curZ > ROAD_Z + 7.8;
+          const wantsSouth = northOfRoad && tz > ROAD_Z - 5.5;
+          const wantsNorth = southOfRoad && tz < ROAD_Z + 5.5;
+          if ((wantsSouth || wantsNorth) && this.trafficLights && !this.trafficLights.canPedestrianCross(curX)) {
+            const curbZ = wantsSouth ? ROAD_Z - 8.15 : ROAD_Z + 8.15;
+            if (Math.abs(curZ - curbZ) > 0.35) {
+              const prevSpd = a.walkSpeed;
+              a.walkSpeed = prevSpd * speedMult;
+              this.walkStep(a, tx, curbZ, dt);
+              a.walkSpeed = prevSpd;
+            } else {
+              a.moving = false;
+              a.tyaw = wantsSouth ? 0 : Math.PI;
+              this.setSafePose(a, 'stand');
+              if (a.brain && a.brain.actionLabel !== 'Waiting at pedestrian signal') {
+                setBrainThought(
+                  a.brain,
+                  'Focused',
+                  'Waiting at pedestrian signal',
+                  'Holding on the curb at the red Walk signal until boulevard traffic stops.'
+                );
+              }
+            }
+            return false;
+          }
+          const prevSpd = a.walkSpeed;
+          a.walkSpeed = prevSpd * speedMult;
+          const done = this.walkStep(a, tx, tz, dt);
+          a.walkSpeed = prevSpd;
+          return done;
+        };
+
+        if (badWeather && sh) {
+          if (a.shelterPhase !== 'sheltered') {
+            if (a.shelterPhase === 'patrol' || a.shelterPhase === 'toExit') {
+              a.shelterPhase = 'toEntry';
+              if (a.brain) {
+                setBrainThought(
+                  a.brain,
+                  'Alert',
+                  `Hurrying inside ${sh.label}`,
+                  weather === 'snow'
+                    ? `Snow started falling—heading inside ${sh.label} to warm up.`
+                    : `Caught in the ${weather}—hurrying indoors into ${sh.label}.`
+                );
+              }
+            }
+            if (a.shelterPhase === 'toEntry') {
+              if (a.pose !== 'stand') this.setSafePose(a, 'stand');
+              if (moveWithSignal(sh.entryX, sh.entryZ, 1.45)) {
+                a.shelterPhase = 'toShelter';
+              }
+            } else if (a.shelterPhase === 'toShelter') {
+              if (a.pose !== 'stand') this.setSafePose(a, 'stand');
+              if (this.walkStep(a, sh.x, sh.z, dt)) {
+                a.shelterPhase = 'sheltered';
+                a.moving = false;
+                a.tyaw = sh.face;
+                this.setSafePose(a, 'standPhone');
+                if (a.brain) {
+                  setBrainThought(
+                    a.brain,
+                    'Relaxed',
+                    `Sheltering inside ${sh.label}`,
+                    weather === 'snow'
+                      ? `Waiting comfortably inside ${sh.label} out of the snowfall.`
+                      : `Waiting comfortably inside ${sh.label} until the ${weather} lets up.`
+                  );
+                }
+              }
+            }
           } else {
-            const pt = a.waypoints[a.wpIndex || 0];
-            if (this.walkStep(a, pt.x, pt.z, dt)) {
-              a.waitTimer = pt.wait || 1.5;
-              a.wpIndex = ((a.wpIndex || 0) + 1) % a.waypoints.length;
+            a.moving = false;
+            a.tyaw = sh.face;
+            if (a.pose !== 'standPhone') this.setSafePose(a, 'standPhone');
+          }
+        } else {
+          if (a.shelterPhase === 'sheltered' || a.shelterPhase === 'toShelter' || a.shelterPhase === 'toEntry') {
+            a.shelterPhase = 'toExit';
+            if (a.brain) {
+              setBrainThought(
+                a.brain,
+                'Relaxed',
+                'Stepping back outside to promenade',
+                'Skies cleared up—heading back out onto the Upper Hill promenade.'
+              );
+            }
+          }
+          if (a.shelterPhase === 'toExit' && sh) {
+            if (a.pose !== 'stand') this.setSafePose(a, 'stand');
+            if (this.walkStep(a, sh.entryX, sh.entryZ, dt)) {
+              a.shelterPhase = 'patrol';
+            }
+          } else if (a.waypoints && a.waypoints.length > 0) {
+            if ((a.waitTimer || 0) > 0) {
+              a.waitTimer! -= dt;
+              a.moving = false;
+            } else {
+              if (a.pose !== 'stand') this.setSafePose(a, 'stand');
+              const pt = a.waypoints[a.wpIndex || 0];
+              if (moveWithSignal(pt.x, pt.z, 1)) {
+                a.waitTimer = pt.wait || 1.5;
+                a.wpIndex = ((a.wpIndex || 0) + 1) % a.waypoints.length;
+              }
             }
           }
         }
@@ -1397,7 +1659,12 @@ export class DistrictSim {
             zone: `${spec.name} Roof`,
             color: spec.accent,
             count: 0,
-            status: bId === 'medical' ? 'Rotating 24h Medical Cross Beacon active' : 'HVAC plant & skylight housing',
+            status:
+              bId === 'medical'
+                ? 'Rotating 24h Medical Cross Beacon active'
+                : bId === 'realestate'
+                  ? 'Rooftop tower crane & green pergola terrace active'
+                  : 'HVAC plant & skylight housing',
           },
         ],
       };

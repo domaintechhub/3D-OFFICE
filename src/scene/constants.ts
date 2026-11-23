@@ -143,6 +143,7 @@ export interface HudSnapshot {
   driveNearbyBuilding: BuildingId | null;
   driveNearbyName: string | null;
   nearPlayerCarInWalk: boolean;
+  driveTrafficSignal: { label: string; aspect: 'green' | 'amber' | 'red'; distance: number } | null;
 }
 
 export const BW = 10;
@@ -221,6 +222,14 @@ export const VIEWS: Record<string, { p: [number, number, number]; t: [number, nu
 };
 
 export const ROAD_Z = 66;
+export const RING_X = 120;
+export const RING_Z_NORTH = -52;
+export const RING_Z_SOUTH = 118;
+export const RING_CORNER_R = 18;
+export const RING_CX = RING_X - RING_CORNER_R;
+export const RING_CZ_N = RING_Z_NORTH + RING_CORNER_R;
+export const RING_CZ_S = RING_Z_SOUTH - RING_CORNER_R;
+export const RING_LANE_OFF = 3.2;
 
 export const TOUR_TEXT: Record<string, string> = {
   'Security Room':
