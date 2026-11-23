@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useDialogFocusTrap } from '../utils/useDialogFocusTrap';
 import {
   CheckCircle2,
   FastForward,
@@ -41,6 +42,7 @@ export const SocialChannelsPanel: React.FC<SocialChannelsPanelProps> = ({
   onSelectBuilding,
   onJobDispatched,
 }) => {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
   const [, setVersion] = useState(0);
   const [platformFilter, setPlatformFilter] = useState<'all' | SocialPlatformId>('all');
   const [channelFilter, setChannelFilter] = useState<string>('#all-district');
@@ -59,6 +61,8 @@ export const SocialChannelsPanel: React.FC<SocialChannelsPanelProps> = ({
   // Quick Post form
   const [postBody, setPostBody] = useState('');
 
+  useDialogFocusTrap(isOpen, dialogRef, onClose);
+
   useEffect(() => {
     setFromBuilding(activeBuilding);
     if (toBuilding === activeBuilding) {
@@ -69,18 +73,10 @@ export const SocialChannelsPanel: React.FC<SocialChannelsPanelProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     const unsub = socialNetwork.subscribe(() => setVersion((v) => v + 1));
-    const onKey = (e: KeyboardEvent) => {
-      if (e.code === 'Escape') {
-        e.stopPropagation();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKey);
     return () => {
       unsub();
-      window.removeEventListener('keydown', onKey);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   const jobs = socialNetwork.getJobs();
   const posts = socialNetwork.getPosts();
@@ -150,14 +146,29 @@ export const SocialChannelsPanel: React.FC<SocialChannelsPanelProps> = ({
   };
 
   return (
-    <div className="pointer-events-auto fixed inset-0 z-30 flex items-center justify-center bg-[#06090f]/82 p-3 sm:p-5">
-      <div className="w-full max-w-5xl max-h-[88vh] flex flex-col border border-white/15 bg-[#0d121a] rounded-md shadow-2xl overflow-hidden text-slate-100">
+    <div
+      className="pointer-events-auto fixed inset-0 z-30 flex items-center justify-center bg-[#06090f]/82 p-3 sm:p-5"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="social-channels-title"
+        tabIndex={-1}
+        className="w-full max-w-5xl max-h-[88vh] flex flex-col border border-white/15 bg-[#0d121a] rounded-md shadow-2xl overflow-hidden text-slate-100 focus:outline-none"
+      >
         {/* Header */}
         <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-white/10 bg-[#121923]">
           <div>
             <div className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-emerald-400" />
-              <h2 className="text-sm font-semibold text-white tracking-tight">
+              <h2
+                id="social-channels-title"
+                className="text-sm font-semibold text-white tracking-tight"
+              >
                 District Social Platforms & Cross-Company Dispatch
               </h2>
             </div>
@@ -178,13 +189,15 @@ export const SocialChannelsPanel: React.FC<SocialChannelsPanelProps> = ({
 
         {/* Platform Tabs & Channel Filter Strip */}
         <div className="shrink-0 px-4 py-2.5 border-b border-white/10 bg-[#0b1017] space-y-2">
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div role="tablist" aria-label="Social platforms" className="flex flex-wrap items-center gap-1.5">
             {PLATFORMS.map((p) => {
               const active = platformFilter === p.id;
               return (
                 <button
                   key={p.id}
                   type="button"
+                  role="tab"
+                  aria-selected={active}
                   onClick={() => setPlatformFilter(p.id)}
                   className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors cursor-pointer ${
                     active
@@ -198,13 +211,14 @@ export const SocialChannelsPanel: React.FC<SocialChannelsPanelProps> = ({
               );
             })}
           </div>
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+          <div role="group" aria-label="Filter by channel" className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
             {DISTRICT_SOCIAL_CHANNELS.map((ch) => {
               const active = channelFilter === ch;
               return (
                 <button
                   key={ch}
                   type="button"
+                  aria-pressed={active}
                   onClick={() => setChannelFilter(ch)}
                   className={`px-2 py-0.5 text-[11px] font-mono-tabular rounded border whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
                     active
@@ -232,11 +246,12 @@ export const SocialChannelsPanel: React.FC<SocialChannelsPanelProps> = ({
                 <span className="text-xs font-semibold text-white">
                   Dispatch Cross-Company Job
                 </span>
-                <div className="flex items-center gap-1">
+                <div role="group" aria-label="Source device" className="flex items-center gap-1">
                   {(['Monitor', 'Phone'] as DispatchDevice[]).map((dev) => (
                     <button
                       key={dev}
                       type="button"
+                      aria-pressed={dispatchDevice === dev}
                       onClick={() => setDispatchDevice(dev)}
                       className={`flex items-center gap-1 px-2 py-0.5 text-[11px] rounded border cursor-pointer ${
                         dispatchDevice === dev
@@ -257,10 +272,11 @@ export const SocialChannelsPanel: React.FC<SocialChannelsPanelProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs">
                 <div>
-                  <label className="block text-[10px] uppercase tracking-wider text-slate-400 mb-1">
+                  <label htmlFor="social-from-company" className="block text-[10px] uppercase tracking-wider text-slate-400 mb-1">
                     From Company
                   </label>
                   <select
+                    id="social-from-company"
                     value={fromBuilding}
                     onChange={(e) => setFromBuilding(e.target.value as BuildingId)}
                     className="w-full rounded border border-white/15 bg-[#080d14] px-2 py-1.5 text-xs text-white focus:border-emerald-400 focus:outline-none"
@@ -273,10 +289,11 @@ export const SocialChannelsPanel: React.FC<SocialChannelsPanelProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] uppercase tracking-wider text-slate-400 mb-1">
+                  <label htmlFor="social-to-company" className="block text-[10px] uppercase tracking-wider text-slate-400 mb-1">
                     Send To
                   </label>
                   <select
+                    id="social-to-company"
                     value={toBuilding}
                     onChange={(e) => setToBuilding(e.target.value as BuildingId)}
                     className="w-full rounded border border-white/15 bg-[#080d14] px-2 py-1.5 text-xs text-white focus:border-emerald-400 focus:outline-none"
@@ -289,10 +306,11 @@ export const SocialChannelsPanel: React.FC<SocialChannelsPanelProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] uppercase tracking-wider text-slate-400 mb-1">
+                  <label htmlFor="social-platform" className="block text-[10px] uppercase tracking-wider text-slate-400 mb-1">
                     Platform
                   </label>
                   <select
+                    id="social-platform"
                     value={dispatchPlatform}
                     onChange={(e) => setDispatchPlatform(e.target.value as SocialPlatformId)}
                     className="w-full rounded border border-white/15 bg-[#080d14] px-2 py-1.5 text-xs text-white focus:border-emerald-400 focus:outline-none"
@@ -303,10 +321,11 @@ export const SocialChannelsPanel: React.FC<SocialChannelsPanelProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] uppercase tracking-wider text-slate-400 mb-1">
+                  <label htmlFor="social-priority" className="block text-[10px] uppercase tracking-wider text-slate-400 mb-1">
                     Priority
                   </label>
                   <select
+                    id="social-priority"
                     value={priority}
                     onChange={(e) => setPriority(e.target.value as JobPriority)}
                     className="w-full rounded border border-white/15 bg-[#080d14] px-2 py-1.5 text-xs text-white focus:border-emerald-400 focus:outline-none"
@@ -320,6 +339,7 @@ export const SocialChannelsPanel: React.FC<SocialChannelsPanelProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <input
                   type="text"
+                  aria-label="Job title"
                   value={jobTitle}
                   onChange={(e) => setJobTitle(e.target.value)}
                   placeholder="Job title (e.g. Clear KES 2.4M supplier batch)"
@@ -327,6 +347,7 @@ export const SocialChannelsPanel: React.FC<SocialChannelsPanelProps> = ({
                 />
                 <input
                   type="text"
+                  aria-label="Instructions or brief for target team"
                   value={jobBrief}
                   onChange={(e) => setJobBrief(e.target.value)}
                   placeholder="Instructions / brief for target team…"
@@ -434,6 +455,7 @@ export const SocialChannelsPanel: React.FC<SocialChannelsPanelProps> = ({
                           <button
                             type="button"
                             onClick={() => socialNetwork.advanceJob(job.id)}
+                            aria-label={`Advance progress for ${job.code}`}
                             className="flex items-center gap-1 px-2 py-0.5 text-[10.5px] rounded border border-white/15 bg-white/6 hover:bg-white/12 text-slate-200 cursor-pointer"
                           >
                             <FastForward className="w-3 h-3" />
@@ -442,6 +464,7 @@ export const SocialChannelsPanel: React.FC<SocialChannelsPanelProps> = ({
                           <button
                             type="button"
                             onClick={() => socialNetwork.completeJob(job.id)}
+                            aria-label={`Mark ${job.code} complete`}
                             className="flex items-center gap-1 px-2 py-0.5 text-[10.5px] rounded border border-emerald-400/40 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 cursor-pointer"
                           >
                             <CheckCircle2 className="w-3 h-3" />
@@ -466,6 +489,7 @@ export const SocialChannelsPanel: React.FC<SocialChannelsPanelProps> = ({
               <div className="flex items-center gap-1.5">
                 <input
                   type="text"
+                  aria-label="Channel update message"
                   value={postBody}
                   onChange={(e) => setPostBody(e.target.value)}
                   placeholder={`Post to ${
@@ -520,6 +544,7 @@ export const SocialChannelsPanel: React.FC<SocialChannelsPanelProps> = ({
                     <button
                       type="button"
                       onClick={() => socialNetwork.likePost(post.id)}
+                      aria-label={`Like post by ${post.authorName} (${post.likes} likes)`}
                       className="inline-flex items-center gap-1 text-slate-300 hover:text-rose-300 cursor-pointer font-mono-tabular"
                     >
                       <Heart className="w-3 h-3" />

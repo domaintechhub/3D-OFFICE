@@ -45,20 +45,36 @@ function detectSoftwareGl(): boolean {
   }
 }
 
+export interface SceneLoadProgress {
+  percent: number;
+  stage: string;
+  loaded: number;
+  total: number;
+  done: boolean;
+}
+
+function waitNextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
 export class AtriumEngine {
   private readonly container: HTMLElement;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene: THREE.Scene;
   private readonly camera: THREE.PerspectiveCamera;
   private readonly controls: OrbitControls;
-  private readonly screenReg: ScreenRegistry;
-  private readonly arch: ArchitectureHandles;
-  private readonly proceduralFoliage: ProceduralFoliageResult;
-  private readonly sim: AtriumSimulation;
-  private readonly weather: WeatherSystem;
-  private readonly asphaltMat: THREE.MeshStandardMaterial;
+  private readonly loadingManager: THREE.LoadingManager;
+  private screenReg!: ScreenRegistry;
+  private arch!: ArchitectureHandles;
+  private proceduralFoliage: ProceduralFoliageResult | null = null;
+  private sim!: AtriumSimulation;
+  private weather!: WeatherSystem;
+  private asphaltMat!: THREE.MeshStandardMaterial;
   private readonly audio = new AmbientAudioManager();
   private readonly isSoftwareGl: boolean;
+  private sceneReady = false;
+  private currentStage = 'Initializing WebGL context…';
+  private onLoadProgress?: (progress: SceneLoadProgress) => void;
 
   private readonly sunLight: THREE.DirectionalLight;
   private readonly skyFillLight: THREE.DirectionalLight;
@@ -138,12 +154,51 @@ export class AtriumEngine {
   constructor(
     container: HTMLElement,
     onHudChange: (snapshot: HudSnapshot) => void,
-    onFatalError?: (message: string) => void
+    onFatalError?: (message: string) => void,
+    onLoadProgress?: (progress: SceneLoadProgress) => void
   ) {
     this.container = container;
     this.onHudChange = onHudChange;
     this.onFatalError = onFatalError;
+    this.onLoadProgress = onLoadProgress;
     this.isSoftwareGl = detectSoftwareGl();
+
+    this.loadingManager = new THREE.LoadingManager();
+    this.loadingManager.onStart = (_url, itemsLoaded, itemsTotal) => {
+      if (this.disposed) return;
+      const pct = itemsTotal > 0 ? Math.round((itemsLoaded / itemsTotal) * 100) : 5;
+      this.onLoadProgress?.({
+        percent: Math.max(5, Math.min(99, pct)),
+        stage: this.currentStage,
+        loaded: itemsLoaded,
+        total: itemsTotal,
+        done: false,
+      });
+    };
+    this.loadingManager.onProgress = (_url, itemsLoaded, itemsTotal) => {
+      if (this.disposed) return;
+      const pct = itemsTotal > 0 ? Math.round((itemsLoaded / itemsTotal) * 100) : 50;
+      this.onLoadProgress?.({
+        percent: Math.min(99, Math.max(10, pct)),
+        stage: this.currentStage,
+        loaded: itemsLoaded,
+        total: itemsTotal,
+        done: false,
+      });
+    };
+    this.loadingManager.onLoad = () => {
+      if (this.disposed || !this.sceneReady) return;
+      this.onLoadProgress?.({
+        percent: 100,
+        stage: 'Nairobi 3D district ready',
+        loaded: 5,
+        total: 5,
+        done: true,
+      });
+    };
+    this.loadingManager.onError = (url) => {
+      console.warn('LoadingManager asset warning:', url);
+    };
 
     const width = Math.max(1, container.clientWidth);
     const height = Math.max(1, container.clientHeight);
@@ -199,7 +254,7 @@ export class AtriumEngine {
 
     this.controls.addEventListener('start', () => {
       this.markInteraction();
-      this.sim.cancelFlight();
+      if (this.sceneReady) this.sim.cancelFlight();
     });
     this.controls.addEventListener('change', () => {
       this.markInteraction();
@@ -309,33 +364,7 @@ export class AtriumEngine {
     this.skyFillLight.position.set(-40, 26, 46);
     this.scene.add(this.skyFillLight);
 
-    // Build PBR material library & architectural shell
-    const M = createMaterials();
-    this.asphaltMat = M.asphalt;
-    this.screenReg = createScreenRegistry();
-    this.arch = buildSceneArchitecture(this.scene, M, this.screenReg);
-    this.proceduralFoliage = this.runProceduralFoliageScript(M);
-    this.weather = new WeatherSystem(this.scene, this.arch.levelGroups);
-
-    // Build dynamic office simulation (staff, district NPCs, Zuri, vehicles, walk & drive controls)
-    this.sim = new AtriumSimulation(
-      this.scene,
-      M,
-      this.arch.cabs,
-      this.arch.officeChairs,
-      this.arch.districtBuildings,
-      this.arch.trafficLights,
-      () => this.audio.playFootstep(),
-      () => this.audio.playCarHorn(),
-      (high) => this.audio.playRelayClick(high)
-    );
-    for (const m of this.sim.getPlayerCarPickMeshes()) {
-      this.playerCarPickSet.add(m);
-    }
-    this.unwireWalk = this.sim.wireWalk(this.renderer.domElement, this.camera, this.controls);
-    this.initOverheadBadges();
-
-    // 3D Floating Thought Bubble & Selection Ring
+    // Wire window events & begin staged scene initialization tracked by THREE.LoadingManager
     this.thoughtBubbleCanvas = document.createElement('canvas');
     this.thoughtBubbleCanvas.width = 1024;
     this.thoughtBubbleCanvas.height = 300;
@@ -372,19 +401,6 @@ export class AtriumEngine {
     this.selectionRing.visible = false;
     this.scene.add(this.selectionRing);
 
-    for (const mp of this.arch.monitorPicks) {
-      for (const m of mp.meshes) {
-        this.monitorMeshMap.set(m, mp);
-      }
-    }
-    for (const [bId, db] of this.arch.districtBuildings) {
-      for (const m of db.pickMeshes) {
-        this.buildingPickMap.set(m, bId);
-        this.buildingPickList.push({ mesh: m, buildingId: bId });
-      }
-    }
-
-    // Wire events & audio gesture unlock
     window.addEventListener('resize', this.handleResize);
     if (typeof ResizeObserver !== 'undefined') {
       this.resizeObserver = new ResizeObserver(() => this.handleResize());
@@ -400,21 +416,113 @@ export class AtriumEngine {
     this.renderer.domElement.addEventListener('webglcontextlost', this.handleContextLost);
     this.renderer.domElement.addEventListener('webglcontextrestored', this.handleContextRestored);
 
+    this.unwireWalk = () => {};
+    void this.initializeSceneAsync();
+  }
+
+  public getLoadingManager(): THREE.LoadingManager {
+    return this.loadingManager;
+  }
+
+  private async initializeSceneAsync(): Promise<void> {
+    const stages = [
+      'scene://materials-pbr',
+      'scene://architecture-shell',
+      'scene://organic-foliage',
+      'scene://district-simulation',
+      'scene://webgl-warmup',
+    ] as const;
+
+    this.currentStage = 'Compiling PBR materials & procedural textures…';
+    for (const item of stages) {
+      this.loadingManager.itemStart(item);
+    }
+
+    await waitNextFrame();
+    if (this.disposed) return;
+
+    const M = createMaterials();
+    this.asphaltMat = M.asphalt;
+    this.screenReg = createScreenRegistry();
+    this.currentStage = 'Building DomainTechHub atrium & 9-company district…';
+    this.loadingManager.itemEnd(stages[0]);
+
+    await waitNextFrame();
+    if (this.disposed) return;
+
+    this.arch = buildSceneArchitecture(this.scene, M, this.screenReg);
+    this.currentStage = 'Synthesizing organic foliage & dynamic weather…';
+    this.loadingManager.itemEnd(stages[1]);
+
+    await waitNextFrame();
+    if (this.disposed) return;
+
+    this.proceduralFoliage = this.runProceduralFoliageScript(M);
+    this.weather = new WeatherSystem(this.scene, this.arch.levelGroups);
+    this.currentStage = 'Spawning autonomous staff, vehicles & traffic signals…';
+    this.loadingManager.itemEnd(stages[2]);
+
+    await waitNextFrame();
+    if (this.disposed) return;
+
+    this.sim = new AtriumSimulation(
+      this.scene,
+      M,
+      this.arch.cabs,
+      this.arch.officeChairs,
+      this.arch.districtBuildings,
+      this.arch.trafficLights,
+      () => this.audio.playFootstep(),
+      () => this.audio.playCarHorn(),
+      (high) => this.audio.playRelayClick(high)
+    );
+    for (const m of this.sim.getPlayerCarPickMeshes()) {
+      this.playerCarPickSet.add(m);
+    }
+    this.unwireWalk = this.sim.wireWalk(this.renderer.domElement, this.camera, this.controls);
+    this.initOverheadBadges();
+
+    for (const mp of this.arch.monitorPicks) {
+      for (const m of mp.meshes) {
+        this.monitorMeshMap.set(m, mp);
+      }
+    }
+    for (const [bId, db] of this.arch.districtBuildings) {
+      for (const m of db.pickMeshes) {
+        this.buildingPickMap.set(m, bId);
+        this.buildingPickList.push({ mesh: m, buildingId: bId });
+      }
+    }
+
+    this.currentStage = 'Warming WebGL shaders & first Nairobi frame…';
+    this.loadingManager.itemEnd(stages[3]);
+
+    await waitNextFrame();
+    if (this.disposed) return;
+
     const initW = this.weather.update(0.016, this.elapsed, this.sim.simMin, this.activeLevel, this.arch.roofShellGroup.visible);
     this.sim.setWeatherCondition(initW.activeWeather);
     this.sim.setWeatherTimeMultiplier(this.weather.getTimeMultiplier());
     this.sim.snapAll();
     this.updateTimeOfDayLighting(this.sim.simMin, initW);
+
+    this.sceneReady = true;
+    this.handleResize();
     this.emitHud();
+    this.loadingManager.itemEnd(stages[4]);
+    this.onLoadProgress?.({
+      percent: 100,
+      stage: 'Nairobi 3D district ready',
+      loaded: 5,
+      total: 5,
+      done: true,
+    });
+
     const now = performance.now();
     this.lastTs = now;
     this.lastRenderTs = 0;
     this.lastInteractionTs = now;
-    this.rafId = requestAnimationFrame(() => {
-      if (this.disposed) return;
-      this.handleResize();
-      this.loop(performance.now());
-    });
+    this.loop(now);
   }
 
   private runProceduralFoliageScript(M: MaterialLibrary): ProceduralFoliageResult {
@@ -430,7 +538,7 @@ export class AtriumEngine {
   };
 
   private handleVisibilityChange = () => {
-    if (this.disposed) return;
+    if (this.disposed || !this.sceneReady) return;
     if (document.hidden) {
       cancelAnimationFrame(this.rafId);
       clearTimeout(this.timerId);
@@ -898,6 +1006,7 @@ export class AtriumEngine {
   }
 
   private handlePointerMove = (e: PointerEvent) => {
+    if (!this.sceneReady) return;
     if (this.sim.walkOn || this.sim.isDriving()) {
       if (this.hoveredRoom) {
         this.hoveredRoom = null;
@@ -1010,6 +1119,7 @@ export class AtriumEngine {
   };
 
   private handleClick = (e: MouseEvent) => {
+    if (!this.sceneReady) return;
     if (this.sim.walkOn || this.sim.isDriving()) return;
     if (Math.hypot(e.clientX - this.downX, e.clientY - this.downY) > 6) return;
     const rect = this.renderer.domElement.getBoundingClientRect();
@@ -1133,7 +1243,7 @@ export class AtriumEngine {
   };
 
   private handleContextRestored = () => {
-    if (this.disposed) return;
+    if (this.disposed || !this.sceneReady) return;
     const now = performance.now();
     this.lastTs = now;
     this.lastRenderTs = 0;
@@ -1234,7 +1344,7 @@ export class AtriumEngine {
   }
 
   private loop = (now: number) => {
-    if (this.disposed || document.hidden) return;
+    if (this.disposed || !this.sceneReady || document.hidden) return;
 
     if (!this.isSoftwareGl) {
       this.rafId = requestAnimationFrame(this.loop);
@@ -1293,11 +1403,13 @@ export class AtriumEngine {
               : 1.0;
       const windSpeed = wState.activeWeather === 'storm' ? 1.55 : 1.0;
       const tWind = this.elapsed * windSpeed;
-      for (const item of this.proceduralFoliage.windItems) {
-        const w = Math.sin(tWind * item.freq + item.phase);
-        const w2 = Math.cos(tWind * item.freq * 0.83 + item.phase * 1.27);
-        item.obj.rotation.x = item.baseRotX + w * item.amp * windMul;
-        item.obj.rotation.z = item.baseRotZ + w2 * item.amp * 0.78 * windMul;
+      if (this.proceduralFoliage) {
+        for (const item of this.proceduralFoliage.windItems) {
+          const w = Math.sin(tWind * item.freq + item.phase);
+          const w2 = Math.cos(tWind * item.freq * 0.83 + item.phase * 1.27);
+          item.obj.rotation.x = item.baseRotX + w * item.amp * windMul;
+          item.obj.rotation.z = item.baseRotZ + w2 * item.amp * 0.78 * windMul;
+        }
       }
 
       // Staff, lifts, traffic, tour & first-person walk
@@ -1548,6 +1660,7 @@ export class AtriumEngine {
   }
 
   public notifyCompanyJob(buildingId: BuildingId) {
+    if (!this.sceneReady) return;
     this.sim.nudgeCompanyForJob(buildingId);
     this.lastDrawnThoughtKey = '';
     if (this.selectedActor) this.updateSelectedVisuals();
@@ -1555,6 +1668,7 @@ export class AtriumEngine {
   }
 
   public selectBuilding(id: BuildingId) {
+    if (!this.sceneReady) return;
     this.markInteraction();
     if (this.sim.walkOn) this.sim.exitWalk(this.camera, this.controls);
     if (this.sim.isDriving()) this.sim.exitDrive(this.camera, this.controls);
@@ -1573,6 +1687,7 @@ export class AtriumEngine {
   }
 
   public selectLevel(key: string) {
+    if (!this.sceneReady) return;
     this.markInteraction();
     if (this.sim.walkOn) this.sim.exitWalk(this.camera, this.controls);
     if (this.sim.isDriving()) this.sim.exitDrive(this.camera, this.controls);
@@ -1614,6 +1729,7 @@ export class AtriumEngine {
   }
 
   public startTour(index = 0) {
+    if (!this.sceneReady) return;
     this.markInteraction();
     this.inspectedMonitor = null;
     this.selectedActor = null;
@@ -1627,6 +1743,7 @@ export class AtriumEngine {
   }
 
   public endTour() {
+    if (!this.sceneReady) return;
     this.markInteraction();
     this.sim.endTour();
     this.activeLevel = 'overview';
@@ -1634,24 +1751,28 @@ export class AtriumEngine {
   }
 
   public prevStop() {
+    if (!this.sceneReady) return;
     this.markInteraction();
     this.sim.prevStop(this.camera, this.controls);
     this.emitHud();
   }
 
   public nextStop() {
+    if (!this.sceneReady) return;
     this.markInteraction();
     this.sim.nextStop(this.camera, this.controls);
     this.emitHud();
   }
 
   public toggleTourPlay() {
+    if (!this.sceneReady) return;
     this.markInteraction();
     this.sim.toggleTourPlay();
     this.emitHud();
   }
 
   public toggleWalk() {
+    if (!this.sceneReady) return;
     this.markInteraction();
     if (this.sim.walkOn) {
       this.sim.exitWalk(this.camera, this.controls);
@@ -1669,17 +1790,20 @@ export class AtriumEngine {
   }
 
   public setWalkFloor(lv: number) {
+    if (!this.sceneReady) return;
     this.markInteraction();
     this.sim.setWalkFloor(lv);
     this.emitHud();
   }
 
   public setTouchJoystick(nx: number, ny: number) {
+    if (!this.sceneReady) return;
     this.markInteraction();
     this.sim.setTouchJoystick(nx, ny);
   }
 
   public toggleStaff() {
+    if (!this.sceneReady) return;
     this.markInteraction();
     const visible = this.sim.toggleStaff();
     if (!visible) {
@@ -1692,12 +1816,14 @@ export class AtriumEngine {
   }
 
   public setRate(rate: number) {
+    if (!this.sceneReady) return;
     this.markInteraction();
     this.sim.setRate(rate);
     this.emitHud();
   }
 
   public jumpToTime(minutes: number) {
+    if (!this.sceneReady) return;
     this.markInteraction();
     const wrappedMinutes = ((minutes % 1440) + 1440) % 1440;
     const wState = this.weather.update(
@@ -1715,6 +1841,7 @@ export class AtriumEngine {
   }
 
   public setWeatherMode(mode: WeatherMode) {
+    if (!this.sceneReady) return;
     this.markInteraction();
     this.weather.setMode(mode);
     const wState = this.weather.update(
@@ -1732,10 +1859,11 @@ export class AtriumEngine {
 
   public toggleAudio() {
     this.audio.toggle();
-    this.emitHud();
+    if (this.sceneReady) this.emitHud();
   }
 
   public toggleDrive(targetBuilding?: BuildingId | null) {
+    if (!this.sceneReady) return;
     this.markInteraction();
     this.audio.unlock();
     if (this.sim.isDriving()) {
@@ -1754,6 +1882,7 @@ export class AtriumEngine {
   }
 
   public stepOutOfCar() {
+    if (!this.sceneReady) return;
     this.markInteraction();
     const nearby = this.sim.stepOutOfCar(this.camera, this.controls);
     this.activeBuilding = nearby;
@@ -1762,6 +1891,7 @@ export class AtriumEngine {
   }
 
   public enterCarFromWalk() {
+    if (!this.sceneReady) return;
     this.markInteraction();
     this.audio.unlock();
     this.sim.enterCarFromWalk(this.camera, this.controls);
@@ -1770,12 +1900,14 @@ export class AtriumEngine {
   }
 
   public toggleDriveCamera() {
+    if (!this.sceneReady) return;
     this.markInteraction();
     this.sim.toggleDriveCamera();
     this.emitHud();
   }
 
   public cycleCameraMode() {
+    if (!this.sceneReady) return;
     this.markInteraction();
     if (this.sim.isDriving()) {
       this.sim.toggleDriveCamera();
@@ -1796,18 +1928,21 @@ export class AtriumEngine {
   }
 
   public toggleDriveHeadlights() {
+    if (!this.sceneReady) return;
     this.markInteraction();
     this.sim.toggleDriveHeadlights();
     this.emitHud();
   }
 
   public setDriveTarget(bId: BuildingId | null) {
+    if (!this.sceneReady) return;
     this.markInteraction();
     this.sim.setDriveTarget(bId);
     this.emitHud();
   }
 
   public setDriveTouchInput(throttle: number, steer: number, brake: boolean) {
+    if (!this.sceneReady) return;
     this.markInteraction();
     this.sim.setDriveTouchInput(throttle, steer, brake);
   }
@@ -1819,6 +1954,7 @@ export class AtriumEngine {
   }
 
   public forceRedrawInspectedMonitor() {
+    if (!this.sceneReady) return;
     if (this.inspectedMonitor) {
       this.inspectedMonitor.screenRef.next = 0;
       renderWorkScreenFrame(this.inspectedMonitor.screenRef, this.elapsed);
@@ -1826,6 +1962,7 @@ export class AtriumEngine {
   }
 
   public applyLiveNairobiSync(minutes: number, weatherMode: WeatherMode) {
+    if (!this.sceneReady) return;
     this.markInteraction();
     const wrappedMinutes = ((minutes % 1440) + 1440) % 1440;
     this.sim.setRate(1);
@@ -1861,9 +1998,11 @@ export class AtriumEngine {
     this.renderer.domElement.removeEventListener('webglcontextlost', this.handleContextLost);
     this.renderer.domElement.removeEventListener('webglcontextrestored', this.handleContextRestored);
     this.unwireWalk();
-    this.weather.dispose();
-    this.arch.trafficLights.dispose();
-    this.sim.dispose();
+    if (this.sceneReady) {
+      this.weather.dispose();
+      this.arch.trafficLights.dispose();
+      this.sim.dispose();
+    }
     this.audio.dispose();
     for (const b of this.overheadBadges) {
       b.tex.dispose();
@@ -1875,8 +2014,10 @@ export class AtriumEngine {
     (this.selectionRing.material as THREE.Material).dispose();
     this.controls.dispose();
     clearArchitecturalFormsCache();
-    for (const g of this.proceduralFoliage.geometries) g.dispose();
-    for (const mat of this.proceduralFoliage.materials) mat.dispose();
+    if (this.proceduralFoliage) {
+      for (const g of this.proceduralFoliage.geometries) g.dispose();
+      for (const mat of this.proceduralFoliage.materials) mat.dispose();
+    }
 
     const geometries = new Set<THREE.BufferGeometry>();
     const materials = new Set<THREE.Material>();

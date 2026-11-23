@@ -48,6 +48,7 @@ import {
   type SocialPlatformId,
 } from '../scene/socialNetwork';
 import { WorkstationInspector } from './WorkstationInspector';
+import { isStandaloneMode } from '../utils/standalone';
 
 interface HudOverlayProps {
   hud: HudSnapshot;
@@ -188,18 +189,24 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
   const [nairobiLoading, setNairobiLoading] = useState(false);
   const [nairobiError, setNairobiError] = useState<string | null>(null);
   const [exportingHtml, setExportingHtml] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const joyRef = useRef<HTMLDivElement | null>(null);
   const [joyKnob, setJoyKnob] = useState({ x: 0, y: 0 });
   const joyActive = useRef(false);
   const driveTouchState = useRef({ throttle: 0, steer: 0, brake: false });
-  const isStandalone = Boolean((window as unknown as { __DTH_STANDALONE__?: boolean }).__DTH_STANDALONE__);
+  const isStandalone = isStandaloneMode();
 
   const handleDownloadStandaloneHtml = async () => {
     if (exportingHtml) return;
+    if (isStandalone) {
+      setExportError('This page is already running as a self-contained standalone HTML file.');
+      return;
+    }
     setExportingHtml(true);
+    setExportError(null);
     try {
       const res = await fetch('/api/download-html');
-      if (!res.ok) throw new Error(`Export failed (${res.status})`);
+      if (!res.ok) throw new Error(`Export failed (HTTP ${res.status})`);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -210,7 +217,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 5000);
     } catch (err) {
-      console.error('Standalone HTML export failed:', err);
+      setExportError(err instanceof Error ? err.message : 'Standalone HTML export failed.');
     } finally {
       setExportingHtml(false);
     }
@@ -255,19 +262,21 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
       let tempC: number | null = null;
       let summary = '';
 
-      try {
-        const res = await fetch('/api/nairobi-live');
-        if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-          const data = await res.json();
-          if (data?.ok) {
-            minutesOfDay = Number(data.minutesOfDay);
-            cond = (data.condition || 'clear') as WeatherMode;
-            tempC = typeof data.temperatureC === 'number' ? data.temperatureC : null;
-            summary = typeof data.summary === 'string' ? data.summary : '';
+      if (!isStandalone) {
+        try {
+          const res = await fetch('/api/nairobi-live');
+          if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
+            const data = await res.json();
+            if (data?.ok) {
+              minutesOfDay = Number(data.minutesOfDay);
+              cond = (data.condition || 'clear') as WeatherMode;
+              tempC = typeof data.temperatureC === 'number' ? data.temperatureC : null;
+              summary = typeof data.summary === 'string' ? data.summary : '';
+            }
           }
+        } catch {
+          // Fall back to direct browser Nairobi EAT + Open-Meteo CORS fetch
         }
-      } catch {
-        // Fall back to direct browser Nairobi EAT + Open-Meteo CORS fetch
       }
 
       if (minutesOfDay === null) {
@@ -281,31 +290,37 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
         const mm = Number(parts.find((p) => p.type === 'minute')?.value) || 0;
         minutesOfDay = hh * 60 + mm;
 
-        const wxRes = await fetch(
-          'https://api.open-meteo.com/v1/forecast?latitude=-1.286389&longitude=36.817223&current=temperature_2m,precipitation,weather_code,cloud_cover&timezone=Africa%2FNairobi'
-        );
-        if (wxRes.ok) {
-          const wx = await wxRes.json();
-          const cur = wx?.current;
-          if (cur) {
-            tempC = typeof cur.temperature_2m === 'number' ? Math.round(cur.temperature_2m * 10) / 10 : null;
-            const code = typeof cur.weather_code === 'number' ? cur.weather_code : 0;
-            const precip = typeof cur.precipitation === 'number' ? cur.precipitation : 0;
-            const cloud = typeof cur.cloud_cover === 'number' ? cur.cloud_cover : 0;
-            if (code >= 95) {
-              cond = 'storm';
-              summary = 'Thunderstorm';
-            } else if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82) || precip > 0.2) {
-              cond = 'rain';
-              summary = 'Rain Showers';
-            } else if (code === 2 || code === 3 || code === 45 || code === 48 || cloud >= 60) {
-              cond = 'overcast';
-              summary = code === 45 || code === 48 ? 'Mist & Clouds' : 'Mostly Cloudy';
-            } else {
-              cond = 'clear';
-              summary = code === 1 ? 'Mostly Clear' : 'Clear Sky';
+        try {
+          const wxRes = await fetch(
+            'https://api.open-meteo.com/v1/forecast?latitude=-1.286389&longitude=36.817223&current=temperature_2m,precipitation,weather_code,cloud_cover&timezone=Africa%2FNairobi'
+          );
+          if (wxRes.ok) {
+            const wx = await wxRes.json();
+            const cur = wx?.current;
+            if (cur) {
+              tempC = typeof cur.temperature_2m === 'number' ? Math.round(cur.temperature_2m * 10) / 10 : null;
+              const code = typeof cur.weather_code === 'number' ? cur.weather_code : 0;
+              const precip = typeof cur.precipitation === 'number' ? cur.precipitation : 0;
+              const cloud = typeof cur.cloud_cover === 'number' ? cur.cloud_cover : 0;
+              if (code >= 95) {
+                cond = 'storm';
+                summary = 'Thunderstorm';
+              } else if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82) || precip > 0.2) {
+                cond = 'rain';
+                summary = 'Rain Showers';
+              } else if (code === 2 || code === 3 || code === 45 || code === 48 || cloud >= 60) {
+                cond = 'overcast';
+                summary = code === 45 || code === 48 ? 'Mist & Clouds' : 'Mostly Cloudy';
+              } else {
+                cond = 'clear';
+                summary = code === 1 ? 'Mostly Clear' : 'Clear Sky';
+              }
             }
+          } else {
+            setNairobiError(`Nairobi EAT clock synced; live weather API returned HTTP ${wxRes.status}.`);
           }
+        } catch {
+          setNairobiError('Nairobi EAT clock synced locally; live weather feed unavailable offline.');
         }
       }
 
@@ -313,7 +328,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
       const tempPart = tempC !== null ? `${tempC}°C` : '';
       setLiveNairobiTemp([tempPart, summary].filter(Boolean).join(' · ') || 'EAT Live');
     } catch (err) {
-      setNairobiError(err instanceof Error ? err.message : 'Live Nairobi sync failed');
+      setNairobiError(err instanceof Error ? err.message : 'Live Nairobi sync failed.');
     } finally {
       setNairobiLoading(false);
     }
@@ -413,6 +428,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
               <button
                 type="button"
                 onClick={onOpenSocialChannels}
+                aria-label="Open District Social Channels"
                 title="Open District Social Platforms & Cross-Company Dispatch"
                 className="pointer-events-auto flex items-center gap-1.5 border border-sky-400/35 bg-[#0d121a]/92 px-3 py-2 text-xs font-medium text-sky-200 hover:bg-sky-500/20 hover:text-white rounded-md transition-colors cursor-pointer"
               >
@@ -425,6 +441,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
               <button
                 type="button"
                 onClick={onOpenCharacters}
+                aria-label="Open 3D Character Studio"
                 title="Open 3D Character Studio"
                 className="pointer-events-auto flex items-center gap-1.5 border border-emerald-400/35 bg-[#0d121a]/92 px-3 py-2 text-xs font-medium text-emerald-200 hover:bg-emerald-500/20 hover:text-white rounded-md transition-colors cursor-pointer"
               >
@@ -434,6 +451,9 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
               <button
                 type="button"
                 onClick={() => setDockOpen((v) => !v)}
+                aria-expanded={dockOpen}
+                aria-controls="hud-control-dock"
+                aria-label={dockOpen ? 'Collapse Controls' : 'Expand Controls'}
                 title="Toggle Controls (H)"
                 className="pointer-events-auto flex items-center gap-1.5 border border-white/12 bg-[#0d121a]/92 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-800/95 hover:text-white rounded-md transition-colors cursor-pointer"
               >
@@ -445,6 +465,28 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
           )}
         </div>
       </div>
+
+      {/* Dismissible Live Nairobi / Export Status Toast */}
+      {(exportError || nairobiError) && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-auto fixed top-16 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-md border border-amber-400/45 bg-[#0d121a]/95 px-3 py-1.5 text-xs text-amber-200 shadow-xl max-w-[min(92vw,520px)]"
+        >
+          <span className="truncate">{exportError || nairobiError}</span>
+          <button
+            type="button"
+            aria-label="Dismiss notification"
+            onClick={() => {
+              setExportError(null);
+              setNairobiError(null);
+            }}
+            className="p-0.5 text-amber-300 hover:text-white rounded cursor-pointer shrink-0"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Hovered Bay / Character / Monitor Card */}
       {hud.hoveredRoom && !hud.walking && !hud.driving && !hud.tourActive && (
@@ -471,7 +513,11 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
 
       {/* Autonomous Character Mind & Thought Inspector */}
       {hud.selectedCharacter && !hud.walking && !hud.driving && (
-        <div className="pointer-events-auto fixed top-16 right-3 sm:right-4 w-[min(86vw,308px)] max-h-[calc(100vh-11.2rem)] overflow-y-auto border border-white/15 bg-[#0d121a]/95 px-3.5 py-3 rounded-md shadow-2xl">
+        <aside
+          role="region"
+          aria-label={`Character Inspector: ${hud.selectedCharacter.name}`}
+          className="pointer-events-auto fixed top-16 right-3 sm:right-4 w-[min(86vw,308px)] max-h-[calc(100vh-11.2rem)] overflow-y-auto border border-white/15 bg-[#0d121a]/95 px-3.5 py-3 rounded-md shadow-2xl"
+        >
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-emerald-400">
@@ -610,6 +656,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                 >
                   <div className="grid grid-cols-2 gap-1">
                     <select
+                      aria-label="Recipient company"
                       value={phoneTarget}
                       onChange={(e) => setPhoneTarget(e.target.value as BuildingId)}
                       className="rounded border border-white/15 bg-[#080c12] px-1.5 py-1 text-[10.5px] text-white focus:border-sky-400 focus:outline-none"
@@ -621,6 +668,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                       ))}
                     </select>
                     <select
+                      aria-label="Social platform"
                       value={phonePlatform}
                       onChange={(e) => setPhonePlatform(e.target.value as SocialPlatformId)}
                       className="rounded border border-white/15 bg-[#080c12] px-1.5 py-1 text-[10.5px] text-white focus:border-sky-400 focus:outline-none"
@@ -633,6 +681,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                   <div className="flex items-center gap-1">
                     <input
                       type="text"
+                      aria-label="Job or task message"
                       value={phoneJobText}
                       onChange={(e) => setPhoneJobText(e.target.value)}
                       placeholder="Send job or task via phone…"
@@ -640,6 +689,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                     />
                     <button
                       type="submit"
+                      aria-label="Send phone job dispatch"
                       className="px-2 py-1 rounded bg-sky-500 text-slate-950 hover:bg-sky-400 text-[10.5px] font-semibold cursor-pointer inline-flex items-center gap-1"
                     >
                       <Send className="w-3 h-3" />
@@ -647,7 +697,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                     </button>
                   </div>
                   {phoneSentNote && (
-                    <div className="text-[10.5px] font-mono-tabular text-emerald-300">
+                    <div role="status" aria-live="polite" className="text-[10.5px] font-mono-tabular text-emerald-300">
                       {phoneSentNote}
                     </div>
                   )}
@@ -678,6 +728,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
             </button>
             <button
               type="button"
+              aria-pressed={hud.selectedCharacter.isFollowing}
               onClick={onToggleFollowCharacter}
               className={`flex items-center gap-1 border px-2 py-1 text-[11px] font-medium rounded transition-colors cursor-pointer ${
                 hud.selectedCharacter.isFollowing
@@ -699,7 +750,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
               </button>
             )}
           </div>
-        </div>
+        </aside>
       )}
 
       {/* Live Interactive Computer OS & Real Project / Research / Data Entry Inspector */}
@@ -773,7 +824,10 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
 
       {/* Guided Tour Card */}
       {hud.tourActive && (
-        <div className="pointer-events-auto fixed bottom-24 sm:bottom-20 left-1/2 -translate-x-1/2 w-[min(94vw,540px)] border border-white/15 bg-[#0d121a]/95 p-3.5 rounded-md shadow-2xl">
+        <section
+          aria-label="Zuri Guided Tour"
+          className="pointer-events-auto fixed bottom-24 sm:bottom-20 left-1/2 -translate-x-1/2 w-[min(94vw,540px)] border border-white/15 bg-[#0d121a]/95 p-3.5 rounded-md shadow-2xl"
+        >
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-2">
@@ -806,7 +860,14 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
             {hud.tourArrived ? hud.tourText : 'Zuri is walking along the DomainTechHub corridor toward this department…'}
           </p>
 
-          <div className="mt-2.5 h-1 w-full bg-white/10 overflow-hidden rounded-xs">
+          <div
+            role="progressbar"
+            aria-label="Guided tour progress"
+            aria-valuemin={1}
+            aria-valuemax={hud.tourTotal}
+            aria-valuenow={hud.tourIndex + 1}
+            className="mt-2.5 h-1 w-full bg-white/10 overflow-hidden rounded-xs"
+          >
             <div
               className="h-full bg-emerald-400 transition-all duration-300"
               style={{ width: `${Math.round(hud.tourProgress * 100)}%` }}
@@ -818,6 +879,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
               <button
                 type="button"
                 onClick={onPrevStop}
+                aria-label="Previous tour stop"
                 className="flex items-center gap-1 border border-white/12 bg-white/5 hover:bg-white/12 px-2.5 py-1.5 text-xs font-medium rounded transition-colors cursor-pointer"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
@@ -825,6 +887,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
               </button>
               <button
                 type="button"
+                aria-pressed={hud.tourPlaying}
                 onClick={onToggleTourPlay}
                 className="flex items-center gap-1 border border-emerald-500/40 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 px-3 py-1.5 text-xs font-medium rounded transition-colors cursor-pointer"
               >
@@ -834,6 +897,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
               <button
                 type="button"
                 onClick={onNextStop}
+                aria-label="Next tour stop"
                 className="flex items-center gap-1 border border-white/12 bg-white/5 hover:bg-white/12 px-2.5 py-1.5 text-xs font-medium rounded transition-colors cursor-pointer"
               >
                 <span>Next</span>
@@ -848,7 +912,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
               Exit tour
             </button>
           </div>
-        </div>
+        </section>
       )}
 
       {/* First-Person Walk HUD */}
@@ -858,7 +922,10 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
             <div className="pointer-events-none fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-1.5 w-1.5 rounded-xs bg-white/75" />
           )}
 
-          <div className="pointer-events-auto fixed bottom-4 left-1/2 -translate-x-1/2 w-[min(95vw,600px)] border border-white/15 bg-[#0d121a]/94 px-4 py-3 rounded-md shadow-2xl">
+          <section
+            aria-label="Walk Mode Controls"
+            className="pointer-events-auto fixed bottom-4 left-1/2 -translate-x-1/2 w-[min(95vw,600px)] border border-white/15 bg-[#0d121a]/94 px-4 py-3 rounded-md shadow-2xl"
+          >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-xs">
                 <Footprints className="w-4 h-4 text-emerald-400" />
@@ -869,11 +936,13 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                 </span>
               </div>
 
-              <div className="flex items-center gap-1">
+              <div role="group" aria-label="Walk floor selector" className="flex items-center gap-1">
                 {walkFloorIndices.map((lv) => (
                   <button
                     key={lv}
                     type="button"
+                    aria-pressed={hud.walkFloor === lv}
+                    aria-label={lv === 0 ? 'Ground floor' : `Level ${lv}`}
                     onClick={() => onSetWalkFloor(lv)}
                     className={`px-2 py-1 text-[11px] font-mono-tabular rounded transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                       hud.walkFloor === lv
@@ -897,6 +966,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                 <button
                   type="button"
                   onClick={onToggleWalk}
+                  aria-label="Exit walk mode"
                   className="ml-2 border border-rose-500/40 bg-rose-500/15 hover:bg-rose-500/25 text-rose-200 px-2.5 py-1 text-xs font-medium rounded cursor-pointer whitespace-nowrap shrink-0"
                 >
                   Exit [Esc]
@@ -906,11 +976,13 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
             <p className="mt-1.5 text-[11px] text-slate-400 font-mono-tabular">
               WASD move across plaza & into open doors · Shift run · 0–{Math.max(0, hud.buildingFloors - 1)} or R/F floor{hud.nearPlayerCarInWalk ? ' · G enter car' : ''} · Esc exit
             </p>
-          </div>
+          </section>
 
           {/* Touch Joystick for mobile / tablet walkthrough */}
           <div
             ref={joyRef}
+            role="application"
+            aria-label="Walk movement touch joystick"
             onPointerDown={(e) => {
               joyActive.current = true;
               (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -1013,6 +1085,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                 <button
                   type="button"
                   onClick={onToggleDriveCamera}
+                  aria-label="Toggle drive camera view"
                   className="flex items-center gap-1 border border-white/15 bg-white/6 hover:bg-white/14 px-2 py-1.5 text-[11px] font-medium text-slate-200 rounded transition-colors cursor-pointer"
                 >
                   <Video className="w-3.5 h-3.5 text-sky-300" />
@@ -1020,7 +1093,9 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                 </button>
                 <button
                   type="button"
+                  aria-pressed={hud.driveHeadlights}
                   onClick={onToggleDriveHeadlights}
+                  aria-label="Toggle car headlights"
                   className={`flex items-center gap-1 border px-2 py-1.5 text-[11px] font-medium rounded transition-colors cursor-pointer ${
                     hud.driveHeadlights
                       ? 'border-amber-400/50 bg-amber-400/15 text-amber-200'
@@ -1033,6 +1108,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                 <button
                   type="button"
                   onClick={onCarHorn}
+                  aria-label="Sound car horn"
                   className="flex items-center gap-1 border border-white/15 bg-white/6 hover:bg-white/14 px-2 py-1.5 text-[11px] font-medium text-slate-200 rounded transition-colors cursor-pointer"
                 >
                   <Megaphone className="w-3.5 h-3.5 text-slate-300" />
@@ -1055,6 +1131,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                 <button
                   type="button"
                   onClick={() => onToggleDrive()}
+                  aria-label="Exit drive mode"
                   className="border border-rose-500/40 bg-rose-500/15 hover:bg-rose-500/25 text-rose-200 px-2 py-1.5 text-[11px] font-medium rounded cursor-pointer"
                 >
                   Exit [Esc]
@@ -1063,7 +1140,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
             </div>
 
             {/* GPS Destination Bar */}
-            <div className="mt-2 pt-2 border-t border-white/10 flex items-center gap-1 overflow-x-auto no-scrollbar">
+            <div role="group" aria-label="GPS Destination Selector" className="mt-2 pt-2 border-t border-white/10 flex items-center gap-1 overflow-x-auto no-scrollbar">
               <span className="text-[10px] uppercase tracking-wider text-slate-400 mr-1 shrink-0">
                 GPS Target
               </span>
@@ -1073,6 +1150,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                   <button
                     key={b.id}
                     type="button"
+                    aria-pressed={active}
                     onClick={() => onSetDriveTarget(active ? null : b.id)}
                     className={`flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium rounded border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                       active
@@ -1099,6 +1177,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
           <div className="pointer-events-auto sm:hidden fixed bottom-36 left-3 flex items-center gap-2 touch-none">
             <button
               type="button"
+              aria-label="Steer left"
               onPointerDown={() => setDriveControl({ steer: -1 })}
               onPointerUp={() => setDriveControl({ steer: 0 })}
               onPointerLeave={() => setDriveControl({ steer: 0 })}
@@ -1109,6 +1188,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
             </button>
             <button
               type="button"
+              aria-label="Steer right"
               onPointerDown={() => setDriveControl({ steer: 1 })}
               onPointerUp={() => setDriveControl({ steer: 0 })}
               onPointerLeave={() => setDriveControl({ steer: 0 })}
@@ -1121,6 +1201,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
           <div className="pointer-events-auto sm:hidden fixed bottom-36 right-3 flex items-center gap-2 touch-none">
             <button
               type="button"
+              aria-label="Reverse and brake"
               onPointerDown={() => setDriveControl({ throttle: -1, brake: true })}
               onPointerUp={() => setDriveControl({ throttle: 0, brake: false })}
               onPointerLeave={() => setDriveControl({ throttle: 0, brake: false })}
@@ -1131,6 +1212,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
             </button>
             <button
               type="button"
+              aria-label="Accelerate"
               onPointerDown={() => setDriveControl({ throttle: 1, brake: false })}
               onPointerUp={() => setDriveControl({ throttle: 0 })}
               onPointerLeave={() => setDriveControl({ throttle: 0 })}
@@ -1145,9 +1227,13 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
 
       {/* Collapsible Bottom Control Dock */}
       {!hud.walking && !hud.driving && dockOpen && (
-        <div className="pointer-events-auto fixed bottom-3 left-1/2 -translate-x-1/2 w-[min(96vw,1080px)] border border-white/12 bg-[#0d121a]/92 px-3 py-2.5 rounded-md shadow-2xl">
+        <nav
+          id="hud-control-dock"
+          aria-label="District and Simulation Controls"
+          className="pointer-events-auto fixed bottom-3 left-1/2 -translate-x-1/2 w-[min(96vw,1080px)] border border-white/12 bg-[#0d121a]/92 px-3 py-2.5 rounded-md shadow-2xl"
+        >
           {/* Building Switcher Row */}
-          <div className="pb-2 mb-2 border-b border-white/10 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+          <div role="tablist" aria-label="Select company building" className="pb-2 mb-2 border-b border-white/10 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
             <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-slate-400 mr-1 shrink-0">
               <Building2 className="w-3.5 h-3.5 text-slate-400" />
               <span>District</span>
@@ -1158,6 +1244,8 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                 <button
                   key={b.id}
                   type="button"
+                  role="tab"
+                  aria-selected={active}
                   onClick={() => onSelectBuilding(b.id)}
                   title={`${b.name} · ${b.niche}`}
                   className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
@@ -1178,13 +1266,14 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
 
           <div className="flex flex-wrap items-center justify-between gap-2.5">
             {/* Floor Selector */}
-            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar max-w-full">
+            <div role="group" aria-label="Floor level cutaway" className="flex items-center gap-1 overflow-x-auto no-scrollbar max-w-full">
               {floorButtons.map((lv) => {
                 const active = hud.activeLevel === lv.key;
                 return (
                   <button
                     key={lv.key}
                     type="button"
+                    aria-pressed={active}
                     onClick={() => onSelectLevel(lv.key)}
                     className={`px-2.5 py-1.5 text-xs font-medium rounded transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                       active
@@ -1202,6 +1291,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
+                aria-pressed={hud.tourActive}
                 onClick={hud.tourActive ? onEndTour : onStartTour}
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded border transition-colors cursor-pointer ${
                   hud.tourActive
@@ -1215,6 +1305,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
 
               <button
                 type="button"
+                aria-pressed={hud.walking}
                 onClick={onToggleWalk}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded border border-white/12 bg-white/5 text-slate-200 hover:bg-white/12 transition-colors cursor-pointer"
               >
@@ -1224,6 +1315,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
 
               <button
                 type="button"
+                aria-pressed={hud.driving}
                 onClick={() => onToggleDrive(hud.activeBuilding === 'hub' ? 'bank' : hud.activeBuilding)}
                 title="Drive executive sedan to any company in the district"
                 className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded border border-sky-400/40 bg-sky-500/15 text-sky-200 hover:bg-sky-500/25 hover:text-white transition-colors cursor-pointer whitespace-nowrap shrink-0"
@@ -1234,6 +1326,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
 
               <button
                 type="button"
+                aria-pressed={hud.staffVisible}
                 onClick={onToggleStaff}
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                   hud.staffVisible
@@ -1247,8 +1340,10 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
 
               <button
                 type="button"
+                aria-pressed={hud.audioEnabled}
                 onClick={onToggleAudio}
                 title="Toggle Ambient Office Audio"
+                aria-label={hud.audioEnabled ? 'Mute ambient audio' : 'Unmute ambient audio'}
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded border transition-colors cursor-pointer ${
                   hud.audioEnabled
                     ? 'border-white/18 bg-white/10 text-white'
@@ -1263,12 +1358,13 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
 
           {/* Second Row: Time Speed, Weather & Shift Presets */}
           <div className="mt-2 pt-2 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-1">
+            <div role="group" aria-label="Simulation speed" className="flex items-center gap-1">
               <span className="text-[11px] uppercase tracking-wider text-slate-400 mr-1">Speed</span>
               {RATES.map((r) => (
                 <button
                   key={r.rate}
                   type="button"
+                  aria-pressed={hud.simRate === r.rate}
                   onClick={() => onSetRate(r.rate)}
                   className={`px-2 py-1 text-[11px] font-mono-tabular rounded transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                     hud.simRate === r.rate
@@ -1281,12 +1377,13 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
               ))}
             </div>
 
-            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+            <div role="group" aria-label="Weather controls" className="flex items-center gap-1 overflow-x-auto no-scrollbar">
               <span className="text-[11px] uppercase tracking-wider text-slate-400 mr-1 shrink-0">Weather</span>
               {WEATHER_MODES.map((w) => (
                 <button
                   key={w.mode}
                   type="button"
+                  aria-pressed={hud.weatherMode === w.mode}
                   onClick={() => {
                     setLiveNairobiTemp(null);
                     setNairobiError(null);
@@ -1303,9 +1400,10 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
               ))}
               <button
                 type="button"
+                aria-pressed={Boolean(liveNairobiTemp)}
                 onClick={syncLiveNairobi}
                 disabled={nairobiLoading}
-                title={nairobiError ? `Sync error: ${nairobiError}` : 'Sync real Africa/Nairobi time & live weather'}
+                title={nairobiError ? `Sync notice: ${nairobiError}` : 'Sync real Africa/Nairobi time & live weather'}
                 className={`ml-1 flex items-center gap-1 px-2 py-1 text-[11px] rounded border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                   nairobiError
                     ? 'border-rose-400/50 bg-rose-500/15 text-rose-200'
@@ -1319,7 +1417,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
               </button>
             </div>
 
-            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+            <div role="group" aria-label="Shift time presets" className="flex items-center gap-1 overflow-x-auto no-scrollbar">
               <span className="text-[11px] uppercase tracking-wider text-slate-400 mr-1 shrink-0">Jump</span>
               {TIME_PRESETS.map((p) => (
                 <button
@@ -1336,7 +1434,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
               ))}
             </div>
           </div>
-        </div>
+        </nav>
       )}
     </div>
   );

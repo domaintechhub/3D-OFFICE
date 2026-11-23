@@ -1,6 +1,6 @@
 import { Component, lazy, Suspense, type ErrorInfo, type ReactNode, useEffect, useRef, useState } from 'react';
 import { HudOverlay } from './components/HudOverlay';
-import { AtriumEngine } from './scene/AtriumEngine';
+import { AtriumEngine, type SceneLoadProgress } from './scene/AtriumEngine';
 import type { HudSnapshot } from './scene/constants';
 
 const CharacterStudioModal = lazy(() =>
@@ -15,7 +15,7 @@ const INITIAL_HUD: HudSnapshot = {
   simRate: 4,
   timeText: '09:25',
   shiftLabel: 'Morning shift',
-  statsLabel: 'Initializing office scene…',
+  statsLabel: 'Preparing 3D district…',
   weatherMode: 'auto',
   activeWeather: 'clear',
   weatherLabel: 'Clear',
@@ -78,14 +78,17 @@ class ViewportErrorBoundary extends Component<{ children: ReactNode }, BoundaryS
   render() {
     if (this.state.errorMessage) {
       return (
-        <div className="w-full h-full flex items-center justify-center bg-[#0b1322] text-slate-200 p-6">
+        <div
+          role="alert"
+          className="w-full h-full flex items-center justify-center bg-[#0b1322] text-slate-200 p-6"
+        >
           <div className="max-w-md border border-white/15 bg-slate-900 p-6 rounded-md shadow-2xl">
             <h1 className="text-lg font-semibold text-white">3D Viewport Recovery</h1>
             <p className="mt-2 text-sm text-slate-400">{this.state.errorMessage}</p>
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="mt-4 px-4 py-2 text-sm font-medium bg-emerald-500 text-slate-950 rounded hover:bg-emerald-400 transition-colors"
+              className="mt-4 px-4 py-2 text-sm font-medium bg-emerald-500 text-slate-950 rounded hover:bg-emerald-400 transition-colors cursor-pointer"
             >
               Reload 3D Viewport
             </button>
@@ -104,6 +107,13 @@ function AtriumApp() {
   const [webglError, setWebglError] = useState<string | null>(null);
   const [studioOpen, setStudioOpen] = useState(false);
   const [socialOpen, setSocialOpen] = useState(false);
+  const [loadProgress, setLoadProgress] = useState<SceneLoadProgress>({
+    percent: 5,
+    stage: 'Initializing WebGL context…',
+    loaded: 0,
+    total: 5,
+    done: false,
+  });
 
   const hudRef = useRef(hud);
   hudRef.current = hud;
@@ -124,6 +134,9 @@ function AtriumApp() {
         },
         (fatalMsg) => {
           setWebglError(fatalMsg);
+        },
+        (progress) => {
+          setLoadProgress(progress);
         }
       );
       engineRef.current = engine;
@@ -176,14 +189,17 @@ function AtriumApp() {
 
   if (webglError) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-[#0b1322] text-slate-200 p-6">
+      <div
+        role="alert"
+        className="w-full h-full flex items-center justify-center bg-[#0b1322] text-slate-200 p-6"
+      >
         <div className="max-w-md border border-white/15 bg-slate-900 p-6 rounded-md shadow-2xl">
           <h1 className="text-lg font-semibold text-white">3D Viewport Unavailable</h1>
           <p className="mt-2 text-sm text-slate-400">{webglError}</p>
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="mt-4 px-4 py-2 text-sm font-medium bg-emerald-500 text-slate-950 rounded hover:bg-emerald-400 transition-colors"
+            className="mt-4 px-4 py-2 text-sm font-medium bg-emerald-500 text-slate-950 rounded hover:bg-emerald-400 transition-colors cursor-pointer"
           >
             Reload 3D Viewport
           </button>
@@ -193,8 +209,55 @@ function AtriumApp() {
   }
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-[#0b1322]">
-      <div ref={mountRef} className="w-full h-full" />
+    <main className="relative w-full h-full overflow-hidden bg-[#0b1322]">
+      <div
+        ref={mountRef}
+        role="application"
+        aria-label="Interactive 3D DomainTechHub Nairobi District Viewport"
+        className="w-full h-full"
+      />
+      {!loadProgress.done && (
+        <div
+          role="status"
+          aria-live="polite"
+          aria-label="Loading 3D office district"
+          className="fixed inset-0 z-40 flex items-center justify-center bg-[#0b1322]/96 px-6"
+        >
+          <div className="w-full max-w-md rounded-md border border-white/15 bg-[#0d121a] p-5 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="inline-block h-2.5 w-2.5 rounded-xs bg-emerald-400" />
+                <span className="text-xs font-semibold uppercase tracking-wider text-emerald-300">
+                  DomainTechHub 3D Engine
+                </span>
+              </div>
+              <span className="font-mono-tabular text-xs font-semibold text-white">
+                {loadProgress.percent}%
+              </span>
+            </div>
+            <p className="mt-2 text-xs text-slate-300">{loadProgress.stage}</p>
+            <div
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={loadProgress.percent}
+              aria-label="3D scene asset build progress"
+              className="mt-3 h-1.5 w-full overflow-hidden rounded-xs bg-white/10"
+            >
+              <div
+                className="h-full bg-emerald-400 transition-all duration-150"
+                style={{ width: `${loadProgress.percent}%` }}
+              />
+            </div>
+            <div className="mt-2 flex items-center justify-between text-[10.5px] font-mono-tabular text-slate-400">
+              <span>THREE.LoadingManager pipeline</span>
+              <span>
+                {loadProgress.loaded}/{Math.max(1, loadProgress.total)} stages
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
       <HudOverlay
         hud={hud}
         onSelectBuilding={(id) => engineRef.current?.selectBuilding(id)}
@@ -248,7 +311,7 @@ function AtriumApp() {
           />
         </Suspense>
       )}
-    </div>
+    </main>
   );
 }
 

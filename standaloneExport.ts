@@ -28,7 +28,11 @@ export async function buildStandaloneHtml(useCache = false): Promise<string> {
   if (useCache) {
     try {
       const prebuilt = await fs.readFile(prebuiltPath, 'utf8');
-      if (prebuilt.includes('<div id="root"></div>')) {
+      if (
+        prebuilt.includes('<div id="root"></div>') &&
+        !prebuilt.includes('jsxDEV') &&
+        !prebuilt.includes('_aistudio-iframe')
+      ) {
         cachedProdHtml = prebuilt;
         return prebuilt;
       }
@@ -42,12 +46,21 @@ export async function buildStandaloneHtml(useCache = false): Promise<string> {
   }
 
   inflightBuild = (async () => {
+    const prevNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
     const result = await viteBuild({
       root: __dirname,
       configFile: false,
+      mode: 'production',
       base: './',
       logLevel: 'silent',
-      plugins: [react(), tailwindcss()],
+      define: {
+        'process.env.NODE_ENV': '"production"',
+      },
+      plugins: [
+        react(),
+        tailwindcss(),
+      ],
       resolve: {
         alias: {
           '@': __dirname,
@@ -69,6 +82,12 @@ export async function buildStandaloneHtml(useCache = false): Promise<string> {
           },
         },
       },
+    }).finally(() => {
+      if (prevNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = prevNodeEnv;
+      }
     });
 
     const outputs = Array.isArray(result)
@@ -83,14 +102,16 @@ export async function buildStandaloneHtml(useCache = false): Promise<string> {
 
     for (const item of outputs) {
       if (item.type === 'asset') {
-        if (item.fileName === 'index.html' || item.fileName.endsWith('.html')) {
-          htmlSource = typeof item.source === 'string' ? item.source : Buffer.from(item.source).toString('utf8');
-        } else if (item.fileName.endsWith('.css')) {
-          const cssText = typeof item.source === 'string' ? item.source : Buffer.from(item.source).toString('utf8');
+        const fileName = String(item.fileName || '');
+        const rawSource = item.source;
+        if (fileName === 'index.html' || fileName.endsWith('.html')) {
+          htmlSource = typeof rawSource === 'string' ? rawSource : Buffer.from(rawSource).toString('utf8');
+        } else if (fileName.endsWith('.css')) {
+          const cssText = typeof rawSource === 'string' ? rawSource : Buffer.from(rawSource).toString('utf8');
           cssChunks.push(cssText);
         }
       } else if (item.type === 'chunk' && item.isEntry) {
-        jsChunks.push(item.code);
+        jsChunks.push(String(item.code || ''));
       }
     }
 
@@ -98,11 +119,12 @@ export async function buildStandaloneHtml(useCache = false): Promise<string> {
       htmlSource = await fs.readFile(path.resolve(__dirname, 'index.html'), 'utf8');
     }
 
-    // Strip Vite-injected external module/preload/stylesheet tags so everything is inline
+    // Strip any external scripts (including AI Studio dev harness), modulepreload links, and local stylesheets
     let inlined = htmlSource
-      .replace(/<script\b[^>]*\bsrc=["'][^"']+["'][^>]*>\s*<\/script>/gi, '')
-      .replace(/<link\b[^>]*\brel=["']modulepreload["'][^>]*>/gi, '')
-      .replace(/<link\b[^>]*\brel=["']stylesheet["'][^>]*href=["'](?!https?:\/\/)[^"']+["'][^>]*>/gi, '');
+      .replace(/<script\b[^>]*_aistudio-iframe[^>]*>[\s\S]*?<\/script\s*>/gi, '')
+      .replace(/<script\b[^>]*\bsrc\s*=\s*["'][^"']+["'][^>]*>[\s\S]*?<\/script\s*>/gi, '')
+      .replace(/<link\b[^>]*\brel\s*=\s*["']modulepreload["'][^>]*>/gi, '')
+      .replace(/<link\b[^>]*\brel\s*=\s*["']stylesheet["'][^>]*href\s*=\s*["'](?!https?:\/\/)[^"']+["'][^>]*>/gi, '');
 
     const combinedCss = escapeStyleClose(cssChunks.join('\n'));
     const combinedJs = escapeScriptClose(jsChunks.join('\n'));

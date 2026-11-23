@@ -3,7 +3,12 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { Download, FolderUp, Play, RotateCw, Square, User, X } from 'lucide-react';
-import { loadRiggedGlbFromFile, type LoadedGlbCharacter } from '../scene/characterAssets';
+import {
+  loadRiggedGlbFromFile,
+  type AssetLoadProgress,
+  type LoadedGlbCharacter,
+} from '../scene/characterAssets';
+import { useDialogFocusTrap } from '../utils/useDialogFocusTrap';
 import {
   BONE_NAMES,
   OFFICE_CHARACTER_ROSTER,
@@ -230,8 +235,10 @@ function buildStudioChairProp(): THREE.Group {
 }
 
 export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOpen, onClose }) => {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
   const mountRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
 
   const [selectedPreset, setSelectedPreset] = useState<CharacterRosterPreset>(OFFICE_CHARACTER_ROSTER[0]);
   const [selectedPose, setSelectedPose] = useState<string>(OFFICE_CHARACTER_ROSTER[0].defaultPose);
@@ -243,6 +250,7 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
   const [contextLost, setContextLost] = useState(false);
   const [importedGlb, setImportedGlb] = useState<LoadedGlbCharacter | null>(null);
   const [glbLoading, setGlbLoading] = useState(false);
+  const [glbProgress, setGlbProgress] = useState<AssetLoadProgress | null>(null);
 
   const studioRef = useRef<{
     scene: THREE.Scene;
@@ -261,18 +269,7 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
     selectedPose: string;
   } | null>(null);
 
-  // Escape to close
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.code === 'Escape') {
-        e.stopPropagation();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose]);
+  useDialogFocusTrap(isOpen, dialogRef, onClose);
 
   // Initialize isolated 3-Point Studio Three.js Viewport
   useEffect(() => {
@@ -296,6 +293,7 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
     renderer.toneMappingExposure = 1.06;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    rendererRef.current = renderer;
     container.appendChild(renderer.domElement);
 
     const onContextLost = (ev: Event) => {
@@ -410,6 +408,7 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
       const h = Math.max(container.clientHeight, 240);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.setSize(w, h);
     };
     const ro = new ResizeObserver(onResize);
@@ -511,6 +510,7 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
       palette.trous.forEach((m) => m.dispose());
 
       renderer.dispose();
+      rendererRef.current = null;
       if (renderer.domElement.parentNode === container) {
         container.removeChild(renderer.domElement);
       }
@@ -600,9 +600,15 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
     const st = studioRef.current;
     if (!st || glbLoading) return;
     setGlbLoading(true);
+    setGlbProgress({ percent: 2, stage: `Opening ${file.name}…`, loaded: 0, total: file.size });
     setExportNote(null);
     try {
-      const loaded = await loadRiggedGlbFromFile(file, 1.74);
+      const loaded = await loadRiggedGlbFromFile(
+        file,
+        1.74,
+        (prog) => setGlbProgress(prog),
+        rendererRef.current
+      );
       if (st.mixer) {
         st.mixer.stopAllAction();
         st.mixer = null;
@@ -632,6 +638,7 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
       setExportNote(err instanceof Error ? `GLB error: ${err.message}` : 'Failed to parse .glb');
     } finally {
       setGlbLoading(false);
+      setGlbProgress(null);
     }
   };
 
@@ -653,15 +660,30 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
   if (!isOpen) return null;
 
   return (
-    <div className="pointer-events-auto fixed inset-0 z-30 flex items-center justify-center bg-[#06090f]/82 backdrop-blur-sm p-2 sm:p-4">
-      <div className="flex h-[min(94vh,860px)] w-[min(97vw,1360px)] flex-col overflow-hidden rounded-md border border-white/15 bg-[#0d121a] shadow-2xl">
+    <div
+      className="pointer-events-auto fixed inset-0 z-30 flex items-center justify-center bg-[#06090f]/82 backdrop-blur-sm p-2 sm:p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="character-studio-title"
+        tabIndex={-1}
+        className="flex h-[min(94vh,860px)] w-[min(97vw,1360px)] flex-col overflow-hidden rounded-md border border-white/15 bg-[#0d121a] shadow-2xl focus:outline-none"
+      >
         {/* Studio Header */}
         <div className="flex items-center justify-between gap-3 border-b border-white/12 px-4 py-3">
           <div className="flex items-center gap-3 min-w-0">
             <User className="w-4 h-4 text-emerald-400 shrink-0" />
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-semibold tracking-tight text-white truncate">
+                <h2
+                  id="character-studio-title"
+                  className="text-sm font-semibold tracking-tight text-white truncate"
+                >
                   Photorealistic 3D Character Studio
                 </h2>
                 <span className="hidden sm:inline text-slate-600">·</span>
@@ -674,7 +696,11 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
 
           <div className="flex items-center gap-2 shrink-0">
             {exportNote && (
-              <span className="hidden md:inline font-mono-tabular text-[11px] text-emerald-300">
+              <span
+                role="status"
+                aria-live="polite"
+                className="hidden md:inline font-mono-tabular text-[11px] text-emerald-300"
+              >
                 {exportNote}
               </span>
             )}
@@ -682,6 +708,7 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
               ref={fileInputRef}
               type="file"
               accept=".glb,.gltf"
+              aria-label="Upload custom rigged GLB or glTF character model"
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];
@@ -693,15 +720,17 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={glbLoading || contextLost}
+              aria-label="Import custom GLB or glTF character model"
               className="flex items-center gap-1.5 rounded border border-sky-500/45 bg-sky-500/20 px-3 py-1.5 text-xs font-medium text-sky-100 hover:bg-sky-500/30 disabled:opacity-50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               <FolderUp className="w-3.5 h-3.5" />
-              <span>{glbLoading ? 'Loading…' : 'Load .GLB'}</span>
+              <span>{glbLoading && glbProgress ? `${glbProgress.percent}%` : 'Load .GLB'}</span>
             </button>
             <button
               type="button"
               onClick={handleExportGLB}
               disabled={exporting || contextLost || !!importedGlb}
+              aria-label={`Export ${selectedPreset.name} as GLB file`}
               className="flex items-center gap-1.5 rounded border border-emerald-500/45 bg-emerald-500/20 px-3 py-1.5 text-xs font-medium text-emerald-100 hover:bg-emerald-500/30 disabled:opacity-50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               <Download className="w-3.5 h-3.5" />
@@ -722,17 +751,21 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
         {/* Main 3-Column Studio Body */}
         <div className="flex flex-1 min-h-0 flex-col lg:flex-row">
           {/* Left Panel: 12 Diverse Professionals */}
-          <aside className="lg:w-72 border-b lg:border-b-0 lg:border-r border-white/12 overflow-y-auto max-h-44 lg:max-h-none bg-[#0a0e15]">
+          <aside
+            aria-label="Office Team Roster"
+            className="lg:w-72 border-b lg:border-b-0 lg:border-r border-white/12 overflow-y-auto max-h-44 lg:max-h-none bg-[#0a0e15]"
+          >
             <div className="px-3.5 py-2.5 border-b border-white/10 text-[11px] uppercase tracking-wider font-semibold text-slate-400">
               Office Team Roster ({OFFICE_CHARACTER_ROSTER.length})
             </div>
             <div className="divide-y divide-white/6">
               {OFFICE_CHARACTER_ROSTER.map((person) => {
-                const active = person.id === selectedPreset.id;
+                const active = person.id === selectedPreset.id && !importedGlb;
                 return (
                   <button
                     key={person.id}
                     type="button"
+                    aria-pressed={active}
                     onClick={() => setSelectedPreset(person)}
                     className={`w-full text-left px-3.5 py-2.5 transition-colors cursor-pointer ${
                       active ? 'bg-emerald-500/12 text-white' : 'hover:bg-white/5 text-slate-300'
@@ -764,10 +797,44 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
               }
             }}
           >
-            <div ref={mountRef} className="h-full w-full" />
+            <div
+              ref={mountRef}
+              role="img"
+              aria-label={`3D studio preview of ${importedGlb ? importedGlb.sourceName : selectedPreset.name}`}
+              className="h-full w-full"
+            />
+
+            {glbLoading && glbProgress && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="absolute inset-0 flex items-center justify-center bg-[#0d121a]/88 p-6"
+              >
+                <div className="w-full max-w-xs rounded border border-sky-400/35 bg-[#090d14] p-4 shadow-xl">
+                  <div className="flex items-center justify-between text-xs font-semibold text-white">
+                    <span>Importing 3D Character</span>
+                    <span className="font-mono-tabular text-sky-300">{glbProgress.percent}%</span>
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-slate-300 truncate">{glbProgress.stage}</p>
+                  <div
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={glbProgress.percent}
+                    aria-label="GLB asset load progress"
+                    className="mt-2.5 h-1.5 w-full overflow-hidden rounded-xs bg-white/10"
+                  >
+                    <div
+                      className="h-full bg-sky-400 transition-all duration-100"
+                      style={{ width: `${glbProgress.percent}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {contextLost && (
-              <div className="absolute inset-0 flex items-center justify-center bg-[#0d121a]/95 p-6 text-center">
+              <div role="alert" className="absolute inset-0 flex items-center justify-center bg-[#0d121a]/95 p-6 text-center">
                 <p className="text-xs text-slate-300">
                   WebGL context was paused by browser GPU limits. Close and reopen the Character Studio to restore.
                 </p>
@@ -786,6 +853,7 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
                 <button
                   key={f.id}
                   type="button"
+                  aria-pressed={framing === f.id}
                   onClick={() => setFraming(f.id)}
                   className={`rounded border px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                     framing === f.id
@@ -799,6 +867,7 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
 
               <button
                 type="button"
+                aria-pressed={turntable}
                 onClick={() => setTurntable((v) => !v)}
                 className={`flex items-center gap-1 rounded border px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                   turntable
@@ -839,7 +908,10 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
           </div>
 
           {/* Right Panel: 15 Office Positions & Animation Clips */}
-          <aside className="lg:w-80 border-t lg:border-t-0 lg:border-l border-white/12 flex flex-col bg-[#0a0e15] max-h-64 lg:max-h-none">
+          <aside
+            aria-label="Poses and Animation Clips"
+            className="lg:w-80 border-t lg:border-t-0 lg:border-l border-white/12 flex flex-col bg-[#0a0e15] max-h-64 lg:max-h-none"
+          >
             <div className="p-3 border-b border-white/10">
               <div className="text-[11px] uppercase tracking-wider font-semibold text-slate-400 mb-2">
                 Animation Clips (Rigged glTF)
@@ -857,6 +929,7 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
                   <button
                     key={m.id}
                     type="button"
+                    aria-pressed={clipMode === m.id}
                     onClick={() => setClipMode(m.id)}
                     className={`flex items-center justify-center gap-1.5 rounded border px-2 py-1.5 text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                       clipMode === m.id
@@ -882,6 +955,7 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
                   <button
                     key={item.key}
                     type="button"
+                    aria-pressed={active}
                     onClick={() => {
                       setClipMode('pose');
                       setSelectedPose(item.key);

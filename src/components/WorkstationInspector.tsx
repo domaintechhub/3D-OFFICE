@@ -39,6 +39,7 @@ import {
   type BrowserSession,
   type WorkstationMode,
 } from '../scene/workstations';
+import { isStandaloneMode } from '../utils/standalone';
 
 interface BrowsePageData {
   ok: boolean;
@@ -143,6 +144,7 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
   const screenMirrorRef = useRef<HTMLCanvasElement | null>(null);
   const fetchAbortRef = useRef<AbortController | null>(null);
   const autoFetchedStationRef = useRef<string>('');
+  const isStandalone = isStandaloneMode();
 
   useEffect(() => socialNetwork.subscribe(() => setSocialVer((v) => v + 1)), []);
 
@@ -331,6 +333,16 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
     }
     const safeNormalized = parsedUrl.toString();
 
+    if (isStandalone) {
+      setAutoPilot(false);
+      setSearchInput(safeNormalized);
+      setBrowseLoading(false);
+      setBrowseError(
+        'Direct webpage proxying requires the DomainTechHub backend server and is disabled in standalone HTML mode. Showing curated desk research below — or use Wikipedia search / open the URL externally.'
+      );
+      return;
+    }
+
     fetchAbortRef.current?.abort();
     const ac = new AbortController();
     fetchAbortRef.current = ac;
@@ -345,7 +357,7 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
       });
       const isJson = (resp.headers.get('content-type') || '').includes('application/json');
       if (!isJson) {
-        setBrowseError(`Direct webpage proxy unavailable in static mode. Use Web Search or open ${safeNormalized} externally.`);
+        setBrowseError(`Direct webpage proxy unavailable in static mode. Use Wikipedia search or open ${safeNormalized} externally.`);
         return;
       }
       const json = (await resp.json()) as BrowsePageData;
@@ -381,14 +393,16 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
 
     try {
       let json: SearchPageData | null = null;
-      try {
-        const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ac.signal });
-        if (resp.ok && (resp.headers.get('content-type') || '').includes('application/json')) {
-          const parsed = (await resp.json()) as SearchPageData;
-          if (parsed.ok) json = parsed;
+      if (!isStandalone) {
+        try {
+          const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ac.signal });
+          if (resp.ok && (resp.headers.get('content-type') || '').includes('application/json')) {
+            const parsed = (await resp.json()) as SearchPageData;
+            if (parsed.ok) json = parsed;
+          }
+        } catch (err) {
+          if (err instanceof DOMException && err.name === 'AbortError') throw err;
         }
-      } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') throw err;
       }
 
       if (!json) {
@@ -397,7 +411,7 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
           { signal: ac.signal }
         );
         if (!wikiResp.ok) {
-          setBrowseError(`Web search failed (HTTP ${wikiResp.status})`);
+          setBrowseError(`Wikipedia search failed (HTTP ${wikiResp.status}).`);
           return;
         }
         const wikiJson = (await wikiResp.json()) as {
@@ -428,7 +442,11 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
       syncHistoryEntryTo3dMonitor(entry);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
-      setBrowseError(err instanceof Error ? err.message : 'Web search request failed.');
+      setBrowseError(
+        err instanceof Error
+          ? `Search unavailable (${err.message}). Curated station research remains accessible.`
+          : 'Web search request failed.'
+      );
     } finally {
       if (fetchAbortRef.current === ac) {
         setBrowseLoading(false);
@@ -436,16 +454,16 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
     }
   };
 
-  // Fetch starter URL live automatically when opening the Browser tab for the current monitor
+  // Fetch starter URL live automatically when opening the Browser tab (server mode only)
   useEffect(() => {
-    if (activeMode !== 'browser') return;
+    if (activeMode !== 'browser' || isStandalone) return;
     if (liveHistory.length > 0 || browseLoading) return;
     const starterUrl = sessions[browserTabIdx % sessions.length]?.url;
     if (!starterUrl || autoFetchedStationRef.current === `${monitor.id}:${starterUrl}`) return;
     autoFetchedStationRef.current = `${monitor.id}:${starterUrl}`;
     void browseLiveUrl(starterUrl);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMode, monitor.id]);
+  }, [activeMode, monitor.id, isStandalone]);
 
   // Live typing calculation for Data Entry active draft row
   const draftCharsTotal = draftRecord.reduce((s, cell) => s + cell.length + 2, 0);
@@ -511,7 +529,11 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
   };
 
   return (
-    <div className="pointer-events-auto fixed top-16 right-3 sm:right-4 w-[min(94vw,470px)] max-h-[calc(100vh-11.5rem)] flex flex-col border border-white/15 bg-[#0d121a]/96 rounded-md shadow-2xl overflow-hidden">
+    <aside
+      role="region"
+      aria-label={`Workstation Inspector: ${monitor.role}`}
+      className="pointer-events-auto fixed top-16 right-3 sm:right-4 w-[min(94vw,470px)] max-h-[calc(100vh-11.5rem)] flex flex-col border border-white/15 bg-[#0d121a]/96 rounded-md shadow-2xl overflow-hidden"
+    >
       {/* OS Window Title Bar */}
       <div className="shrink-0 px-3.5 py-2.5 border-b border-white/10 bg-[#121923]">
         <div className="flex items-start justify-between gap-2">
@@ -539,8 +561,10 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
           <div className="flex items-center gap-1 shrink-0">
             <button
               type="button"
+              aria-pressed={autoPilot}
               onClick={() => setAutoPilot((v) => !v)}
               title={autoPilot ? 'Pause live worker auto-pilot' : 'Resume live worker auto-pilot'}
+              aria-label={autoPilot ? 'Pause live worker auto-pilot' : 'Resume live worker auto-pilot'}
               className={`flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded border transition-colors cursor-pointer ${
                 autoPilot
                   ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
@@ -572,7 +596,11 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
             <span className="font-medium text-slate-100 truncate">{monitor.workerActivity}</span>
           </div>
           {justSaved && (
-            <span className="shrink-0 text-[10px] font-medium text-emerald-300 bg-emerald-500/15 px-1.5 py-0.5 rounded">
+            <span
+              role="status"
+              aria-live="polite"
+              className="shrink-0 text-[10px] font-medium text-emerald-300 bg-emerald-500/15 px-1.5 py-0.5 rounded"
+            >
               ✓ Record saved
             </span>
           )}
@@ -611,7 +639,7 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
           </span>
         </div>
 
-        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+        <div role="tablist" aria-label="Workstation applications" className="flex items-center gap-1 overflow-x-auto no-scrollbar">
           {(
             [
               { id: 'project', label: 'Project App' },
@@ -623,6 +651,8 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
             <button
               key={tab.id}
               type="button"
+              role="tab"
+              aria-selected={activeMode === tab.id}
               onClick={() => setActiveMode(tab.id)}
               className={`px-2 py-0.5 text-[10.5px] rounded border whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
                 activeMode === tab.id
@@ -641,18 +671,27 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
         {activeMode === 'browser' && (
           <div className="space-y-2.5">
             {/* Bookmark Tabs & Quick Live Web Links */}
-            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+            <div role="group" aria-label="Workstation research bookmarks" className="flex items-center gap-1 overflow-x-auto no-scrollbar">
               {sessions.map((s, idx) => {
                 const isActive =
-                  activeHistoryEntry?.kind === 'browse' &&
-                  activeHistoryEntry.data.url === s.url;
+                  activeHistoryEntry?.kind === 'browse'
+                    ? activeHistoryEntry.data.url === s.url
+                    : !activeHistoryEntry && browserTabIdx === idx;
                 return (
                   <button
                     key={s.tabTitle}
                     type="button"
+                    aria-pressed={isActive}
                     onClick={() => {
                       setBrowserTabIdx(idx);
-                      void browseLiveUrl(s.url);
+                      if (isStandalone) {
+                        setHistoryIdx(-1);
+                        setBrowseError(null);
+                        setSearchInput(s.url);
+                        syncLiveSessionTo3dMonitor(s);
+                      } else {
+                        void browseLiveUrl(s.url);
+                      }
                     }}
                     title={s.url}
                     className={`px-2 py-1 text-[11px] rounded border truncate max-w-[165px] cursor-pointer transition-colors ${
@@ -669,7 +708,13 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
                 <button
                   key={bm.url}
                   type="button"
-                  onClick={() => void browseLiveUrl(bm.url)}
+                  onClick={() => {
+                    if (isStandalone) {
+                      void searchLiveWeb(bm.label.replace('Wikipedia · ', ''));
+                    } else {
+                      void browseLiveUrl(bm.url);
+                    }
+                  }}
                   title={bm.url}
                   className="px-2 py-1 text-[10.5px] rounded border border-emerald-400/25 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
                 >
@@ -738,6 +783,7 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
                 <Search className="w-3 h-3 text-slate-400 shrink-0" />
                 <input
                   type="text"
+                  aria-label="Enter URL or web search query"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   placeholder="Enter https:// URL or search the live web…"
@@ -754,10 +800,16 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
 
             {/* Live HTTP Error Banner */}
             {browseError && (
-              <div className="rounded border border-rose-400/40 bg-rose-500/12 px-2.5 py-2 text-[11px] text-rose-200 space-y-1.5">
-                <div className="font-semibold">Unable to fetch remote site directly</div>
+              <div
+                role="alert"
+                aria-live="polite"
+                className="rounded border border-rose-400/40 bg-rose-500/12 px-2.5 py-2 text-[11px] text-rose-200 space-y-1.5"
+              >
+                <div className="font-semibold">
+                  {isStandalone ? 'Standalone Mode Notice' : 'Unable to fetch remote site directly'}
+                </div>
                 <div className="text-rose-200/90 break-words">{browseError}</div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => {
@@ -766,15 +818,17 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
                     }}
                     className="px-2 py-0.5 rounded bg-white/12 hover:bg-white/20 text-white text-[10.5px] font-medium cursor-pointer"
                   >
-                    Search Web Instead
+                    Search Wikipedia
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => void browseLiveUrl('https://en.wikipedia.org/wiki/Nairobi')}
-                    className="px-2 py-0.5 rounded bg-sky-500/25 hover:bg-sky-500/35 text-sky-100 text-[10.5px] font-medium cursor-pointer"
+                  <a
+                    href={activeBrowserSession.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-sky-500/25 hover:bg-sky-500/35 text-sky-100 text-[10.5px] font-medium"
                   >
-                    Open Wikipedia
-                  </button>
+                    <span>Open External Tab</span>
+                    <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
                 </div>
               </div>
             )}
@@ -909,19 +963,61 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
                   )}
                 </div>
               ) : (
-                <div className="space-y-2 text-[11px] text-slate-600 py-2">
-                  <div className="font-semibold text-slate-900">Ready to browse the live web</div>
-                  <p>
-                    Click <span className="font-mono-tabular font-semibold">{activeBrowserSession.tabTitle}</span> above
-                    or enter any URL / search query.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => void browseLiveUrl(activeBrowserSession.url)}
-                    className="px-2.5 py-1 rounded bg-sky-600 text-white text-[11px] font-medium hover:bg-sky-500 cursor-pointer"
-                  >
-                    Load {activeBrowserSession.articleDomain}
-                  </button>
+                <div className="space-y-2.5 text-[11px] text-slate-700 py-1">
+                  {isStandalone && (
+                    <div className="rounded border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[10.5px] text-amber-900">
+                      Standalone offline briefing mode — live server proxy is skipped.
+                    </div>
+                  )}
+                  <div>
+                    <div className="text-[10px] font-mono-tabular uppercase tracking-wider text-sky-700 font-semibold">
+                      {activeBrowserSession.articleDomain}
+                    </div>
+                    <h3 className="mt-0.5 text-[13px] font-bold text-slate-900 leading-snug">
+                      {activeBrowserSession.articleTitle}
+                    </h3>
+                  </div>
+                  <div className="space-y-1.5">
+                    {activeBrowserSession.sections.map((sec) => (
+                      <div key={sec.heading} className="rounded border border-slate-200 bg-white p-2 space-y-1">
+                        <div className="text-[11px] font-semibold text-slate-900">{sec.heading}</div>
+                        <p className="text-[10.5px] text-slate-600 leading-relaxed">{sec.excerpt}</p>
+                        <div className="rounded bg-slate-100 px-1.5 py-1 font-mono-tabular text-[10px] text-slate-800 break-words">
+                          {sec.highlight}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="text-[10.5px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5">
+                    Desk Note: {activeBrowserSession.researchNote}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                    {!isStandalone && (
+                      <button
+                        type="button"
+                        onClick={() => void browseLiveUrl(activeBrowserSession.url)}
+                        className="px-2.5 py-1 rounded bg-sky-600 text-white text-[11px] font-medium hover:bg-sky-500 cursor-pointer"
+                      >
+                        Load Live Page
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void searchLiveWeb(activeBrowserSession.searchQuery)}
+                      className="px-2.5 py-1 rounded border border-slate-300 bg-white text-slate-800 text-[11px] font-medium hover:bg-slate-100 cursor-pointer"
+                    >
+                      Search Wikipedia
+                    </button>
+                    <a
+                      href={activeBrowserSession.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-sky-300 bg-sky-50 text-sky-800 text-[11px] font-medium hover:bg-sky-100"
+                    >
+                      <span>Open External</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
                 </div>
               )}
             </div>
@@ -1008,6 +1104,7 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
                   <input
                     key={col}
                     type="text"
+                    aria-label={col}
                     value={newRow[idx]}
                     onChange={(e) => {
                       const val = e.target.value;
@@ -1227,6 +1324,8 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
                   <button
                     key={d.label}
                     type="button"
+                    role="checkbox"
+                    aria-checked={done}
                     onClick={() =>
                       setDeliverablesMap((prev) => {
                         const base = prev[monitor.id] ?? profile.projectWork.deliverables.map((x) => x.done);
@@ -1285,6 +1384,7 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
               </div>
               <div className="grid grid-cols-3 gap-1.5">
                 <select
+                  aria-label="Target company"
                   value={monTargetBuilding}
                   onChange={(e) => setMonTargetBuilding(e.target.value as BuildingId)}
                   className="rounded border border-white/15 bg-[#070b10] px-1.5 py-1 text-[11px] text-white focus:border-emerald-400 focus:outline-none"
@@ -1296,6 +1396,7 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
                   ))}
                 </select>
                 <select
+                  aria-label="Social platform"
                   value={monPlatform}
                   onChange={(e) => setMonPlatform(e.target.value as SocialPlatformId)}
                   className="rounded border border-white/15 bg-[#070b10] px-1.5 py-1 text-[11px] text-white focus:border-emerald-400 focus:outline-none"
@@ -1305,6 +1406,7 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
                   <option value="swiftchat">SwiftChat</option>
                 </select>
                 <select
+                  aria-label="Job priority"
                   value={monPriority}
                   onChange={(e) => setMonPriority(e.target.value as JobPriority)}
                   className="rounded border border-white/15 bg-[#070b10] px-1.5 py-1 text-[11px] text-white focus:border-emerald-400 focus:outline-none"
@@ -1316,6 +1418,7 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
               <div className="flex items-center gap-1.5">
                 <input
                   type="text"
+                  aria-label="Task message"
                   value={monJobTitle}
                   onChange={(e) => setMonJobTitle(e.target.value)}
                   placeholder={`Send task to ${DISTRICT_SOCIAL_DIRECTORY[monTargetBuilding].shortName}…`}
@@ -1397,6 +1500,6 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </aside>
   );
 };

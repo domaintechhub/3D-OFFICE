@@ -1,5 +1,7 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 
 /**
  * Standard Mixamo / glTF Humanoid 20-bone hierarchy used across DomainTechHub Office.
@@ -42,12 +44,91 @@ export interface LoadedGlbCharacter {
   missingBones: RigBoneName[];
 }
 
-let sharedLoader: GLTFLoader | null = null;
-function getGlbLoader(): GLTFLoader {
-  if (!sharedLoader) {
-    sharedLoader = new GLTFLoader();
+export interface AssetLoadProgress {
+  percent: number;
+  stage: string;
+  loaded: number;
+  total: number;
+}
+
+export interface ManagedGltfOptions {
+  renderer?: THREE.WebGLRenderer | null;
+  dracoDecoderPath?: string;
+  ktx2TranscoderPath?: string;
+  onProgress?: (progress: AssetLoadProgress) => void;
+}
+
+/**
+ * Creates a GLTFLoader backed by a THREE.LoadingManager (with DRACOLoader & KTX2Loader)
+ * so callers receive unified onProgress telemetry across geometry, textures, and buffers.
+ */
+export function createManagedGltfLoader(options: ManagedGltfOptions = {}): {
+  manager: THREE.LoadingManager;
+  loader: GLTFLoader;
+  dispose: () => void;
+} {
+  const manager = new THREE.LoadingManager();
+  let lastStage = 'Preparing 3D assets…';
+
+  manager.onStart = (_url, itemsLoaded, itemsTotal) => {
+    const pct = itemsTotal > 0 ? Math.round((itemsLoaded / itemsTotal) * 100) : 0;
+    options.onProgress?.({
+      percent: pct,
+      stage: lastStage,
+      loaded: itemsLoaded,
+      total: itemsTotal,
+    });
+  };
+
+  manager.onProgress = (url, itemsLoaded, itemsTotal) => {
+    const cleanName = url ? url.split('/').pop() || url : lastStage;
+    const pct = itemsTotal > 0 ? Math.min(99, Math.round((itemsLoaded / itemsTotal) * 100)) : 50;
+    options.onProgress?.({
+      percent: pct,
+      stage: `Loading ${cleanName}`,
+      loaded: itemsLoaded,
+      total: itemsTotal,
+    });
+  };
+
+  manager.onLoad = () => {
+    options.onProgress?.({
+      percent: 100,
+      stage: '3D assets ready',
+      loaded: 1,
+      total: 1,
+    });
+  };
+
+  const loader = new GLTFLoader(manager);
+
+  const draco = new DRACOLoader(manager);
+  if (options.dracoDecoderPath) {
+    draco.setDecoderPath(options.dracoDecoderPath);
   }
-  return sharedLoader;
+  loader.setDRACOLoader(draco);
+
+  const ktx2 = new KTX2Loader(manager);
+  if (options.ktx2TranscoderPath) {
+    ktx2.setTranscoderPath(options.ktx2TranscoderPath);
+  }
+  if (options.renderer) {
+    try {
+      ktx2.detectSupport(options.renderer);
+    } catch {
+      // Software WebGL or headless context without compressed texture support
+    }
+  }
+  loader.setKTX2Loader(ktx2);
+
+  return {
+    manager,
+    loader,
+    dispose: () => {
+      draco.dispose();
+      ktx2.dispose();
+    },
+  };
 }
 
 const BONE_ALIAS_TABLE: Record<RigBoneName, string[]> = {
@@ -226,13 +307,39 @@ function finalizeNormalizedGlbRoot(
 }
 
 const MAX_CHARACTER_MODEL_BYTES = 50 * 1024 * 1024; // 50 MB safety cap
+const FILE_SLICE_BYTES = 512 * 1024;
+
+async function readFileWithProgress(
+  file: File,
+  onSlice: (loaded: number, total: number) => void
+): Promise<ArrayBuffer> {
+  if (file.size <= FILE_SLICE_BYTES) {
+    const buf = await file.arrayBuffer();
+    onSlice(file.size, file.size);
+    return buf;
+  }
+
+  const combined = new Uint8Array(file.size);
+  let offset = 0;
+  while (offset < file.size) {
+    const end = Math.min(file.size, offset + FILE_SLICE_BYTES);
+    const sliceBuf = await file.slice(offset, end).arrayBuffer();
+    combined.set(new Uint8Array(sliceBuf), offset);
+    offset = end;
+    onSlice(offset, file.size);
+  }
+  return combined.buffer;
+}
 
 /**
- * Parses a user-provided local .glb / .gltf File (via drag-and-drop or file picker in Character Studio).
+ * Parses a user-provided local .glb / .gltf File (via drag-and-drop or file picker in Character Studio)
+ * with LoadingManager + GLTF/DRACO/KTX2 pipeline progress feedback.
  */
 export async function loadRiggedGlbFromFile(
   file: File,
-  targetHeightMeters = 1.72
+  targetHeightMeters = 1.72,
+  onProgress?: (progress: AssetLoadProgress) => void,
+  renderer?: THREE.WebGLRenderer | null
 ): Promise<LoadedGlbCharacter> {
   const lowerName = file.name.trim().toLowerCase();
   const isGlb = lowerName.endsWith('.glb');
@@ -244,10 +351,20 @@ export async function loadRiggedGlbFromFile(
     throw new Error('Character model file must be between 1 byte and 50 MB.');
   }
 
-  const buffer = await file.arrayBuffer();
+  onProgress?.({ percent: 4, stage: `Reading ${file.name}…`, loaded: 0, total: file.size });
+
+  const buffer = await readFileWithProgress(file, (loaded, total) => {
+    const pct = Math.min(58, Math.max(5, Math.round((loaded / Math.max(1, total)) * 58)));
+    onProgress?.({
+      percent: pct,
+      stage: `Reading ${file.name}…`,
+      loaded,
+      total,
+    });
+  });
+
   const bytes = new Uint8Array(buffer);
   if (isGlb) {
-    // Binary glTF magic: 0x67 0x6C 0x54 0x46 ("glTF" little-endian 0x46546C67)
     const magicOk =
       bytes.byteLength >= 12 &&
       bytes[0] === 0x67 &&
@@ -264,15 +381,78 @@ export async function loadRiggedGlbFromFile(
     }
   }
 
-  const loader = getGlbLoader();
+  onProgress?.({ percent: 68, stage: 'Decoding glTF / mesh buffers…', loaded: file.size, total: file.size });
+
+  const managed = createManagedGltfLoader({
+    renderer,
+    onProgress: (p) => {
+      onProgress?.({
+        percent: Math.max(70, Math.min(95, Math.round(70 + p.percent * 0.25))),
+        stage: p.stage,
+        loaded: p.loaded,
+        total: p.total,
+      });
+    },
+  });
+
   try {
-    const gltf = await loader.parseAsync(buffer, '');
-    return finalizeNormalizedGlbRoot(gltf.scene, gltf.animations || [], file.name, targetHeightMeters);
+    managed.manager.itemStart(file.name);
+    const gltf = await managed.loader.parseAsync(buffer, '');
+    onProgress?.({ percent: 94, stage: 'Retargeting 20-bone rig…', loaded: file.size, total: file.size });
+    const normalized = finalizeNormalizedGlbRoot(
+      gltf.scene,
+      gltf.animations || [],
+      file.name,
+      targetHeightMeters
+    );
+    managed.manager.itemEnd(file.name);
+    onProgress?.({ percent: 100, stage: `Loaded ${file.name}`, loaded: file.size, total: file.size });
+    return normalized;
   } catch (err) {
+    managed.manager.itemError(file.name);
     const msg = err instanceof Error ? err.message : String(err);
     if (/draco/i.test(msg)) {
-      throw new Error('This .glb uses Draco compression. Export without Draco compression to load locally.');
+      throw new Error('This .glb uses external Draco wasm decoders. Export uncompressed .glb or provide decoder assets.');
     }
     throw err;
+  } finally {
+    managed.dispose();
+  }
+}
+
+/**
+ * Loads a rigged .glb/.gltf model from a URL using THREE.LoadingManager onProgress telemetry.
+ */
+export async function loadRiggedGlbFromUrl(
+  url: string,
+  targetHeightMeters = 1.72,
+  options: ManagedGltfOptions = {}
+): Promise<LoadedGlbCharacter> {
+  const managed = createManagedGltfLoader(options);
+  try {
+    const gltf: GLTF = await new Promise((resolve, reject) => {
+      managed.loader.load(
+        url,
+        (parsed) => resolve(parsed),
+        (evt) => {
+          if (evt.lengthComputable && evt.total > 0) {
+            const pct = Math.min(96, Math.round((evt.loaded / evt.total) * 96));
+            options.onProgress?.({
+              percent: pct,
+              stage: `Downloading ${url.split('/').pop() || 'model'}…`,
+              loaded: evt.loaded,
+              total: evt.total,
+            });
+          }
+        },
+        (err) => reject(err instanceof Error ? err : new Error(String(err)))
+      );
+    });
+    const sourceName = url.split('/').pop() || 'character.glb';
+    const res = finalizeNormalizedGlbRoot(gltf.scene, gltf.animations || [], sourceName, targetHeightMeters);
+    options.onProgress?.({ percent: 100, stage: `Loaded ${sourceName}`, loaded: 1, total: 1 });
+    return res;
+  } finally {
+    managed.dispose();
   }
 }
