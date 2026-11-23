@@ -845,13 +845,20 @@ export class AtriumSimulation {
   private populateOfficeStaff(M: MaterialLibrary) {
     const P_LIB = this.P_LIB;
     const h = (seed: number, mod: number) => Math.abs((seed * 73 + 19) % mod);
-    const sMat = (col: number) =>
-      new THREE.MeshStandardMaterial({
-        color: col,
-        normalMap: M.textures.fabricNormal,
-        normalScale: new THREE.Vector2(0.32, 0.32),
-        roughness: 0.82,
-      });
+    const sMatCache = new Map<number, THREE.MeshStandardMaterial>();
+    const sMat = (col: number) => {
+      let mat = sMatCache.get(col);
+      if (!mat) {
+        mat = new THREE.MeshStandardMaterial({
+          color: col,
+          normalMap: M.textures.fabricNormal,
+          normalScale: new THREE.Vector2(0.32, 0.32),
+          roughness: 0.82,
+        });
+        sMatCache.set(col, mat);
+      }
+      return mat;
+    };
 
     // Desk workers across two shifts (Morning + Afternoon)
     const femHairPool = ['braids', 'bun', 'puff', 'afro', 'bob', 'pixie'] as const;
@@ -3114,23 +3121,23 @@ export class AtriumSimulation {
       (buildingId === 'bank' || lv === 0) &&
       lv >= 0 &&
       lv < bankSpec.floors - 1 &&
-      x >= bankSpec.cx + 5.1 &&
-      x <= bankSpec.cx + 10.6 &&
-      z >= bankSpec.cz - 1.1 &&
-      z <= bankSpec.cz + 6.9
+      x >= bankSpec.cx - 10.5 &&
+      x <= bankSpec.cx - 5.0 &&
+      z >= bankSpec.cz - 6.5 &&
+      z <= bankSpec.cz + 1.5
     ) {
       const y0 = bankSpec.groundY + lv * bankSpec.floorH + 0.12;
       const halfRise = bankSpec.floorH * 0.5;
-      const zStart = bankSpec.cz - 1.1;
-      const zTurn = bankSpec.cz + 4.65;
-      if (z >= zTurn) {
+      const zSouth = bankSpec.cz + 1.5;
+      const zTurn = bankSpec.cz - 4.25;
+      if (z <= zTurn) {
         return y0 + halfRise + 0.02;
       }
-      if (x <= bankSpec.cx + 7.85) {
-        const t = Math.max(0, Math.min(1, (z - zStart) / (zTurn - zStart)));
+      if (x >= bankSpec.cx - 7.75) {
+        const t = Math.max(0, Math.min(1, (zSouth - z) / (zSouth - zTurn)));
         return y0 + t * halfRise;
       }
-      const t = Math.max(0, Math.min(1, (zTurn - z) / (zTurn - zStart)));
+      const t = Math.max(0, Math.min(1, (z - zTurn) / (zSouth - zTurn)));
       return y0 + halfRise + t * halfRise + 0.02;
     }
     if (lv !== 0) {
@@ -6839,18 +6846,18 @@ export class AtriumSimulation {
       }
     }
 
-    // Seamless G <-> L5 Reserve Stairwell transitions inside Nairobi Trust Bank
+    // Seamless G <-> L5 West Reserve Stairwell transitions inside Nairobi Trust Bank
     const bankSpecWalk = DISTRICT_BUILDING_MAP.bank;
     if (
       (this.walkBuildingId === 'bank' || this.walkFloor === 0) &&
-      this.walkPos.x >= bankSpecWalk.cx + 7.85 &&
-      this.walkPos.x <= bankSpecWalk.cx + 10.6
+      this.walkPos.x >= bankSpecWalk.cx - 10.5 &&
+      this.walkPos.x <= bankSpecWalk.cx - 7.75
     ) {
-      const bridgeZ = bankSpecWalk.cz - 1.1;
-      if (prevWalkZ >= bridgeZ && this.walkPos.z < bridgeZ && this.walkFloor < bankSpecWalk.floors - 1) {
+      const bridgeZ = bankSpecWalk.cz + 1.5;
+      if (prevWalkZ <= bridgeZ && this.walkPos.z > bridgeZ && this.walkFloor < bankSpecWalk.floors - 1) {
         this.walkFloor++;
         this.walkBuildingId = 'bank';
-      } else if (prevWalkZ < bridgeZ && this.walkPos.z >= bridgeZ && this.walkFloor > 0) {
+      } else if (prevWalkZ > bridgeZ && this.walkPos.z <= bridgeZ && this.walkFloor > 0) {
         this.walkFloor--;
         this.walkBuildingId = 'bank';
       }

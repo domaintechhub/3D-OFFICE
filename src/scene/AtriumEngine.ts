@@ -116,24 +116,27 @@ export class AtriumEngine {
   private unwireWalk: () => void;
   private disposed = false;
 
-  // Overhead 3D floor activity badges
+  // Overhead 3D floor activity badges (lazily allocated only when displayed on floor cutaway)
   private readonly overheadBadgesGroup = new THREE.Group();
   private readonly overheadBadges: Array<{
     lv: number;
     zone: string;
-    sprite: THREE.Sprite;
-    canvas: HTMLCanvasElement;
-    ctx: CanvasRenderingContext2D;
-    tex: THREE.CanvasTexture;
+    x: number;
+    y: number;
+    z: number;
+    sprite: THREE.Sprite | null;
+    canvas: HTMLCanvasElement | null;
+    ctx: CanvasRenderingContext2D | null;
+    tex: THREE.CanvasTexture | null;
     lastStatus: string;
     color: string;
   }> = [];
 
-  // 3D Thought bubble & selection ring for clicked autonomous character
-  private readonly thoughtBubbleCanvas: HTMLCanvasElement;
-  private readonly thoughtBubbleCtx: CanvasRenderingContext2D | null;
-  private readonly thoughtBubbleTex: THREE.CanvasTexture;
-  private readonly thoughtBubbleSprite: THREE.Sprite;
+  // 3D Thought bubble & selection ring for clicked autonomous character (bubble allocated lazily on click)
+  private thoughtBubbleCanvas: HTMLCanvasElement | null = null;
+  private thoughtBubbleCtx: CanvasRenderingContext2D | null = null;
+  private thoughtBubbleTex: THREE.CanvasTexture | null = null;
+  private thoughtBubbleSprite: THREE.Sprite | null = null;
   private lastDrawnThoughtKey = '';
   private readonly selectionRing: THREE.Mesh;
 
@@ -234,15 +237,6 @@ export class AtriumEngine {
     this.scene = new THREE.Scene();
     this.fog = new THREE.FogExp2(0x1b2434, 0.0022);
     this.scene.fog = this.fog;
-
-    // Room environment IBL for physically-based metals, glass & car clearcoat (safe fallback if GPU driver rejects PMREM)
-    try {
-      const pmrem = new THREE.PMREMGenerator(this.renderer);
-      this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-      pmrem.dispose();
-    } catch {
-      this.scene.environment = null;
-    }
 
     this.camera = new THREE.PerspectiveCamera(40, width / height, 0.08, 1200);
     this.camera.position.set(0, 20, 64);
@@ -378,25 +372,7 @@ export class AtriumEngine {
     }
 
     // Wire window events & begin staged scene initialization tracked by THREE.LoadingManager
-    this.thoughtBubbleCanvas = document.createElement('canvas');
-    this.thoughtBubbleCanvas.width = 1024;
-    this.thoughtBubbleCanvas.height = 300;
-    this.thoughtBubbleCtx = this.thoughtBubbleCanvas.getContext('2d');
-    this.thoughtBubbleTex = new THREE.CanvasTexture(this.thoughtBubbleCanvas);
-    this.thoughtBubbleTex.colorSpace = THREE.SRGBColorSpace;
-    this.thoughtBubbleTex.anisotropy = getMaxAnisotropy();
-    this.thoughtBubbleSprite = new THREE.Sprite(
-      new THREE.SpriteMaterial({
-        map: this.thoughtBubbleTex,
-        transparent: true,
-        depthWrite: false,
-        depthTest: false,
-      })
-    );
-    this.thoughtBubbleSprite.scale.set(1.85, 0.54, 1);
-    this.thoughtBubbleSprite.renderOrder = 26;
-    this.thoughtBubbleSprite.visible = false;
-    this.scene.add(this.thoughtBubbleSprite);
+    // Thought bubble sprite/canvas are lazily created on first character selection.
 
     const ringGeo = new THREE.RingGeometry(0.32, 0.42, 24);
     ringGeo.rotateX(-Math.PI / 2);
@@ -453,6 +429,15 @@ export class AtriumEngine {
 
     await waitNextFrame();
     if (this.disposed) return;
+
+    // Room environment IBL baked after first UI paint for physically-based metals, glass & car clearcoat
+    try {
+      const pmrem = new THREE.PMREMGenerator(this.renderer);
+      this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      pmrem.dispose();
+    } catch {
+      this.scene.environment = null;
+    }
 
     const M = createMaterials();
     this.asphaltMat = M.asphalt;
@@ -618,27 +603,19 @@ export class AtriumEngine {
     this.scene.add(this.overheadBadgesGroup);
 
     const addBadge = (lv: number, zone: string, x: number, y: number, z: number, color: string) => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 1024;
-      canvas.height = 256;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      const tex = new THREE.CanvasTexture(canvas);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.anisotropy = getMaxAnisotropy();
-      const mat = new THREE.SpriteMaterial({
-        map: tex,
-        transparent: true,
-        depthWrite: false,
-        depthTest: false,
+      this.overheadBadges.push({
+        lv,
+        zone,
+        x,
+        y,
+        z,
+        sprite: null,
+        canvas: null,
+        ctx: null,
+        tex: null,
+        lastStatus: '',
+        color,
       });
-      const sprite = new THREE.Sprite(mat);
-      sprite.position.set(x, y, z);
-      sprite.scale.set(3.4, 0.85, 1);
-      sprite.renderOrder = 20;
-      sprite.visible = false;
-      this.overheadBadgesGroup.add(sprite);
-      this.overheadBadges.push({ lv, zone, sprite, canvas, ctx, tex, lastStatus: '', color });
     };
 
     for (const r of ROOMS) {
@@ -673,13 +650,43 @@ export class AtriumEngine {
     addBadge(-2, 'Junior Electrical Techs', 4.5, BASE[1].y + 3.35, 2.2, '#f2b705');
   }
 
+  private ensureOverheadBadge(b: (typeof this.overheadBadges)[number]): THREE.Sprite | null {
+    if (b.sprite) return b.sprite;
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = getMaxAnisotropy();
+    const mat = new THREE.SpriteMaterial({
+      map: tex,
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.position.set(b.x, b.y, b.z);
+    sprite.scale.set(3.4, 0.85, 1);
+    sprite.renderOrder = 20;
+    sprite.visible = false;
+    this.overheadBadgesGroup.add(sprite);
+    b.canvas = canvas;
+    b.ctx = ctx;
+    b.tex = tex;
+    b.sprite = sprite;
+    return sprite;
+  }
+
   private drawOverheadBadge(
     b: (typeof this.overheadBadges)[number],
     status: string
   ) {
+    if (!this.ensureOverheadBadge(b) || !b.ctx || !b.tex) return;
     if (b.lastStatus === status) return;
     b.lastStatus = status;
-    const { ctx, canvas, color, zone } = b;
+    const { ctx, color, zone } = b;
     const W = 512;
     const H = 128;
     ctx.save();
@@ -846,9 +853,9 @@ export class AtriumEngine {
 
     if (!activeDistrictCutApplied && hubCut === null) {
       this.sim.setCutawayRange(-0.5, null, 'hub');
-      for (const b of this.overheadBadges) b.sprite.visible = false;
+      for (const b of this.overheadBadges) if (b.sprite) b.sprite.visible = false;
     } else if (this.activeBuilding !== 'hub') {
-      for (const b of this.overheadBadges) b.sprite.visible = false;
+      for (const b of this.overheadBadges) if (b.sprite) b.sprite.visible = false;
     }
 
     this.cutawayAnimating = moving;
@@ -907,10 +914,41 @@ export class AtriumEngine {
     return bestActor ? { actor: bestActor, distance: Math.sqrt(bestDistSq) } : null;
   }
 
+  private ensureThoughtBubble(): THREE.Sprite {
+    if (this.thoughtBubbleSprite) return this.thoughtBubbleSprite;
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 300;
+    const ctx = canvas.getContext('2d');
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = getMaxAnisotropy();
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: tex,
+        transparent: true,
+        depthWrite: false,
+        depthTest: false,
+      })
+    );
+    sprite.scale.set(1.85, 0.54, 1);
+    sprite.renderOrder = 26;
+    sprite.visible = false;
+    this.scene.add(sprite);
+    this.thoughtBubbleCanvas = canvas;
+    this.thoughtBubbleCtx = ctx;
+    this.thoughtBubbleTex = tex;
+    this.thoughtBubbleSprite = sprite;
+    return sprite;
+  }
+
   private drawThoughtBubble(actor: PersonActor) {
     const brain = actor.brain;
+    if (!brain) return;
+    this.ensureThoughtBubble();
     const ctx = this.thoughtBubbleCtx;
-    if (!brain || !ctx) return;
+    const tex = this.thoughtBubbleTex;
+    if (!ctx || !tex) return;
 
     const key = `${brain.identity.id}:${brain.mood}:${brain.thought}`;
     if (this.lastDrawnThoughtKey === key) return;
@@ -992,7 +1030,7 @@ export class AtriumEngine {
     }
 
     ctx.restore();
-    this.thoughtBubbleTex.needsUpdate = true;
+    tex.needsUpdate = true;
   }
 
   private updateSelectedVisuals() {
@@ -1006,7 +1044,7 @@ export class AtriumEngine {
       (a as { state?: string }).state === 'away' ||
       this.sim.walkOn
     ) {
-      this.thoughtBubbleSprite.visible = false;
+      if (this.thoughtBubbleSprite) this.thoughtBubbleSprite.visible = false;
       this.selectionRing.visible = false;
       return;
     }
@@ -1016,12 +1054,13 @@ export class AtriumEngine {
     this.selectionRing.position.set(pos.x, pos.y + 0.03, pos.z);
     (this.selectionRing.material as THREE.MeshBasicMaterial).color.set(a.brain.identity.accentColor);
 
-    this.thoughtBubbleSprite.visible = true;
+    const sprite = this.ensureThoughtBubble();
+    sprite.visible = true;
     const camDist = this.camera.position.distanceTo(pos);
     const bubbleW = THREE.MathUtils.clamp(camDist * 0.21, 0.9, 2.6);
     const bubbleH = bubbleW * (300 / 1024);
-    this.thoughtBubbleSprite.scale.set(bubbleW, bubbleH, 1);
-    this.thoughtBubbleSprite.position.set(pos.x, pos.y + 1.88 + bubbleH * 0.56, pos.z);
+    sprite.scale.set(bubbleW, bubbleH, 1);
+    sprite.position.set(pos.x, pos.y + 1.88 + bubbleH * 0.56, pos.z);
     this.drawThoughtBubble(a);
   }
 
@@ -1521,7 +1560,7 @@ export class AtriumEngine {
         }
         this.updateSelectedVisuals();
       } else {
-        this.thoughtBubbleSprite.visible = false;
+        if (this.thoughtBubbleSprite) this.thoughtBubbleSprite.visible = false;
         this.selectionRing.visible = false;
       }
 
@@ -1666,14 +1705,14 @@ export class AtriumEngine {
       const zoneMap = new Map(snap.floorActivity.zones.map((z) => [z.zone, z.status]));
       for (const b of this.overheadBadges) {
         const show = b.lv === cut;
-        b.sprite.visible = show;
         if (show) {
           this.drawOverheadBadge(b, zoneMap.get(b.zone) || 'Active');
         }
+        if (b.sprite) b.sprite.visible = show;
       }
     } else {
       for (const b of this.overheadBadges) {
-        b.sprite.visible = false;
+        if (b.sprite) b.sprite.visible = false;
       }
     }
     snap.weatherMode = this.weather.getMode();
@@ -1698,7 +1737,7 @@ export class AtriumEngine {
   public closeCharacterInspector() {
     this.selectedActor = null;
     this.followSelectedActor = false;
-    this.thoughtBubbleSprite.visible = false;
+    if (this.thoughtBubbleSprite) this.thoughtBubbleSprite.visible = false;
     this.selectionRing.visible = false;
     this.emitHud();
   }
@@ -1889,7 +1928,7 @@ export class AtriumEngine {
     if (!visible) {
       this.selectedActor = null;
       this.followSelectedActor = false;
-      this.thoughtBubbleSprite.visible = false;
+      if (this.thoughtBubbleSprite) this.thoughtBubbleSprite.visible = false;
       this.selectionRing.visible = false;
     }
     this.emitHud();
@@ -2085,11 +2124,13 @@ export class AtriumEngine {
     }
     this.audio.dispose();
     for (const b of this.overheadBadges) {
-      b.tex.dispose();
-      (b.sprite.material as THREE.SpriteMaterial).dispose();
+      b.tex?.dispose();
+      if (b.sprite) (b.sprite.material as THREE.SpriteMaterial).dispose();
     }
-    this.thoughtBubbleTex.dispose();
-    (this.thoughtBubbleSprite.material as THREE.SpriteMaterial).dispose();
+    this.thoughtBubbleTex?.dispose();
+    if (this.thoughtBubbleSprite) {
+      (this.thoughtBubbleSprite.material as THREE.SpriteMaterial).dispose();
+    }
     this.selectionRing.geometry.dispose();
     (this.selectionRing.material as THREE.Material).dispose();
     this.controls.dispose();

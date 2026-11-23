@@ -1,6 +1,10 @@
 import * as THREE from 'three';
-import type { ArchitecturalMaterials } from './architecturalForms';
-import { getRoundedSlabGeo } from './architecturalForms';
+import {
+  buildPlanterTrough,
+  buildTropicalPalm,
+  getRoundedSlabGeo,
+  type ArchitecturalMaterials,
+} from './architecturalForms';
 import type { MonitorPickTarget } from './architecture';
 import type { DistrictBuildingSpec } from './districtData';
 import type { WarmLightAnchor } from './districtBuildings';
@@ -13,10 +17,9 @@ import {
   downlight,
   getRoundedBox,
   plant,
-  sofaWide,
 } from './props';
 import { createCustomBoardScreen, type ScreenRegistry } from './screens';
-import { getMaxAnisotropy, makeCanvasTex, rr } from './textures';
+import { circ, getMaxAnisotropy, makeCanvasTex, rr } from './textures';
 
 export interface BankBuildContext {
   spec: DistrictBuildingSpec;
@@ -47,22 +50,27 @@ export interface BankBuildContext {
 }
 
 interface BankPalette {
-  neroGoldMarble: THREE.MeshStandardMaterial;
-  ivoryTravertine: THREE.MeshStandardMaterial;
-  flutedTravertine: THREE.MeshStandardMaterial;
-  midnightNavyFelt: THREE.MeshStandardMaterial;
-  smokedWalnut: THREE.MeshStandardMaterial;
-  sovereignBrass: THREE.MeshStandardMaterial;
-  titaniumVault: THREE.MeshStandardMaterial;
-  cognacLeather: THREE.MeshStandardMaterial;
-  emeraldBankerGlass: THREE.MeshStandardMaterial;
-  goldBullion: THREE.MeshStandardMaterial;
-  warmCoveLed: THREE.MeshBasicMaterial;
-  royalBlueLed: THREE.MeshBasicMaterial;
-  smokedGlass: THREE.MeshPhysicalMaterial;
-  frostedSecurityGlass: THREE.MeshPhysicalMaterial;
+  riftLimestone: THREE.MeshStandardMaterial;
+  flutedLimestone: THREE.MeshStandardMaterial;
+  kilimanjaroSlate: THREE.MeshStandardMaterial;
+  makoreWood: THREE.MeshStandardMaterial;
+  guillocheMosaic: THREE.MeshStandardMaterial;
+  parchmentLinen: THREE.MeshStandardMaterial;
+  savannaTealVelvet: THREE.MeshStandardMaterial;
+  ochreSaddleHide: THREE.MeshStandardMaterial;
+  champagneBronze: THREE.MeshStandardMaterial;
+  obsidianBronze: THREE.MeshStandardMaterial;
+  bullionVaultSteel: THREE.MeshStandardMaterial;
+  goldSpecie: THREE.MeshStandardMaterial;
+  banknoteCopper: THREE.MeshStandardMaterial;
   lockerFaceMat: THREE.MeshStandardMaterial;
   stairTreadMat: THREE.MeshStandardMaterial;
+  warmCoveLed: THREE.MeshBasicMaterial;
+  cobaltLedgerLed: THREE.MeshBasicMaterial;
+  tealSignalLed: THREE.MeshBasicMaterial;
+  bronzeTintedGlass: THREE.MeshPhysicalMaterial;
+  frostedLoomGlass: THREE.MeshPhysicalMaterial;
+  clearArmorGlass: THREE.MeshPhysicalMaterial;
 }
 
 let cachedPalette: BankPalette | null = null;
@@ -72,46 +80,33 @@ function getBankPalette(): BankPalette {
 
   const aniso = getMaxAnisotropy();
 
-  // 1. Bookmatched Kilimanjaro Nero Marquina Marble with Gold Calcite Veins & Brass Inlay Seams
-  const neroTex = makeCanvasTex('bank_nero_gold_marble', 512, 512, (g, W, H) => {
+  // 1. Warm Rift-Valley Stratified Honey Limestone Terrazzo with Flush Satin-Bronze Joints
+  const limestoneTex = makeCanvasTex('ntb_rift_limestone_floor', 512, 512, (g, W, H) => {
     const bg = g.createLinearGradient(0, 0, W, H);
-    bg.addColorStop(0, '#10141c');
-    bg.addColorStop(0.5, '#161b25');
-    bg.addColorStop(1, '#0c1017');
+    bg.addColorStop(0, '#ebe2d0');
+    bg.addColorStop(0.5, '#e2d7c2');
+    bg.addColorStop(1, '#dfd2ba');
     g.fillStyle = bg;
     g.fillRect(0, 0, W, H);
 
-    // Subtle charcoal mineral clouding
-    for (let i = 0; i < 42; i++) {
-      const rx = ((Math.sin(i * 19.3 + 2.1) * 43758.5453) % 1 + 1) % 1;
-      const ry = ((Math.sin(i * 73.7 + 5.9) * 24634.6345) % 1 + 1) % 1;
-      const rad = 28 + (i % 5) * 18;
-      const grad = g.createRadialGradient(rx * W, ry * H, 2, rx * W, ry * H, rad);
-      grad.addColorStop(0, 'rgba(38, 48, 66, 0.22)');
-      grad.addColorStop(1, 'rgba(12, 16, 23, 0)');
-      g.fillStyle = grad;
-      g.fillRect(0, 0, W, H);
+    // Sedimentary travertine / limestone bands
+    for (let y = 0; y < H; y += 5) {
+      const wave = Math.sin(y * 0.09) * 0.5 + 0.5;
+      g.fillStyle = wave > 0.55 ? 'rgba(176, 149, 108, 0.14)' : 'rgba(255, 249, 238, 0.16)';
+      g.fillRect(0, y, W, 2 + (y % 3));
     }
 
-    // Crisp diagonal gold and warm ivory calcite veins
-    for (let v = 0; v < 14; v++) {
-      const gold = v % 3 !== 0;
-      g.strokeStyle = gold ? 'rgba(217, 173, 88, 0.42)' : 'rgba(232, 224, 206, 0.24)';
-      g.lineWidth = gold ? 1.4 + (v % 3) * 0.7 : 1.0;
-      g.beginPath();
-      let vx = (v * 57) % W;
-      let vy = (v * 23) % (H * 0.4);
-      g.moveTo(vx, vy);
-      for (let s = 1; s <= 10; s++) {
-        vx += 34 + Math.sin(v * 3.1 + s) * 18;
-        vy += 32 + Math.cos(v * 2.4 + s * 1.3) * 14;
-        g.lineTo(vx, vy);
-      }
-      g.stroke();
+    // Fine ochre, quartz, and slate limestone aggregate flecks
+    const flecks = ['#c8b799', '#a68d68', '#f5efe2', '#70685b', '#d4b783'];
+    for (let i = 0; i < 340; i++) {
+      const rx = ((Math.sin(i * 17.31 + 1.1) * 43758.5453) % 1 + 1) % 1;
+      const ry = ((Math.sin(i * 63.17 + 3.4) * 29143.1279) % 1 + 1) % 1;
+      g.fillStyle = flecks[i % flecks.length];
+      g.fillRect(rx * W, ry * H, 2 + (i % 4), 1.5 + (i % 3));
     }
 
-    // Fine brushed brass architectural control-joint inlays
-    g.strokeStyle = 'rgba(217, 173, 88, 0.48)';
+    // Flush champagne-bronze architectural expansion joints
+    g.strokeStyle = 'rgba(180, 146, 86, 0.36)';
     g.lineWidth = 2;
     g.strokeRect(1, 1, W - 2, H - 2);
     g.beginPath();
@@ -121,108 +116,156 @@ function getBankPalette(): BankPalette {
     g.lineTo(W, H * 0.5);
     g.stroke();
   });
-  neroTex.colorSpace = THREE.SRGBColorSpace;
-  neroTex.wrapS = neroTex.wrapT = THREE.RepeatWrapping;
-  neroTex.repeat.set(4.5, 4.0);
-  neroTex.anisotropy = aniso;
+  limestoneTex.colorSpace = THREE.SRGBColorSpace;
+  limestoneTex.wrapS = limestoneTex.wrapT = THREE.RepeatWrapping;
+  limestoneTex.repeat.set(4.5, 4.0);
+  limestoneTex.anisotropy = aniso;
 
-  // 2. Honed Ivory Roman Travertine Ashlar
-  const travTex = makeCanvasTex('bank_ivory_travertine', 512, 512, (g, W, H) => {
-    const grad = g.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, '#ebe3d3');
-    grad.addColorStop(0.5, '#e2d7c3');
-    grad.addColorStop(1, '#ded2bc');
-    g.fillStyle = grad;
-    g.fillRect(0, 0, W, H);
-    for (let y = 0; y < H; y += 6) {
-      const a = 0.04 + (Math.sin(y * 0.21) + 1) * 0.035;
-      g.fillStyle = `rgba(138, 118, 88, ${a.toFixed(3)})`;
-      g.fillRect(0, y, W, 2 + (y % 3));
-    }
-    g.strokeStyle = 'rgba(122, 104, 78, 0.28)';
-    g.lineWidth = 2;
-    for (let r = 0; r < 4; r++) {
-      const ry = r * (H / 4);
-      g.beginPath();
-      g.moveTo(0, ry);
-      g.lineTo(W, ry);
-      g.stroke();
-      const offsetX = (r % 2) * (W * 0.25);
-      for (let c = 0; c < 2; c++) {
-        const cx = (offsetX + c * (W * 0.5)) % W;
-        g.beginPath();
-        g.moveTo(cx, ry);
-        g.lineTo(cx, ry + H / 4);
-        g.stroke();
-      }
-    }
-  });
-  travTex.colorSpace = THREE.SRGBColorSpace;
-  travTex.wrapS = travTex.wrapT = THREE.RepeatWrapping;
-  travTex.repeat.set(2.5, 2.5);
-  travTex.anisotropy = aniso;
-
-  // 3. Fluted Ivory Travertine Vertical Ribbing
-  const fluteTex = makeCanvasTex('bank_fluted_travertine', 256, 256, (g, W, H) => {
-    g.fillStyle = '#e6dcc8';
+  // 2. Fluted Rift Limestone Architectural Wall Cladding
+  const fluteLimestoneTex = makeCanvasTex('ntb_fluted_limestone', 256, 256, (g, W, H) => {
+    g.fillStyle = '#e5dac5';
     g.fillRect(0, 0, W, H);
     for (let x = 0; x < W; x += 16) {
-      const f = g.createLinearGradient(x, 0, x + 16, 0);
-      f.addColorStop(0, '#c8bba3');
-      f.addColorStop(0.45, '#f2eadb');
-      f.addColorStop(0.9, '#d6cab4');
-      f.addColorStop(1, '#bcae94');
-      g.fillStyle = f;
+      const gr = g.createLinearGradient(x, 0, x + 16, 0);
+      gr.addColorStop(0, '#c7b89c');
+      gr.addColorStop(0.45, '#f4ecdc');
+      gr.addColorStop(0.88, '#d9cbb1');
+      gr.addColorStop(1, '#b7a688');
+      g.fillStyle = gr;
       g.fillRect(x, 0, 16, H);
     }
   });
-  fluteTex.colorSpace = THREE.SRGBColorSpace;
-  fluteTex.wrapS = fluteTex.wrapT = THREE.RepeatWrapping;
-  fluteTex.repeat.set(2, 1);
-  fluteTex.anisotropy = aniso;
+  fluteLimestoneTex.colorSpace = THREE.SRGBColorSpace;
+  fluteLimestoneTex.wrapS = fluteLimestoneTex.wrapT = THREE.RepeatWrapping;
+  fluteLimestoneTex.repeat.set(2.5, 1);
+  fluteLimestoneTex.anisotropy = aniso;
 
-  // 4. Midnight Sovereign Navy Acoustic Felt Slats
-  const navyTex = makeCanvasTex('bank_midnight_navy_felt', 256, 256, (g, W, H) => {
-    g.fillStyle = '#0f1c33';
+  // 3. Honed Kilimanjaro Slate (deep basaltic charcoal-indigo with fine silver-mica grain)
+  const slateTex = makeCanvasTex('ntb_kilimanjaro_slate', 512, 512, (g, W, H) => {
+    const gr = g.createLinearGradient(0, 0, W, H);
+    gr.addColorStop(0, '#1e252e');
+    gr.addColorStop(0.5, '#252e3a');
+    gr.addColorStop(1, '#181e26');
+    g.fillStyle = gr;
     g.fillRect(0, 0, W, H);
-    for (let x = 0; x < W; x += 14) {
-      g.fillStyle = '#091224';
-      g.fillRect(x, 0, 3, H);
-      g.fillStyle = '#182b4d';
-      g.fillRect(x + 3, 0, 11, H);
+    for (let i = 0; i < 45; i++) {
+      const rx = ((Math.sin(i * 29.1 + 0.7) * 43758.5) % 1 + 1) % 1;
+      const ry = ((Math.sin(i * 51.3 + 2.2) * 19283.4) % 1 + 1) % 1;
+      const rad = 24 + (i % 4) * 20;
+      const rg = g.createRadialGradient(rx * W, ry * H, 2, rx * W, ry * H, rad);
+      rg.addColorStop(0, 'rgba(72, 88, 108, 0.16)');
+      rg.addColorStop(1, 'rgba(24, 30, 38, 0)');
+      g.fillStyle = rg;
+      g.fillRect(0, 0, W, H);
+    }
+    for (let i = 0; i < 240; i++) {
+      const rx = ((Math.sin(i * 91.7) * 43758.5) % 1 + 1) % 1;
+      const ry = ((Math.sin(i * 41.9) * 31823.1) % 1 + 1) % 1;
+      g.fillStyle = i % 3 === 0 ? 'rgba(201, 169, 110, 0.22)' : 'rgba(188, 202, 218, 0.16)';
+      g.fillRect(rx * W, ry * H, 2, 2);
     }
   });
-  navyTex.colorSpace = THREE.SRGBColorSpace;
-  navyTex.wrapS = navyTex.wrapT = THREE.RepeatWrapping;
-  navyTex.repeat.set(3, 1.5);
-  navyTex.anisotropy = aniso;
+  slateTex.colorSpace = THREE.SRGBColorSpace;
+  slateTex.wrapS = slateTex.wrapT = THREE.RepeatWrapping;
+  slateTex.repeat.set(3, 3);
+  slateTex.anisotropy = aniso;
 
-  // 5. Figured Honduran Smoked Walnut Burl
-  const walnutTex = makeCanvasTex('bank_smoked_walnut_burl', 512, 256, (g, W, H) => {
+  // 4. Figured East African Makore / Mvule Timber Grain
+  const makoreTex = makeCanvasTex('ntb_makore_wood', 512, 256, (g, W, H) => {
     const base = g.createLinearGradient(0, 0, W, 0);
-    base.addColorStop(0, '#3e2416');
-    base.addColorStop(0.5, '#52301d');
-    base.addColorStop(1, '#361e12');
+    base.addColorStop(0, '#6a3822');
+    base.addColorStop(0.5, '#7e4429');
+    base.addColorStop(1, '#5d301d');
     g.fillStyle = base;
     g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 40; i++) {
-      g.strokeStyle = i % 2 === 0 ? 'rgba(28, 14, 7, 0.35)' : 'rgba(116, 72, 42, 0.25)';
-      g.lineWidth = 2 + (i % 3);
+    for (let i = 0; i < 48; i++) {
+      g.strokeStyle = i % 2 === 0 ? 'rgba(42, 18, 10, 0.28)' : 'rgba(164, 96, 56, 0.24)';
+      g.lineWidth = 1.6 + (i % 3);
       g.beginPath();
-      const y0 = (i / 40) * H;
+      const y0 = (i / 48) * H;
       g.moveTo(0, y0);
-      g.bezierCurveTo(W * 0.33, y0 + Math.sin(i) * 14, W * 0.66, y0 - Math.cos(i) * 14, W, y0);
+      g.bezierCurveTo(W * 0.3, y0 + Math.sin(i * 1.4) * 10, W * 0.7, y0 - Math.cos(i * 1.1) * 10, W, y0);
       g.stroke();
     }
   });
-  walnutTex.colorSpace = THREE.SRGBColorSpace;
-  walnutTex.wrapS = walnutTex.wrapT = THREE.RepeatWrapping;
-  walnutTex.repeat.set(2, 1);
-  walnutTex.anisotropy = aniso;
+  makoreTex.colorSpace = THREE.SRGBColorSpace;
+  makoreTex.wrapS = makoreTex.wrapT = THREE.RepeatWrapping;
+  makoreTex.repeat.set(2, 1);
+  makoreTex.anisotropy = aniso;
 
-  // 6. Safe-Deposit Box Matrix Texture (Titanium & Brass Keyholes)
-  const lockerTex = makeCanvasTex('bank_safe_deposit_wall', 512, 256, (g, W, H) => {
-    g.fillStyle = '#717d8e';
+  // 5. Custom Banknote-Guilloché Radial Compass Medallion Mosaic (Zero overlap with any other district building!)
+  const guillocheTex = makeCanvasTex('ntb_guilloche_medallion', 512, 512, (g, W, H) => {
+    const cx = W * 0.5;
+    const cy = H * 0.5;
+    g.fillStyle = '#e7dcc8';
+    g.fillRect(0, 0, W, H);
+
+    // Outer slate & savanna-teal stone rings
+    g.fillStyle = '#1e252e';
+    circ(g, cx, cy, 240);
+    g.fillStyle = '#134e5e';
+    circ(g, cx, cy, 206);
+    g.fillStyle = '#e7dcc8';
+    circ(g, cx, cy, 182);
+
+    // Precision banknote spirograph guilloché petals in champagne-bronze
+    g.strokeStyle = '#b48a48';
+    g.lineWidth = 2.2;
+    for (let k = 0; k < 24; k++) {
+      const ang = (k / 24) * Math.PI * 2;
+      g.beginPath();
+      g.ellipse(
+        cx + Math.cos(ang) * 76,
+        cy + Math.sin(ang) * 76,
+        92,
+        36,
+        ang,
+        0,
+        Math.PI * 2
+      );
+      g.stroke();
+    }
+
+    // Center compass rose & 1998 heritage seal
+    g.fillStyle = '#1e252e';
+    circ(g, cx, cy, 56);
+    g.strokeStyle = '#d9b56b';
+    g.lineWidth = 4;
+    g.beginPath();
+    g.arc(cx, cy, 56, 0, Math.PI * 2);
+    g.stroke();
+    g.fillStyle = '#d9b56b';
+    g.font = '800 22px "Plus Jakarta Sans", sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('NTB', cx, cy - 8);
+    g.font = '600 11px "IBM Plex Mono", monospace';
+    g.fillText('1998', cx, cy + 14);
+  });
+  guillocheTex.colorSpace = THREE.SRGBColorSpace;
+  guillocheTex.anisotropy = aniso;
+
+  // 6. Parchment Acoustic Linen Weave
+  const linenTex = makeCanvasTex('ntb_parchment_linen', 256, 256, (g, W, H) => {
+    g.fillStyle = '#ebe3d5';
+    g.fillRect(0, 0, W, H);
+    for (let x = 0; x < W; x += 8) {
+      g.fillStyle = 'rgba(138, 120, 96, 0.1)';
+      g.fillRect(x, 0, 2, H);
+    }
+    for (let y = 0; y < H; y += 8) {
+      g.fillStyle = 'rgba(138, 120, 96, 0.08)';
+      g.fillRect(0, y, W, 2);
+    }
+  });
+  linenTex.colorSpace = THREE.SRGBColorSpace;
+  linenTex.wrapS = linenTex.wrapT = THREE.RepeatWrapping;
+  linenTex.repeat.set(3, 2);
+  linenTex.anisotropy = aniso;
+
+  // 7. Safe-Deposit Vault Locker Matrix (Cobalt-Steel & Champagne-Bronze Dual-Key)
+  const lockerTex = makeCanvasTex('ntb_safe_deposit_wall', 512, 256, (g, W, H) => {
+    g.fillStyle = '#2a3442';
     g.fillRect(0, 0, W, H);
     const cols = 10;
     const rows = 5;
@@ -233,23 +276,18 @@ function getBankPalette(): BankPalette {
         const x = c * cw + 3;
         const y = r * ch + 3;
         const boxGrad = g.createLinearGradient(x, y, x + cw, y + ch);
-        boxGrad.addColorStop(0, '#9aa6b8');
-        boxGrad.addColorStop(0.5, '#8490a3');
-        boxGrad.addColorStop(1, '#687385');
+        boxGrad.addColorStop(0, '#5a687c');
+        boxGrad.addColorStop(0.5, '#465366');
+        boxGrad.addColorStop(1, '#313c4d');
         g.fillStyle = boxGrad;
         g.fillRect(x, y, cw - 6, ch - 6);
-        g.strokeStyle = '#1f2937';
-        g.lineWidth = 2;
+        g.strokeStyle = '#c9a96e';
+        g.lineWidth = 1.4;
         g.strokeRect(x, y, cw - 6, ch - 6);
-        // Dual brass key escutcheons
-        g.fillStyle = '#d9ad58';
-        g.beginPath();
-        g.arc(x + cw * 0.28, y + ch * 0.45, 3.6, 0, Math.PI * 2);
-        g.arc(x + cw * 0.52, y + ch * 0.45, 3.6, 0, Math.PI * 2);
-        g.fill();
-        g.fillStyle = '#1e293b';
-        g.fillRect(x + cw * 0.27, y + ch * 0.41, 2, 7);
-        g.fillRect(x + cw * 0.51, y + ch * 0.41, 2, 7);
+        // Dual champagne-bronze key escutcheons
+        g.fillStyle = '#d9b56b';
+        circ(g, x + cw * 0.28, y + ch * 0.48, 3.2);
+        circ(g, x + cw * 0.56, y + ch * 0.48, 3.2);
       }
     }
   });
@@ -257,98 +295,131 @@ function getBankPalette(): BankPalette {
   lockerTex.anisotropy = aniso;
 
   cachedPalette = {
-    neroGoldMarble: new THREE.MeshStandardMaterial({
-      map: neroTex,
-      roughness: 0.2,
-      metalness: 0.08,
-      envMapIntensity: 0.45,
+    riftLimestone: new THREE.MeshStandardMaterial({
+      map: limestoneTex,
+      roughness: 0.48,
+      metalness: 0.04,
+      envMapIntensity: 0.32,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
     }),
-    ivoryTravertine: new THREE.MeshStandardMaterial({
-      map: travTex,
-      roughness: 0.62,
+    flutedLimestone: new THREE.MeshStandardMaterial({
+      map: fluteLimestoneTex,
+      roughness: 0.58,
       metalness: 0.02,
       envMapIntensity: 0.25,
     }),
-    flutedTravertine: new THREE.MeshStandardMaterial({
-      map: fluteTex,
-      roughness: 0.58,
-      metalness: 0.02,
-      envMapIntensity: 0.24,
+    kilimanjaroSlate: new THREE.MeshStandardMaterial({
+      map: slateTex,
+      roughness: 0.42,
+      metalness: 0.08,
+      envMapIntensity: 0.38,
     }),
-    midnightNavyFelt: new THREE.MeshStandardMaterial({
-      map: navyTex,
-      roughness: 0.84,
+    makoreWood: new THREE.MeshStandardMaterial({
+      map: makoreTex,
+      roughness: 0.5,
       metalness: 0.03,
+      envMapIntensity: 0.28,
+    }),
+    guillocheMosaic: new THREE.MeshStandardMaterial({
+      map: guillocheTex,
+      roughness: 0.36,
+      metalness: 0.08,
+      envMapIntensity: 0.38,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    }),
+    parchmentLinen: new THREE.MeshStandardMaterial({
+      map: linenTex,
+      roughness: 0.88,
+      metalness: 0.0,
+      envMapIntensity: 0.16,
+    }),
+    savannaTealVelvet: new THREE.MeshStandardMaterial({
+      color: 0x134e5e,
+      roughness: 0.84,
+      metalness: 0.02,
       envMapIntensity: 0.18,
     }),
-    smokedWalnut: new THREE.MeshStandardMaterial({
-      map: walnutTex,
-      roughness: 0.36,
+    ochreSaddleHide: new THREE.MeshStandardMaterial({
+      color: 0x9e5a2b,
+      roughness: 0.52,
       metalness: 0.04,
-      envMapIntensity: 0.32,
+      envMapIntensity: 0.22,
     }),
-    sovereignBrass: new THREE.MeshStandardMaterial({
-      color: 0xd9ad58,
-      roughness: 0.24,
-      metalness: 0.88,
-      envMapIntensity: 0.72,
+    champagneBronze: new THREE.MeshStandardMaterial({
+      color: 0xc9a96e,
+      roughness: 0.3,
+      metalness: 0.85,
+      envMapIntensity: 0.7,
     }),
-    titaniumVault: new THREE.MeshStandardMaterial({
-      color: 0x9aa6b8,
-      roughness: 0.26,
-      metalness: 0.9,
-      envMapIntensity: 0.68,
-    }),
-    cognacLeather: new THREE.MeshStandardMaterial({
-      color: 0x8a4b25,
+    obsidianBronze: new THREE.MeshStandardMaterial({
+      color: 0x22201d,
       roughness: 0.44,
-      metalness: 0.04,
-      envMapIntensity: 0.24,
+      metalness: 0.68,
+      envMapIntensity: 0.5,
     }),
-    emeraldBankerGlass: new THREE.MeshStandardMaterial({
-      color: 0x16804b,
-      emissive: 0x0b522e,
-      emissiveIntensity: 0.55,
-      roughness: 0.22,
-      metalness: 0.1,
+    bullionVaultSteel: new THREE.MeshStandardMaterial({
+      color: 0x4a5568,
+      roughness: 0.32,
+      metalness: 0.88,
+      envMapIntensity: 0.65,
     }),
-    goldBullion: new THREE.MeshStandardMaterial({
-      color: 0xf6c945,
-      roughness: 0.18,
-      metalness: 0.94,
-      envMapIntensity: 0.85,
+    goldSpecie: new THREE.MeshStandardMaterial({
+      color: 0xf2c94c,
+      roughness: 0.26,
+      metalness: 0.92,
+      envMapIntensity: 0.82,
     }),
-    warmCoveLed: new THREE.MeshBasicMaterial({ color: 0xffdf9e, toneMapped: false }),
-    royalBlueLed: new THREE.MeshBasicMaterial({ color: 0x60a5fa, toneMapped: false }),
-    smokedGlass: new THREE.MeshPhysicalMaterial({
-      color: 0x8ea4be,
-      transparent: true,
-      opacity: 0.34,
-      roughness: 0.1,
-      metalness: 0.14,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    }),
-    frostedSecurityGlass: new THREE.MeshPhysicalMaterial({
-      color: 0xdbe6f2,
-      transparent: true,
-      opacity: 0.58,
-      roughness: 0.42,
-      metalness: 0.06,
-      depthWrite: false,
-      side: THREE.DoubleSide,
+    banknoteCopper: new THREE.MeshStandardMaterial({
+      color: 0xb8734b,
+      roughness: 0.32,
+      metalness: 0.84,
+      envMapIntensity: 0.68,
     }),
     lockerFaceMat: new THREE.MeshStandardMaterial({
       map: lockerTex,
-      roughness: 0.28,
+      roughness: 0.34,
       metalness: 0.72,
-      envMapIntensity: 0.52,
+      envMapIntensity: 0.48,
     }),
     stairTreadMat: new THREE.MeshStandardMaterial({
-      map: neroTex,
-      roughness: 0.26,
+      map: limestoneTex,
+      roughness: 0.52,
+      metalness: 0.03,
+      envMapIntensity: 0.28,
+    }),
+    warmCoveLed: new THREE.MeshBasicMaterial({ color: 0xffe4ad, toneMapped: false }),
+    cobaltLedgerLed: new THREE.MeshBasicMaterial({ color: 0x38bdf8, toneMapped: false }),
+    tealSignalLed: new THREE.MeshBasicMaterial({ color: 0x2dd4bf, toneMapped: false }),
+    bronzeTintedGlass: new THREE.MeshPhysicalMaterial({
+      color: 0xc2b298,
+      transparent: true,
+      opacity: 0.26,
+      roughness: 0.1,
+      metalness: 0.1,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }),
+    frostedLoomGlass: new THREE.MeshPhysicalMaterial({
+      color: 0xe6dfd3,
+      transparent: true,
+      opacity: 0.52,
+      roughness: 0.44,
+      metalness: 0.04,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }),
+    clearArmorGlass: new THREE.MeshPhysicalMaterial({
+      color: 0xdff2fa,
+      transparent: true,
+      opacity: 0.22,
+      roughness: 0.08,
       metalness: 0.08,
-      envMapIntensity: 0.4,
+      depthWrite: false,
+      side: THREE.DoubleSide,
     }),
   };
 
@@ -364,30 +435,30 @@ function addZonePlaque(
   z: number,
   rotY = 0
 ) {
-  const tex = makeCanvasTex(`bank_plaque_${title}_${subtitle}`, 420, 88, (g, w, h) => {
-    g.fillStyle = '#0e1726';
+  const tex = makeCanvasTex(`ntb_plaque_${title}_${subtitle}`, 440, 90, (g, w, h) => {
+    g.fillStyle = '#181e26';
     rr(g, 2, 2, w - 4, h - 4, 8);
     g.fill();
-    g.strokeStyle = '#d9ad58';
+    g.strokeStyle = '#c9a96e';
     g.lineWidth = 2.5;
     rr(g, 5, 5, w - 10, h - 10, 6);
     g.stroke();
-    g.fillStyle = '#3b82f6';
-    g.fillRect(16, 16, 6, h - 32);
-    g.fillStyle = '#f8fafc';
+    g.fillStyle = '#134e5e';
+    g.fillRect(14, 14, 10, h - 28);
+    g.fillStyle = '#f5efe2';
     g.font = '800 18px "Plus Jakarta Sans", sans-serif';
     g.textAlign = 'left';
     g.textBaseline = 'middle';
-    g.fillText(title.toUpperCase(), 34, 31);
-    g.fillStyle = '#d9ad58';
+    g.fillText(title.toUpperCase(), 36, 32);
+    g.fillStyle = '#d9b56b';
     g.font = '600 13px "IBM Plex Mono", monospace';
-    g.fillText(subtitle, 34, 60);
+    g.fillText(subtitle, 36, 61);
   });
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = getMaxAnisotropy();
 
   const m = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.75, 0.37),
+    new THREE.PlaneGeometry(1.8, 0.37),
     new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false })
   );
   m.position.set(x, y, z);
@@ -395,23 +466,8 @@ function addZonePlaque(
   parent.add(m);
 }
 
-function buildBankersLamp(parent: THREE.Object3D, pal: BankPalette, x: number, y: number, z: number, rotY = 0) {
-  const g = new THREE.Group();
-  g.position.set(x, y, z);
-  g.rotation.y = rotY;
-  cylAt(g, 0.08, 0.09, 0.025, 0, 0.012, 0, pal.sovereignBrass, false, false, 14);
-  cylAt(g, 0.014, 0.018, 0.24, 0, 0.13, -0.02, pal.sovereignBrass, false, false, 10);
-  const shade = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.055, 0.055, 0.22, 12, 1, false, 0, Math.PI),
-    pal.emeraldBankerGlass
-  );
-  shade.rotation.z = Math.PI / 2;
-  shade.position.set(0, 0.26, 0.01);
-  g.add(shade);
-  parent.add(g);
-}
-
-function buildExecutiveDesk(
+/** Custom 5-part Champagne-Bronze & Parchment Atelier Desk (distinct from old executive walnut+navy desk). */
+function buildReserveDesk(
   parent: THREE.Object3D,
   pal: BankPalette,
   x: number,
@@ -420,99 +476,157 @@ function buildExecutiveDesk(
   w: number,
   d: number,
   rotY = 0,
-  withLamp = true
+  withSconce = true
 ) {
   const g = new THREE.Group();
   g.position.set(x, y, z);
   g.rotation.y = rotY;
-  // Smoked walnut bullnose top + brass apron trim
-  boxAt(g, w, 0.06, d, 0, 0.74, 0, pal.smokedWalnut, true, true, 0.016);
-  boxAt(g, w - 0.08, 0.024, d - 0.08, 0, 0.7, 0, pal.sovereignBrass, false, false, 0.006);
-  // Modesty panel in midnight navy acoustic felt + travertine leg pedestals
-  boxAt(g, w - 0.34, 0.66, 0.06, 0, 0.35, -d * 0.34, pal.midnightNavyFelt, false, true, 0.01);
-  [-w * 0.42, w * 0.42].forEach((lx) => {
-    boxAt(g, 0.14, 0.7, d * 0.76, lx, 0.35, 0, pal.ivoryTravertine, true, true, 0.012);
-    boxAt(g, 0.16, 0.04, d * 0.78, lx, 0.02, 0, pal.sovereignBrass, false, false);
+
+  // Tapered Makore desktop + champagne-bronze chamfer collar
+  boxAt(g, w, 0.055, d, 0, 0.74, 0, pal.makoreWood, true, true, 0.018);
+  boxAt(g, w - 0.1, 0.022, d - 0.1, 0, 0.704, 0, pal.champagneBronze, false, false, 0.006);
+  // Parchment-linen acoustic modesty screen with bronze reveal
+  boxAt(g, w - 0.42, 0.58, 0.06, 0, 0.39, -d * 0.34, pal.parchmentLinen, false, true, 0.012);
+  // Sculpted cylindrical limestone & bronze-shod end piers
+  [-w * 0.4, w * 0.4].forEach((lx) => {
+    boxAt(g, 0.16, 0.68, d * 0.74, lx, 0.35, 0, pal.flutedLimestone, true, true, 0.02);
+    boxAt(g, 0.18, 0.04, d * 0.76, lx, 0.02, 0, pal.champagneBronze, false, false, 0.008);
   });
-  if (withLamp) {
-    buildBankersLamp(g, pal, -w * 0.34, 0.77, -d * 0.22, 0);
+
+  if (withSconce) {
+    // Bespoke brass & linen cylinder desk lantern (replacing repeated green banker's lamp)
+    const lx = -w * 0.33;
+    const lz = -d * 0.2;
+    cylAt(g, 0.065, 0.075, 0.024, lx, 0.78, lz, pal.champagneBronze, false, false, 14);
+    cylAt(g, 0.012, 0.015, 0.22, lx, 0.89, lz, pal.obsidianBronze, false, false, 10);
+    cylAt(g, 0.085, 0.105, 0.12, lx, 1.01, lz, pal.parchmentLinen, false, false, 16);
+    cylAt(g, 0.088, 0.088, 0.016, lx, 1.07, lz, pal.champagneBronze, false, false, 16);
   }
   parent.add(g);
 }
 
-function buildFlutedBankColumn(parent: THREE.Object3D, pal: BankPalette, x: number, fy: number, z: number, h: number) {
-  boxAt(parent, 0.72, 0.16, 0.72, x, fy + 0.08, z, pal.neroGoldMarble, true, true, 0.02);
-  boxAt(parent, 0.6, 0.06, 0.6, x, fy + 0.19, z, pal.sovereignBrass, false, false, 0.01);
-  cylAt(parent, 0.24, 0.27, h - 0.34, x, fy + 0.22 + (h - 0.34) * 0.5, z, pal.flutedTravertine, true, true, 18);
-  cylAt(parent, 0.29, 0.25, 0.09, x, fy + h - 0.08, z, pal.sovereignBrass, false, false, 18);
+/** Custom Rift-Limestone & Champagne-Bronze Acoustic Fluted Column. */
+function buildLimestoneColumn(parent: THREE.Object3D, pal: BankPalette, x: number, fy: number, z: number, h: number) {
+  cylAt(parent, 0.36, 0.4, 0.18, x, fy + 0.09, z, pal.kilimanjaroSlate, true, true, 16);
+  cylAt(parent, 0.32, 0.34, 0.06, x, fy + 0.21, z, pal.champagneBronze, false, false, 16);
+  cylAt(parent, 0.25, 0.28, h - 0.36, x, fy + 0.24 + (h - 0.36) * 0.5, z, pal.flutedLimestone, true, true, 20);
+  cylAt(parent, 0.32, 0.26, 0.1, x, fy + h - 0.06, z, pal.champagneBronze, false, false, 16);
 }
 
-function buildCofferedCeiling(
+/** Bespoke Curved Acoustic Crescent Consultation Booth (open entry, zero boxy walls). */
+function buildAcousticCrescentPod(
+  parent: THREE.Object3D,
+  pal: BankPalette,
+  cx: number,
+  fy: number,
+  cz: number,
+  radius: number,
+  h: number
+) {
+  // Semi-circular Makore timber rib colonnade arcing North behind advisor
+  const ribCount = 11;
+  for (let i = 0; i < ribCount; i++) {
+    const a = Math.PI * 0.12 + (i / (ribCount - 1)) * Math.PI * 0.76; // North half arc (-Z)
+    const rx = cx + Math.cos(a) * radius;
+    const rz = cz - Math.sin(a) * radius;
+    const fin = boxAt(parent, 0.11, h, 0.24, rx, fy + h * 0.5, rz, i % 2 === 0 ? pal.makoreWood : pal.flutedLimestone, true, true, 0.015);
+    fin.rotation.y = a - Math.PI / 2;
+  }
+  // Curved champagne-bronze top header ring linking all acoustic ribs
+  const capArc = new THREE.Mesh(
+    new THREE.TorusGeometry(radius, 0.07, 8, 28, Math.PI * 0.8),
+    pal.champagneBronze
+  );
+  capArc.rotation.x = Math.PI / 2;
+  capArc.rotation.z = Math.PI * 0.1;
+  capArc.position.set(cx, fy + h + 0.02, cz);
+  parent.add(capArc);
+}
+
+/** Custom Lamu-Inspired Makore Beam & Parchment Acoustic Baffle Ceiling. */
+function buildBespokeBankCeiling(
   cg: THREE.Group,
   pal: BankPalette,
   spec: DistrictBuildingSpec,
   ceilY: number,
-  skipStairVoid: boolean,
-  warmLights: WarmLightAnchor[],
-  lv: number
+  lv: number,
+  warmLights: WarmLightAnchor[]
 ) {
-  const cofferY = ceilY - 0.12;
-  // Smoked walnut perimeter beam frame
-  boxAt(cg, spec.w - 0.8, 0.14, 0.35, spec.cx, cofferY, spec.cz - 9.2, pal.smokedWalnut, false, false);
-  boxAt(cg, spec.w - 0.8, 0.14, 0.35, spec.cx, cofferY, spec.cz + 9.2, pal.smokedWalnut, false, false);
-  boxAt(cg, 0.35, 0.14, spec.d - 0.8, spec.cx - 10.2, cofferY, spec.cz, pal.smokedWalnut, false, false);
+  const skipStair = lv < spec.floors - 1;
+  const skipRotunda = lv === 0; // L0 ceiling opens into L1 Double-Height Banking Rotunda (+0.8..+6.8, -1.0..+5.0)!
 
-  // Longitudinal walnut coffer girders (avoiding East stair void dx +5.10..+10.60, dz -1.10..+6.90)
-  [-6.8, -2.0, 2.8].forEach((dx) => {
-    boxAt(cg, 0.22, 0.14, spec.d - 1.0, spec.cx + dx, cofferY, spec.cz, pal.smokedWalnut, false, false);
+  // Sculpted Makore transverse beams spanning East of West Stairwell (dx -4.5 .. +10.2)
+  [-8.6, -5.6, -2.6, 0.4, 3.4, 6.4, 8.8].forEach((dz) => {
+    const insideRotundaZ = skipRotunda && dz > -1.2 && dz < 5.2;
+    if (insideRotundaZ) {
+      // Split beam cleanly at rotunda void edges
+      boxAt(cg, 5.2, 0.13, 0.22, spec.cx - 2.0, ceilY - 0.1, spec.cz + dz, pal.makoreWood, false, false, 0.01);
+      boxAt(cg, 3.2, 0.13, 0.22, spec.cx + 8.6, ceilY - 0.1, spec.cz + dz, pal.makoreWood, false, false, 0.01);
+    } else {
+      boxAt(cg, 14.8, 0.13, 0.22, spec.cx + 2.8, ceilY - 0.1, spec.cz + dz, pal.makoreWood, false, false, 0.01);
+    }
   });
 
-  // Recessed Navy Coffer Bays + Brass Trim & Warm LED Cove Strips on West/Center Bays
-  const bayCentersX = [-8.6, -4.4, 0.4];
-  const bayCentersZ = [-5.8, 0.0, 5.8];
-  bayCentersX.forEach((bx) => {
-    bayCentersZ.forEach((bz) => {
-      boxAt(cg, 3.6, 0.06, 4.6, spec.cx + bx, ceilY - 0.06, spec.cz + bz, pal.midnightNavyFelt, false, false);
-      boxAt(cg, 3.72, 0.03, 0.06, spec.cx + bx, ceilY - 0.09, spec.cz + bz - 2.3, pal.sovereignBrass, false, false);
-      boxAt(cg, 3.72, 0.03, 0.06, spec.cx + bx, ceilY - 0.09, spec.cz + bz + 2.3, pal.sovereignBrass, false, false);
-      boxAt(cg, 2.8, 0.025, 0.05, spec.cx + bx, ceilY - 0.095, spec.cz + bz, pal.warmCoveLed, false, false);
-    });
+  // Acoustic parchment-linen baffles & linear bronze light strips along main East/Center ceiling bays
+  [
+    { x: -1.8, z: -6.8, w: 4.8, d: 3.4 },
+    { x: 4.8, z: -6.8, w: 4.8, d: 3.4 },
+    { x: -1.8, z: 6.8, w: 4.8, d: 3.4 },
+    { x: 4.8, z: 6.8, w: 4.8, d: 3.4 },
+  ].forEach((bay) => {
+    boxAt(cg, bay.w, 0.05, bay.d, spec.cx + bay.x, ceilY - 0.06, spec.cz + bay.z, pal.parchmentLinen, false, false);
+    boxAt(cg, bay.w - 0.6, 0.02, 0.06, spec.cx + bay.x, ceilY - 0.09, spec.cz + bay.z, pal.warmCoveLed, false, false);
   });
 
-  // North-East Coffer bay (north of stair void dz -8.8..-2.2)
-  boxAt(cg, 4.2, 0.06, 4.8, spec.cx + 6.4, ceilY - 0.06, spec.cz - 5.6, pal.midnightNavyFelt, false, false);
-  boxAt(cg, 3.2, 0.025, 0.05, spec.cx + 6.4, ceilY - 0.095, spec.cz - 5.6, pal.warmCoveLed, false, false);
+  // South-West & North-West ceiling bays flanking West Stairwell (dx -10.2..-5.2)
+  boxAt(cg, 4.4, 0.06, 2.4, spec.cx - 7.75, ceilY - 0.06, spec.cz - 8.1, pal.parchmentLinen, false, false);
+  boxAt(cg, 4.4, 0.06, 6.2, spec.cx - 7.75, ceilY - 0.06, spec.cz + 5.6, pal.parchmentLinen, false, false);
+  boxAt(cg, 3.2, 0.02, 0.06, spec.cx - 7.75, ceilY - 0.09, spec.cz + 5.6, pal.warmCoveLed, false, false);
 
-  if (!skipStairVoid) {
-    boxAt(cg, 4.2, 0.06, 4.8, spec.cx + 7.4, ceilY - 0.06, spec.cz + 3.0, pal.midnightNavyFelt, false, false);
+  if (!skipStair) {
+    boxAt(cg, 4.4, 0.06, 6.4, spec.cx - 7.75, ceilY - 0.06, spec.cz - 2.5, pal.parchmentLinen, false, false);
   }
 
-  // Push ceiling WarmLightAnchors (never spawn raw PointLight!)
+  // Rotunda Skylight Bronze Trim Collar on L1 ceiling (framing downlight into G/L1 void)
+  if (lv === 1) {
+    boxAt(cg, 6.1, 0.16, 0.14, spec.cx + 3.8, ceilY - 0.12, spec.cz - 1.0, pal.champagneBronze, false, false);
+    boxAt(cg, 6.1, 0.16, 0.14, spec.cx + 3.8, ceilY - 0.12, spec.cz + 5.0, pal.champagneBronze, false, false);
+    boxAt(cg, 0.14, 0.16, 6.1, spec.cx + 0.8, ceilY - 0.12, spec.cz + 2.0, pal.champagneBronze, false, false);
+    boxAt(cg, 0.14, 0.16, 6.1, spec.cx + 6.8, ceilY - 0.12, spec.cz + 2.0, pal.champagneBronze, false, false);
+  }
+
   warmLights.push(
     {
-      x: spec.cx - 3.6,
+      x: spec.cx + 3.6,
       y: ceilY - 0.45,
-      z: spec.cz - 2.2,
-      color: 0xffe4b2,
+      z: spec.cz + 1.8,
+      color: 0xffe4b8,
       distance: 18,
-      baseScale: lv === 0 ? 1.05 : 0.95,
+      baseScale: lv === 0 ? 1.1 : 0.95,
       floor: lv,
       buildingId: spec.id,
     },
     {
-      x: spec.cx + 4.4,
+      x: spec.cx - 3.6,
       y: ceilY - 0.45,
-      z: spec.cz - 5.2,
-      color: 0xffdca0,
-      distance: 14,
-      baseScale: 0.85,
+      z: spec.cz - 4.2,
+      color: 0xffdfa8,
+      distance: 15,
+      baseScale: 0.88,
       floor: lv,
       buildingId: spec.id,
     }
   );
 }
 
-function buildReserveStairwellLevel(
+/**
+ * Custom 6-Story West-Wing Grand Reserve Stairwell & Illuminated Makore/Bronze Light-Loom Spine.
+ * Footprint: dx -10.50 .. -5.00, dz -6.50 .. +1.50
+ * - East Lane (dx -7.75 .. -5.00): Flight 1 climbs NORTH (dz +1.50 -> -4.25)
+ * - North Panoramic Landing (dz -6.50 .. -4.25): Full-width balcony against North/West windows
+ * - West Lane (dx -10.50 .. -7.75): Flight 2 climbs SOUTH (dz -4.25 -> +1.50) arriving at L(lv+1)
+ */
+function buildWestReserveStairwellLevel(
   lg: THREE.Group,
   pal: BankPalette,
   spec: DistrictBuildingSpec,
@@ -520,98 +634,96 @@ function buildReserveStairwellLevel(
   fy: number,
   M: MaterialLibrary
 ) {
-  const vx0 = spec.cx + 5.1;
-  const vx1 = spec.cx + 10.6;
-  const xSpine = spec.cx + 7.85;
-  const zNorth = spec.cz - 1.1;
-  const zTurn = spec.cz + 4.65;
-  const zSouth = spec.cz + 6.9;
+  const vx0 = spec.cx - 10.5;
+  const vx1 = spec.cx - 5.0;
+  const xSpine = spec.cx - 7.75;
+  const zNorth = spec.cz - 6.5;
+  const zTurn = spec.cz - 4.25;
+  const zSouth = spec.cz + 1.5;
 
-  // Vertical 6-story Sovereign Gold-Ledger Lightwell Spine between Flight 1 & Flight 2
-  boxAt(lg, 0.14, spec.floorH, 5.75, xSpine, fy + spec.floorH * 0.5, spec.cz + 1.78, pal.smokedWalnut, true, true, 0.015);
-  [-0.8, 1.0, 2.8, 4.4].forEach((dz) => {
-    boxAt(lg, 0.22, spec.floorH - 0.2, 0.08, xSpine, fy + spec.floorH * 0.5, spec.cz + dz, pal.sovereignBrass, false, false);
+  // Vertical 6-story Makore & Champagne-Bronze Woven Guilloché Light-Loom Spine between lanes
+  boxAt(lg, 0.14, spec.floorH, 5.75, xSpine, fy + spec.floorH * 0.5, spec.cz - 1.38, pal.makoreWood, true, true, 0.015);
+  [-3.8, -2.0, -0.2, 1.2].forEach((dz) => {
+    boxAt(lg, 0.22, spec.floorH - 0.18, 0.08, xSpine, fy + spec.floorH * 0.5, spec.cz + dz, pal.champagneBronze, false, false);
   });
-  boxAt(lg, 0.04, spec.floorH, 5.4, xSpine - 0.08, fy + spec.floorH * 0.5, spec.cz + 1.78, pal.warmCoveLed, false, false);
-  boxAt(lg, 0.04, spec.floorH, 5.4, xSpine + 0.08, fy + spec.floorH * 0.5, spec.cz + 1.78, pal.royalBlueLed, false, false);
+  boxAt(lg, 0.04, spec.floorH, 5.4, xSpine - 0.08, fy + spec.floorH * 0.5, spec.cz - 1.38, pal.warmCoveLed, false, false);
+  boxAt(lg, 0.04, spec.floorH, 5.4, xSpine + 0.08, fy + spec.floorH * 0.5, spec.cz - 1.38, pal.tealSignalLed, false, false);
 
-  // Smoked-glass + Sovereign Brass perimeter balustrades along West shaft edge (dx +5.10) and South edge (dz +6.90)
-  const addStairScreen = (cx: number, cz: number, lenX: number, lenZ: number, h: number) => {
+  const addStairGuard = (cx: number, cz: number, lenX: number, lenZ: number, h: number) => {
     const isX = lenX >= lenZ;
-    boxAt(lg, lenX, h - 0.12, lenZ, cx, fy + (h - 0.12) * 0.5 + 0.06, cz, pal.smokedGlass, false, false);
-    boxAt(lg, isX ? lenX + 0.04 : 0.08, 0.06, isX ? 0.08 : lenZ + 0.04, cx, fy + h, cz, pal.sovereignBrass, false, false, 0.01);
+    boxAt(lg, lenX, h - 0.12, lenZ, cx, fy + (h - 0.12) * 0.5 + 0.06, cz, pal.bronzeTintedGlass, false, false);
+    boxAt(lg, isX ? lenX + 0.04 : 0.08, 0.06, isX ? 0.08 : lenZ + 0.04, cx, fy + h, cz, pal.champagneBronze, false, false, 0.01);
     const posts = Math.max(2, Math.round(Math.max(lenX, lenZ) / 1.8) + 1);
     for (let p = 0; p < posts; p++) {
       const f = posts === 1 ? 0.5 : p / (posts - 1);
       const px = isX ? cx - lenX * 0.5 + f * lenX : cx;
       const pz = isX ? cz : cz - lenZ * 0.5 + f * lenZ;
-      boxAt(lg, 0.05, h, 0.05, px, fy + h * 0.5, pz, pal.sovereignBrass, false, false);
+      boxAt(lg, 0.05, h, 0.05, px, fy + h * 0.5, pz, pal.champagneBronze, false, false);
     }
   };
 
-  // West shaft balustrade (full length along dx +5.10)
-  addStairScreen(vx0, spec.cz + 2.9, 0.05, 8.0, 1.06);
+  // East shaft balustrade along dx = -5.00
+  addStairGuard(vx1, spec.cz - 2.5, 0.05, 8.0, 1.06);
 
   if (lv === 0) {
-    // Under-stair Nero-Marble & Brass Treasury divider blocking East under-flight lane at North mouth
-    boxAt(lg, 2.66, 2.15, 0.14, spec.cx + 9.22, fy + 1.08, zNorth, pal.neroGoldMarble, true, true, 0.015);
-    boxAt(lg, 2.68, 0.08, 0.16, spec.cx + 9.22, fy + 2.18, zNorth, pal.sovereignBrass, false, false);
-    // Decorative brass-framed floor planter tucked into SE corner beside stair
-    plant(lg, spec.cx + 4.3, fy, spec.cz + 6.3, 1.05, 501, M);
+    // Ground floor under-stair sculpted Limestone & Bronze Treasury Relief Wall blocking West under-flight lane at zSouth
+    boxAt(lg, 2.68, 2.18, 0.16, spec.cx - 9.12, fy + 1.09, zSouth, pal.flutedLimestone, true, true, 0.02);
+    boxAt(lg, 2.7, 0.08, 0.18, spec.cx - 9.12, fy + 2.2, zSouth, pal.champagneBronze, false, false);
+    // Decorative olive specimen flanking East entry portal
+    plant(lg, spec.cx - 4.2, fy, spec.cz + 1.2, 1.0, 601, M, 'olive');
   } else {
-    // Upper levels: South edge glass drop-guard + North-West West-lane drop-guard on top floor L5
-    addStairScreen((vx0 + vx1) * 0.5, zSouth, vx1 - vx0, 0.05, 1.06);
+    // Upper levels: North edge drop-guard (dz = -6.50) + East-Lane safety guard on L5
+    addStairGuard((vx0 + vx1) * 0.5, zNorth, vx1 - vx0, 0.05, 1.06);
     if (lv === spec.floors - 1) {
-      addStairScreen(spec.cx + 6.45, zNorth, 2.65, 0.05, 1.06);
+      addStairGuard(spec.cx - 6.38, zSouth, 2.66, 0.05, 1.06);
     }
   }
 
-  // Flights connecting lv -> lv + 1
+  // Flights ascending lv -> lv + 1
   if (lv < spec.floors - 1) {
     const halfRise = spec.floorH * 0.5;
-    const runLen = zTurn - zNorth; // 5.75m
+    const runLen = zSouth - zTurn; // 5.75m
     const steps = 12;
     const stepD = runLen / steps;
     const stepH = halfRise / steps;
 
-    // Flight 1 (West Lane: dx +5.18 .. +7.72, climbing South zNorth -> zTurn)
-    const f1X = spec.cx + 6.45;
+    // Flight 1 (East Lane: dx -7.75 .. -5.00, climbing North zSouth -> zTurn)
+    const f1X = spec.cx - 6.38;
     const f1W = 2.48;
     for (let s = 0; s < steps; s++) {
       const sy = fy + (s + 0.5) * stepH;
-      const sz = zNorth + (s + 0.5) * stepD;
+      const sz = zSouth - (s + 0.5) * stepD;
       boxAt(lg, f1W, 0.11, stepD + 0.04, f1X, sy, sz, pal.stairTreadMat, true, true, 0.01);
-      boxAt(lg, f1W, 0.02, 0.04, f1X, sy + 0.06, sz + stepD * 0.44, pal.sovereignBrass, false, false);
-    }
-    // Twin angled Sovereign Brass structural stringers beneath Flight 1
-    [-0.95, 0.95].forEach((ox) => {
-      const strLen = Math.hypot(runLen, halfRise);
-      const stringer = boxAt(lg, 0.1, 0.18, strLen, f1X + ox, fy + halfRise * 0.5 - 0.12, (zNorth + zTurn) * 0.5, pal.sovereignBrass, false, false);
-      stringer.rotation.x = -Math.atan2(halfRise, runLen);
-    });
-
-    // Mid-Level Panoramic South Sky-Landing (dz +4.65 .. +6.90)
-    const landW = vx1 - vx0 - 0.16;
-    const landD = zSouth - zTurn;
-    boxAt(lg, landW, 0.22, landD, (vx0 + vx1) * 0.5, fy + halfRise - 0.09, (zTurn + zSouth) * 0.5, pal.neroGoldMarble, true, true, 0.02);
-    boxAt(lg, landW + 0.04, 0.06, landD + 0.04, (vx0 + vx1) * 0.5, fy + halfRise - 0.21, (zTurn + zSouth) * 0.5, pal.sovereignBrass, false, false);
-
-    // Flight 2 (East Lane against Glass Curtain Wall: dx +7.98 .. +10.52, climbing North zTurn -> zNorth)
-    const f2X = spec.cx + 9.22;
-    const f2W = 2.48;
-    for (let s = 0; s < steps; s++) {
-      const sy = fy + halfRise + (s + 0.5) * stepH;
-      const sz = zTurn - (s + 0.5) * stepD;
-      boxAt(lg, f2W, 0.11, stepD + 0.04, f2X, sy, sz, pal.stairTreadMat, true, true, 0.01);
-      boxAt(lg, f2W, 0.02, 0.04, f2X, sy + 0.06, sz - stepD * 0.44, pal.sovereignBrass, false, false);
+      boxAt(lg, f1W, 0.02, 0.04, f1X, sy + 0.06, sz - stepD * 0.44, pal.champagneBronze, false, false);
     }
     [-0.95, 0.95].forEach((ox) => {
       const strLen = Math.hypot(runLen, halfRise);
-      const stringer = boxAt(lg, 0.1, 0.18, strLen, f2X + ox, fy + halfRise * 1.5 - 0.12, (zNorth + zTurn) * 0.5, pal.sovereignBrass, false, false);
+      const stringer = boxAt(lg, 0.1, 0.18, strLen, f1X + ox, fy + halfRise * 0.5 - 0.12, (zSouth + zTurn) * 0.5, pal.obsidianBronze, false, false);
       stringer.rotation.x = Math.atan2(halfRise, runLen);
     });
 
-    addZonePlaque(lg, 'Reserve Gallery Stairs', `Ascend to L${lv + 1}`, spec.cx + 6.45, fy + 2.38, zNorth + 0.14, Math.PI);
+    // Mid-Level Panoramic North Landing (dz -6.50 .. -4.25)
+    const landW = vx1 - vx0 - 0.16;
+    const landD = zTurn - zNorth;
+    boxAt(lg, landW, 0.22, landD, (vx0 + vx1) * 0.5, fy + halfRise - 0.09, (zNorth + zTurn) * 0.5, pal.kilimanjaroSlate, true, true, 0.02);
+    boxAt(lg, landW + 0.04, 0.06, landD + 0.04, (vx0 + vx1) * 0.5, fy + halfRise - 0.21, (zNorth + zTurn) * 0.5, pal.champagneBronze, false, false);
+
+    // Flight 2 (West Lane: dx -10.50 .. -7.75, climbing South zTurn -> zSouth)
+    const f2X = spec.cx - 9.12;
+    const f2W = 2.48;
+    for (let s = 0; s < steps; s++) {
+      const sy = fy + halfRise + (s + 0.5) * stepH;
+      const sz = zTurn + (s + 0.5) * stepD;
+      boxAt(lg, f2W, 0.11, stepD + 0.04, f2X, sy, sz, pal.stairTreadMat, true, true, 0.01);
+      boxAt(lg, f2W, 0.02, 0.04, f2X, sy + 0.06, sz + stepD * 0.44, pal.champagneBronze, false, false);
+    }
+    [-0.95, 0.95].forEach((ox) => {
+      const strLen = Math.hypot(runLen, halfRise);
+      const stringer = boxAt(lg, 0.1, 0.18, strLen, f2X + ox, fy + halfRise * 1.5 - 0.12, (zSouth + zTurn) * 0.5, pal.obsidianBronze, false, false);
+      stringer.rotation.x = -Math.atan2(halfRise, runLen);
+    });
+
+    addZonePlaque(lg, 'Reserve Gallery Stairs', `Ascend to Level ${lv + 1}`, spec.cx - 6.38, fy + 2.42, zSouth - 0.12, 0);
   }
 }
 
@@ -638,134 +750,149 @@ export function buildNairobiTrustBankWholeBuilding(ctx: BankBuildContext) {
   let monIdx = 0;
 
   // ============================================================================
-  // SHARED COFFERED CEILINGS & CONTINUOUS 6-FLOOR RESERVE STAIRWELL (G..L5)
+  // SHARED ACOUSTIC CEILINGS, CONTINUOUS WEST STAIRWELL & NON-OVERLAPPING FLOORS
   // ============================================================================
   for (let lv = 0; lv < spec.floors; lv++) {
     const fy = spec.groundY + lv * spec.floorH + 0.12;
     const ceilY = spec.groundY + lv * spec.floorH + spec.floorH - 0.14;
-    buildCofferedCeiling(levelCeilings[lv], pal, spec, ceilY, lv < spec.floors - 1, warmLights, lv);
-    buildReserveStairwellLevel(levelGroups[lv], pal, spec, lv, fy, M);
+    buildBespokeBankCeiling(levelCeilings[lv], pal, spec, ceilY, lv, warmLights);
+    buildWestReserveStairwellLevel(levelGroups[lv], pal, spec, lv, fy, M);
 
-    // Architectural Nero-Gold floor runner overlay on upper levels (leaving stair void open)
-    if (lv >= 1) {
-      boxAt(levelGroups[lv], 14.8, 0.025, 18.2, spec.cx - 2.6, fy + 0.014, spec.cz, pal.neroGoldMarble, false, true);
-      boxAt(levelGroups[lv], 5.6, 0.025, 7.6, spec.cx + 7.6, fy + 0.014, spec.cz - 5.2, pal.neroGoldMarble, false, true);
+    // Non-overlapping Rift-Limestone floor overlays framing voids cleanly
+    if (lv === 1) {
+      // L1 keeps BOTH West Stair Void (-10.5..-5.0 x -6.5..+1.5) & Double-Height Rotunda Void (+0.8..+6.8 x -1.0..+5.0) open
+      boxAt(levelGroups[lv], 5.5, 0.022, 3.0, spec.cx - 7.75, fy + 0.011, spec.cz - 8.0, pal.riftLimestone, false, true);
+      boxAt(levelGroups[lv], 5.5, 0.022, 8.0, spec.cx - 7.75, fy + 0.011, spec.cz + 5.5, pal.riftLimestone, false, true);
+      boxAt(levelGroups[lv], 5.8, 0.022, 19.0, spec.cx - 2.1, fy + 0.011, spec.cz, pal.riftLimestone, false, true);
+      boxAt(levelGroups[lv], 6.0, 0.022, 8.5, spec.cx + 3.8, fy + 0.011, spec.cz - 5.25, pal.riftLimestone, false, true);
+      boxAt(levelGroups[lv], 6.0, 0.022, 4.5, spec.cx + 3.8, fy + 0.011, spec.cz + 7.25, pal.riftLimestone, false, true);
+      boxAt(levelGroups[lv], 3.7, 0.022, 19.0, spec.cx + 8.65, fy + 0.011, spec.cz, pal.riftLimestone, false, true);
+    } else if (lv >= 2) {
+      // L2..L5 keep West Stair Void (-10.5..-5.0 x -6.5..+1.5) open
+      boxAt(levelGroups[lv], 15.5, 0.022, 19.0, spec.cx + 2.75, fy + 0.011, spec.cz, pal.riftLimestone, false, true);
+      boxAt(levelGroups[lv], 5.5, 0.022, 3.0, spec.cx - 7.75, fy + 0.011, spec.cz - 8.0, pal.riftLimestone, false, true);
+      boxAt(levelGroups[lv], 5.5, 0.022, 8.0, spec.cx - 7.75, fy + 0.011, spec.cz + 5.5, pal.riftLimestone, false, true);
     }
   }
 
   // ============================================================================
-  // L0 (G) — PORTICO, SOVEREIGN BANKING HALL, 24/7 ATM VESTIBULE & BIOMETRIC VAULT
+  // L0 (G) — DOUBLE-HEIGHT ROTUNDA, STEPPED TELLER ARC, 24/7 BIOMETRIC ARCADE & GEARED VAULT
   // ============================================================================
   {
-    // Bespoke Fluted Ivory Travertine Portico Columns + Brass Collars (exact obstacle coords!)
+    // Stepped Fluted-Limestone Portico Colonnade + Makore Soffit Canopy
     [-3.8, -1.9, 1.9, 3.8].forEach((ox) => {
-      boxAt(g0, 0.88, 0.22, 0.88, spec.doorX + ox, spec.groundY + 0.11, spec.doorZ + 1.4, pal.neroGoldMarble, true, true, 0.03);
-      cylAt(g0, 0.31, 0.36, spec.floorH - 0.36, spec.doorX + ox, spec.groundY + 0.22 + (spec.floorH - 0.36) * 0.5, spec.doorZ + 1.4, pal.flutedTravertine, true, true, 20);
-      cylAt(g0, 0.38, 0.32, 0.14, spec.doorX + ox, spec.groundY + spec.floorH - 0.16, spec.doorZ + 1.4, pal.sovereignBrass, false, false, 20);
+      cylAt(g0, 0.42, 0.46, 0.24, spec.doorX + ox, spec.groundY + 0.12, spec.doorZ + 1.4, pal.kilimanjaroSlate, true, true, 16);
+      cylAt(g0, 0.31, 0.35, spec.floorH - 0.38, spec.doorX + ox, spec.groundY + 0.24 + (spec.floorH - 0.38) * 0.5, spec.doorZ + 1.4, pal.flutedLimestone, true, true, 20);
+      cylAt(g0, 0.39, 0.32, 0.14, spec.doorX + ox, spec.groundY + spec.floorH - 0.15, spec.doorZ + 1.4, pal.champagneBronze, false, false, 20);
     });
-    const bankPortico = new THREE.Mesh(getRoundedSlabGeo(10.2, 3.1, 0.9, 0.38, 0.07), pal.ivoryTravertine);
+    const bankPortico = new THREE.Mesh(getRoundedSlabGeo(10.4, 3.2, 0.95, 0.38, 0.07), pal.flutedLimestone);
     bankPortico.position.set(spec.doorX, spec.groundY + spec.floorH - 0.06, spec.doorZ + 1.05);
     bankPortico.castShadow = true;
     g0.add(bankPortico);
-    boxAt(g0, 9.6, 0.08, 0.12, spec.doorX, spec.groundY + spec.floorH - 0.14, spec.doorZ + 2.58, pal.sovereignBrass, false, false);
-    const bankSoffit = new THREE.Mesh(getRoundedSlabGeo(9.4, 2.5, 0.75, 0.06, 0.015), pal.smokedWalnut);
+    boxAt(g0, 9.8, 0.08, 0.14, spec.doorX, spec.groundY + spec.floorH - 0.13, spec.doorZ + 2.62, pal.champagneBronze, false, false);
+    const bankSoffit = new THREE.Mesh(getRoundedSlabGeo(9.5, 2.5, 0.75, 0.06, 0.015), pal.makoreWood);
     bankSoffit.position.set(spec.doorX, spec.groundY + spec.floorH - 0.25, spec.doorZ + 1.05);
     g0.add(bankSoffit);
-    addZonePlaque(g0, 'Nairobi Trust Bank', 'Reserve Commercial HQ · Est. 1998', spec.doorX, spec.groundY + spec.floorH + 0.22, spec.doorZ + 2.62, 0);
+    addZonePlaque(g0, 'Nairobi Trust Bank', 'TerraCraft Sovereign Reserve HQ', spec.doorX, spec.groundY + spec.floorH + 0.22, spec.doorZ + 2.66, 0);
 
-    // Full Nero-Gold Marble G Floor + Inlaid Sovereign Compass-Shield Brass Medallion
-    boxAt(g0, 21.4, 0.025, 19.4, spec.cx, fy0 + 0.012, spec.cz, pal.neroGoldMarble, false, true);
-    cylAt(g0, 2.8, 2.8, 0.018, spec.cx - 0.6, fy0 + 0.026, spec.cz + 1.4, pal.sovereignBrass, false, true, 32);
-    cylAt(g0, 2.38, 2.38, 0.022, spec.cx - 0.6, fy0 + 0.028, spec.cz + 1.4, pal.neroGoldMarble, false, true, 32);
-    cylAt(g0, 0.72, 0.72, 0.026, spec.cx - 0.6, fy0 + 0.03, spec.cz + 1.4, pal.sovereignBrass, false, true, 24);
+    // Full Warm Rift-Limestone Ground Floor + Banknote Guilloché Compass Medallion under Double-Height Rotunda (+3.8, +2.0)
+    boxAt(g0, 21.4, 0.025, 19.4, spec.cx, fy0 + 0.012, spec.cz, pal.riftLimestone, false, true);
+    const medDisc = cylAt(g0, 2.7, 2.7, 0.016, spec.cx + 3.8, fy0 + 0.026, spec.cz + 2.0, pal.guillocheMosaic, false, true, 36);
+    medDisc.rotation.y = -Math.PI / 2;
 
-    // Suspended Sovereign Brass Halo Chandelier over Main Banking Hall
-    const haloRing = new THREE.Mesh(new THREE.TorusGeometry(1.75, 0.075, 12, 36), pal.sovereignBrass);
-    haloRing.rotation.x = Math.PI / 2;
-    haloRing.position.set(spec.cx - 0.6, fy0 + 3.45, spec.cz + 1.4);
-    g0.add(haloRing);
-    const haloGlow = new THREE.Mesh(new THREE.TorusGeometry(1.75, 0.03, 8, 36), pal.warmCoveLed);
-    haloGlow.rotation.x = Math.PI / 2;
-    haloGlow.position.set(spec.cx - 0.6, fy0 + 3.39, spec.cz + 1.4);
-    g0.add(haloGlow);
-    for (let k = 0; k < 4; k++) {
-      const ang = (k * Math.PI) / 2;
-      cylAt(g0, 0.012, 0.012, 0.65, spec.cx - 0.6 + Math.cos(ang) * 1.75, fy0 + 3.76, spec.cz + 1.4 + Math.sin(ang) * 1.75, pal.sovereignBrass, false, false, 8);
-    }
+    // 2-Story Suspended Kinetic Sovereign Astrolabe Chandelier hanging through G/L1 Rotunda Void (+3.8, +2.0)
+    const astroGroup = new THREE.Group();
+    astroGroup.position.set(spec.cx + 3.8, fy0 + 4.35, spec.cz + 2.0);
+    const outerGimbal = new THREE.Mesh(new THREE.TorusGeometry(2.05, 0.055, 12, 42), pal.champagneBronze);
+    outerGimbal.rotation.x = Math.PI / 2 - 0.18;
+    astroGroup.add(outerGimbal);
+    const midGimbal = new THREE.Mesh(new THREE.TorusGeometry(1.48, 0.045, 10, 36), pal.banknoteCopper);
+    midGimbal.rotation.y = 0.6;
+    midGimbal.rotation.x = 0.48;
+    astroGroup.add(midGimbal);
+    const innerRing = new THREE.Mesh(new THREE.TorusGeometry(0.92, 0.036, 10, 28), pal.warmCoveLed);
+    innerRing.rotation.x = -0.35;
+    astroGroup.add(innerRing);
+    // Warm sunlit core lantern suspended from L1 ceiling
+    const coreOrb = new THREE.Mesh(new THREE.OctahedronGeometry(0.32, 1), pal.goldSpecie);
+    astroGroup.add(coreOrb);
+    g0.add(astroGroup);
+    rotatingProps.push({ obj: astroGroup, speed: 0.16, axis: 'y' });
+    // Vertical brass suspension cable up to L1 ceiling
+    cylAt(g0, 0.015, 0.015, 3.6, spec.cx + 3.8, fy0 + 6.15, spec.cz + 2.0, pal.champagneBronze, false, false, 8);
 
-    // Fluted Monumental Interior Columns framing Banking Hall
+    // Monumental Fluted Limestone Interior Columns framing the Banking Hall & Rotunda
     [
-      [-7.8, -0.6],
-      [2.6, -0.6],
-      [2.6, 5.2],
-    ].forEach(([cx, cz]) => buildFlutedBankColumn(g0, pal, spec.cx + cx, fy0, spec.cz + cz, spec.floorH - 0.32));
+      [-3.8, -0.8],
+      [7.6, -1.6],
+      [7.6, 5.4],
+    ].forEach(([cx, cz]) => buildLimestoneColumn(g0, pal, spec.cx + cx, fy0, spec.cz + cz, spec.floorH - 0.32));
 
-    // SW 24/7 Express ATM Vestibule & Bespoke Brass-Clad ATM Kiosks (dx -8.5, -6.5, -4.5, dz +6.2)
-    boxAt(g0, 6.8, 0.06, 2.2, spec.cx - 6.5, fy0 + 2.85, spec.cz + 6.4, pal.smokedWalnut, false, false, 0.01);
-    boxAt(g0, 6.8, 0.05, 0.08, spec.cx - 6.5, fy0 + 2.88, spec.cz + 5.3, pal.royalBlueLed, false, false);
-    boxAt(g0, 0.14, 2.85, 2.2, spec.cx - 3.3, fy0 + 1.425, spec.cz + 6.4, pal.smokedGlass, false, false);
-    boxAt(g0, 0.16, 2.85, 0.12, spec.cx - 3.3, fy0 + 1.425, spec.cz + 5.3, pal.sovereignBrass, false, false);
-    addZonePlaque(g0, '24/7 Express ATM', 'Biometric Card & Cash Deposit', spec.cx - 6.5, fy0 + 2.6, spec.cz + 5.25, Math.PI);
+    // SW 24/7 Biometric ATM & Digital Concierge Crescent (dx -8.8, -6.8, -4.8, dz +7.4 facing North)
+    boxAt(g0, 6.4, 0.08, 2.0, spec.cx - 6.8, fy0 + 2.86, spec.cz + 7.2, pal.makoreWood, false, false, 0.02);
+    boxAt(g0, 6.4, 0.04, 0.06, spec.cx - 6.8, fy0 + 2.89, spec.cz + 6.2, pal.warmCoveLed, false, false);
+    boxAt(g0, 0.12, 2.86, 2.0, spec.cx - 3.3, fy0 + 1.43, spec.cz + 7.2, pal.frostedLoomGlass, false, false);
+    boxAt(g0, 0.14, 2.86, 0.12, spec.cx - 3.3, fy0 + 1.43, spec.cz + 6.2, pal.champagneBronze, false, false);
+    addZonePlaque(g0, '24/7 Biometric ATM', 'Cash, Cheque & Card Concierge', spec.cx - 6.8, fy0 + 2.58, spec.cz + 6.12, Math.PI);
 
-    [-8.5, -6.5, -4.5].forEach((ox) => {
+    [-8.8, -6.8, -4.8].forEach((ox) => {
       const kg = new THREE.Group();
-      kg.position.set(spec.cx + ox, fy0, spec.cz + 6.2);
+      kg.position.set(spec.cx + ox, fy0, spec.cz + 7.4);
       kg.rotation.y = Math.PI;
-      boxAt(kg, 0.92, 1.98, 0.78, 0, 0.99, 0, pal.neroGoldMarble, true, true, 0.04);
-      boxAt(kg, 0.86, 1.9, 0.06, 0, 0.99, 0.37, pal.sovereignBrass, false, false, 0.015);
-      boxAt(kg, 0.72, 0.22, 0.04, 0, 1.72, 0.4, pal.royalBlueLed, false, false);
-      boxAt(kg, 0.56, 0.44, 0.04, 0, 1.32, 0.41, new THREE.MeshBasicMaterial({ color: 0x1d4ed8 }), false, false);
-      boxAt(kg, 0.64, 0.08, 0.24, 0, 0.96, 0.44, pal.titaniumVault, false, false, 0.01);
+      boxAt(kg, 0.92, 1.98, 0.76, 0, 0.99, 0, pal.kilimanjaroSlate, true, true, 0.04);
+      boxAt(kg, 0.86, 1.9, 0.06, 0, 0.99, 0.36, pal.champagneBronze, false, false, 0.015);
+      boxAt(kg, 0.72, 0.18, 0.04, 0, 1.74, 0.39, pal.tealSignalLed, false, false);
+      boxAt(kg, 0.56, 0.44, 0.04, 0, 1.32, 0.4, new THREE.MeshBasicMaterial({ color: 0x0f766e }), false, false);
+      boxAt(kg, 0.64, 0.08, 0.24, 0, 0.96, 0.43, pal.bullionVaultSteel, false, false, 0.01);
       g0.add(kg);
     });
 
-    // Bi-Level Curved-Shoulder Travertine & Walnut Teller Counter (dx -2.4, dz -3.24..-3.98)
-    boxAt(g0, 9.2, 1.1, 0.54, spec.cx - 2.4, fy0 + 0.55, spec.cz - 3.24, pal.flutedTravertine, true, true, 0.03);
-    boxAt(g0, 9.45, 0.08, 0.66, spec.cx - 2.4, fy0 + 1.14, spec.cz - 3.24, pal.smokedWalnut, false, true, 0.02);
-    boxAt(g0, 9.48, 0.03, 0.68, spec.cx - 2.4, fy0 + 1.09, spec.cz - 3.24, pal.sovereignBrass, false, false);
-    boxAt(g0, 8.8, 0.74, 0.05, spec.cx - 2.4, fy0 + 1.55, spec.cz - 2.98, pal.frostedSecurityGlass, false, false);
-    // Brass acoustic speak-through transom bars
-    [-6.6, -4.6, -2.4, -0.2, 1.8].forEach((bx) => {
-      boxAt(g0, 0.06, 0.78, 0.08, spec.cx + bx, fy0 + 1.55, spec.cz - 2.98, pal.sovereignBrass, false, false);
+    // North-Center Sculpted Fluted-Makore & Rift-Limestone Teller Counter (dx -0.3, dz -4.8..-5.6)
+    boxAt(g0, 8.6, 1.1, 0.54, spec.cx - 0.3, fy0 + 0.55, spec.cz - 4.8, pal.flutedLimestone, true, true, 0.03);
+    boxAt(g0, 8.85, 0.08, 0.66, spec.cx - 0.3, fy0 + 1.14, spec.cz - 4.8, pal.makoreWood, false, true, 0.02);
+    boxAt(g0, 8.88, 0.03, 0.68, spec.cx - 0.3, fy0 + 1.09, spec.cz - 4.8, pal.champagneBronze, false, false);
+    boxAt(g0, 8.2, 0.74, 0.05, spec.cx - 0.3, fy0 + 1.55, spec.cz - 4.54, pal.clearArmorGlass, false, false);
+    [-4.3, -2.4, -0.3, 1.8, 3.7].forEach((bx) => {
+      boxAt(g0, 0.06, 0.78, 0.08, spec.cx + bx, fy0 + 1.55, spec.cz - 4.54, pal.champagneBronze, false, false);
     });
-    boxAt(g0, 9.2, 0.06, 0.94, spec.cx - 2.4, fy0 + 0.75, spec.cz - 3.98, pal.smokedWalnut, true, true, 0.015);
-    [-6.8, -2.4, 2.0].forEach((lx) => {
-      boxAt(g0, 0.14, 0.72, 0.78, spec.cx + lx, fy0 + 0.36, spec.cz - 3.92, pal.ivoryTravertine, true, true, 0.01);
+    // Rear teller work-deck at dz -5.6
+    boxAt(g0, 8.6, 0.06, 0.92, spec.cx - 0.3, fy0 + 0.75, spec.cz - 5.6, pal.makoreWood, true, true, 0.015);
+    [-4.3, -0.3, 3.7].forEach((lx) => {
+      boxAt(g0, 0.14, 0.72, 0.78, spec.cx + lx, fy0 + 0.36, spec.cz - 5.54, pal.flutedLimestone, true, true, 0.01);
     });
-    [-4.6, -0.2].forEach((ox, i) => {
-      buildBankersLamp(g0, pal, spec.cx + ox + 0.55, fy0 + 0.78, spec.cz - 3.72, 0);
-      registerChair(0, spec.cx + ox, fy0, spec.cz - 4.75, 0, i === 0 ? 1 : -1);
+    [-2.4, 1.8].forEach((ox, i) => {
+      registerChair(0, spec.cx + ox, fy0, spec.cz - 6.4, 0, i === 0 ? 1 : -1);
       registerMonitor(
         0,
         monIdx++,
-        [spec.cx + ox, fy0 + 0.78, spec.cz - 4.02],
+        [spec.cx + ox, fy0 + 0.78, spec.cz - 5.65],
         Math.PI,
         spec.cx + ox,
-        spec.cz - 4.75,
+        spec.cz - 6.4,
         `Branch Teller ${i + 1}`,
         'Retail Banking & RTGS Hall'
       );
     });
 
-    // Queue Velvet Stanchions flanking client lane (leaves bank-client-1 at dx -2.4, dz -1.8 open!)
-    [-4.2, -0.6].forEach((sx) => {
-      [-2.1, -0.6].forEach((sz) => {
-        cylAt(g0, 0.14, 0.16, 0.04, spec.cx + sx, fy0 + 0.02, spec.cz + sz, pal.sovereignBrass, false, true, 12);
-        cylAt(g0, 0.028, 0.028, 0.92, spec.cx + sx, fy0 + 0.48, spec.cz + sz, pal.sovereignBrass, true, false, 10);
-        cylAt(g0, 0.045, 0.045, 0.06, spec.cx + sx, fy0 + 0.96, spec.cz + sz, pal.sovereignBrass, false, false, 12);
+    // Bronze & Savanna-Teal Queue Stanchions flanking bank-client-1 at (cx - 0.3, cz - 2.6)
+    [-1.8, 1.2].forEach((sx) => {
+      [-3.5, -1.9].forEach((sz) => {
+        cylAt(g0, 0.14, 0.16, 0.04, spec.cx + sx, fy0 + 0.02, spec.cz + sz, pal.champagneBronze, false, true, 12);
+        cylAt(g0, 0.028, 0.028, 0.92, spec.cx + sx, fy0 + 0.48, spec.cz + sz, pal.champagneBronze, true, false, 10);
+        cylAt(g0, 0.045, 0.045, 0.06, spec.cx + sx, fy0 + 0.96, spec.cz + sz, pal.champagneBronze, false, false, 12);
       });
-      cylAt(g0, 0.022, 0.022, 1.5, spec.cx + sx, fy0 + 0.84, spec.cz - 1.35, pal.midnightNavyFelt, false, false, 8).rotation.x = Math.PI / 2;
+      cylAt(g0, 0.022, 0.022, 1.6, spec.cx + sx, fy0 + 0.84, spec.cz - 2.7, pal.savannaTealVelvet, false, false, 8).rotation.x = Math.PI / 2;
     });
 
-    // Live Interbank FX & CBK Treasury Wall Screen (North Wall behind tellers)
+    // Live Interbank FX & CBK Rates Wall Screen (North Wall behind tellers)
     const fxBoard = createCustomBoardScreen(screenReg, 680, 240, (g, w, h, t) => {
-      g.fillStyle = '#070e1b';
+      g.fillStyle = '#121820';
       g.fillRect(0, 0, w, h);
-      g.fillStyle = '#14294a';
+      g.fillStyle = '#134e5e';
       g.fillRect(0, 0, w, 38);
-      g.fillStyle = '#d9ad58';
+      g.fillStyle = '#c9a96e';
       g.fillRect(0, 38, w, 3);
-      g.fillStyle = '#f8fafc';
+      g.fillStyle = '#f5efe2';
       g.font = '800 18px "Plus Jakarta Sans", sans-serif';
       g.textAlign = 'left';
       g.textBaseline = 'middle';
@@ -778,422 +905,452 @@ export function buildNairobiTrustBankWholeBuilding(ctx: BankBuildContext) {
       ];
       rows.forEach((r, i) => {
         const y = 52 + i * 44;
-        g.fillStyle = i % 2 === 0 ? 'rgba(59,130,246,0.12)' : 'rgba(217,173,88,0.08)';
+        g.fillStyle = i % 2 === 0 ? 'rgba(19,78,94,0.28)' : 'rgba(201,169,110,0.12)';
         rr(g, 16, y, w - 32, 36, 5);
         g.fill();
         g.fillStyle = '#f8fafc';
         g.font = '700 16px "IBM Plex Mono", monospace';
         g.fillText(r[0], 28, y + 18);
-        g.fillStyle = '#93c5fd';
+        g.fillStyle = '#5eead4';
         g.fillText(r[1], 235, y + 18);
-        g.fillStyle = '#d9ad58';
+        g.fillStyle = '#e5c583';
         g.fillText(r[2], 395, y + 18);
         g.fillStyle = r[3].startsWith('-') ? '#fca5a5' : '#4ade80';
         g.fillText(r[3], w - 102, y + 18);
       });
       void t;
     });
-    boxAt(g0, 6.0, 2.3, 0.16, spec.cx - 3.6, fy0 + 2.35, spec.cz - 9.72, pal.smokedWalnut, false, false, 0.02);
-    boxAt(g0, 5.78, 2.1, 0.08, spec.cx - 3.6, fy0 + 2.35, spec.cz - 9.65, pal.sovereignBrass, false, false);
-    const fxMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 1.95), fxBoard.mat);
-    fxMesh.position.set(spec.cx - 3.6, fy0 + 2.35, spec.cz - 9.6);
+    boxAt(g0, 6.2, 2.3, 0.16, spec.cx - 0.3, fy0 + 2.35, spec.cz - 9.7, pal.makoreWood, false, false, 0.02);
+    boxAt(g0, 5.95, 2.1, 0.08, spec.cx - 0.3, fy0 + 2.35, spec.cz - 9.63, pal.champagneBronze, false, false);
+    const fxMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.75, 1.95), fxBoard.mat);
+    fxMesh.position.set(spec.cx - 0.3, fy0 + 2.35, spec.cz - 9.58);
     g0.add(fxMesh);
     fxBoard.setMesh(fxMesh);
 
-    // HERO 12-PART EXPOSED TITANIUM & BRASS CIRCULAR BIOMETRIC VAULT DOOR (NE Rear Wall dx +6.2, dz -9.45)
-    const vx = spec.cx + 6.2;
-    const vz = spec.cz - 9.45;
-    boxAt(g0, 4.3, 3.45, 0.65, vx, fy0 + 1.72, vz, pal.ivoryTravertine, true, true, 0.05);
-    boxAt(g0, 3.85, 3.1, 0.5, vx, fy0 + 1.64, vz + 0.12, pal.neroGoldMarble, true, true, 0.04);
-    const vaultBezel = cylAt(g0, 1.44, 1.44, 0.24, vx, fy0 + 1.62, vz + 0.38, pal.sovereignBrass, true, false, 32);
+    // NE Open-Gear Cobalt-Steel & Champagne-Bronze Biometric Vault Portal (dx +7.2, dz -9.2)
+    const vx = spec.cx + 7.2;
+    const vz = spec.cz - 9.2;
+    boxAt(g0, 4.4, 3.48, 0.66, vx, fy0 + 1.74, vz, pal.flutedLimestone, true, true, 0.05);
+    boxAt(g0, 3.9, 3.12, 0.5, vx, fy0 + 1.64, vz + 0.14, pal.kilimanjaroSlate, true, true, 0.04);
+    const vaultBezel = cylAt(g0, 1.44, 1.44, 0.24, vx, fy0 + 1.62, vz + 0.4, pal.champagneBronze, true, false, 32);
     vaultBezel.rotation.x = Math.PI / 2;
-    const vaultDoor = cylAt(g0, 1.32, 1.32, 0.34, vx, fy0 + 1.62, vz + 0.42, pal.titaniumVault, true, false, 32);
+    const vaultDoor = cylAt(g0, 1.32, 1.32, 0.32, vx, fy0 + 1.62, vz + 0.44, pal.bullionVaultSteel, true, false, 32);
     vaultDoor.rotation.x = Math.PI / 2;
-    // 6 heavy locking titanium bolts radiating from door perimeter
-    for (let b = 0; b < 6; b++) {
-      const ba = (b * Math.PI) / 3;
-      const bolt = cylAt(g0, 0.08, 0.08, 0.36, vx + Math.cos(ba) * 1.18, fy0 + 1.62 + Math.sin(ba) * 1.18, vz + 0.56, pal.titaniumVault, false, false, 12);
+    // 8 radial steel locking bolts
+    for (let b = 0; b < 8; b++) {
+      const ba = (b * Math.PI) / 4;
+      const bolt = cylAt(g0, 0.075, 0.075, 0.34, vx + Math.cos(ba) * 1.18, fy0 + 1.62 + Math.sin(ba) * 1.18, vz + 0.56, pal.bullionVaultSteel, false, false, 12);
       bolt.rotation.z = ba + Math.PI / 2;
     }
-    // Dual articulated hinge crane on right side
-    boxAt(g0, 0.22, 2.2, 0.26, vx + 1.48, fy0 + 1.62, vz + 0.44, pal.titaniumVault, true, false, 0.02);
-    boxAt(g0, 0.9, 0.14, 0.14, vx + 1.05, fy0 + 2.25, vz + 0.54, pal.sovereignBrass, false, false);
-    boxAt(g0, 0.9, 0.14, 0.14, vx + 1.05, fy0 + 0.98, vz + 0.54, pal.sovereignBrass, false, false);
-    // Rotating Sovereign Brass 3-Spoke Capstan Wheel + Time-Lock Glass Drum
-    const capstanGroup = new THREE.Group();
-    capstanGroup.position.set(vx, fy0 + 1.62, vz + 0.64);
-    const wheelRim = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.048, 10, 24), pal.sovereignBrass);
-    capstanGroup.add(wheelRim);
-    for (let s = 0; s < 3; s++) {
-      const spoke = boxAt(capstanGroup, 0.9, 0.06, 0.06, 0, 0, 0, pal.sovereignBrass, false, false);
-      spoke.rotation.z = (s * Math.PI) / 3;
+    // Armored glass window revealing exposed planetary brass gears
+    const gearWindow = cylAt(g0, 0.62, 0.62, 0.08, vx, fy0 + 1.62, vz + 0.6, pal.clearArmorGlass, false, false, 24);
+    gearWindow.rotation.x = Math.PI / 2;
+    const gearRig = new THREE.Group();
+    gearRig.position.set(vx, fy0 + 1.62, vz + 0.66);
+    const wheelRim = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.048, 10, 24), pal.champagneBronze);
+    gearRig.add(wheelRim);
+    for (let s = 0; s < 4; s++) {
+      const spoke = boxAt(gearRig, 0.9, 0.055, 0.055, 0, 0, 0, pal.champagneBronze, false, false);
+      spoke.rotation.z = (s * Math.PI) / 4;
     }
-    cylAt(capstanGroup, 0.18, 0.18, 0.12, 0, 0, 0.02, pal.neroGoldMarble, false, false, 16).rotation.x = Math.PI / 2;
-    g0.add(capstanGroup);
-    rotatingProps.push({ obj: capstanGroup, speed: 0.28, axis: 'z' });
-
-    // Biometric iris scanner pedestals flanking vault
+    cylAt(gearRig, 0.18, 0.18, 0.12, 0, 0, 0.02, pal.kilimanjaroSlate, false, false, 16).rotation.x = Math.PI / 2;
+    g0.add(gearRig);
+    rotatingProps.push({ obj: gearRig, speed: 0.28, axis: 'z' });
+    // Dual biometric iris pedestals flanking vault
     [-1.85, 1.85].forEach((ox) => {
-      cylAt(g0, 0.14, 0.18, 1.32, vx + ox, fy0 + 0.66, vz + 0.85, pal.neroGoldMarble, true, true, 16);
-      boxAt(g0, 0.24, 0.28, 0.16, vx + ox, fy0 + 1.42, vz + 0.85, pal.sovereignBrass, false, false, 0.01);
-      boxAt(g0, 0.16, 0.14, 0.04, vx + ox, fy0 + 1.44, vz + 0.94, pal.royalBlueLed, false, false);
+      cylAt(g0, 0.14, 0.18, 1.32, vx + ox, fy0 + 0.66, vz + 0.85, pal.kilimanjaroSlate, true, true, 16);
+      boxAt(g0, 0.24, 0.28, 0.16, vx + ox, fy0 + 1.42, vz + 0.85, pal.champagneBronze, false, false, 0.01);
+      boxAt(g0, 0.16, 0.14, 0.04, vx + ox, fy0 + 1.44, vz + 0.94, pal.tealSignalLed, false, false);
     });
-    addZonePlaque(g0, 'Treasury Vault I', 'Class-III Time-Lock & Bullion Safe', vx, fy0 + 3.18, vz + 0.42, 0);
+    addZonePlaque(g0, 'Treasury Vault II', 'Planetary Time-Lock & Bullion Safe', vx, fy0 + 3.22, vz + 0.44, 0);
 
-    // Central Waiting Rotunda Lounge (Cognac Chesterfield Bench + Marble Pedestal Table)
-    sofaWide(g0, spec.cx + 1.9, fy0, spec.cz + 4.4, -Math.PI / 2, pal.cognacLeather, M);
-    cylAt(g0, 0.56, 0.56, 0.05, spec.cx + 0.3, fy0 + 0.44, spec.cz + 4.4, pal.neroGoldMarble, true, true, 24);
-    cylAt(g0, 0.07, 0.14, 0.42, spec.cx + 0.3, fy0 + 0.21, spec.cz + 4.4, pal.sovereignBrass, false, false, 14);
-    plant(g0, spec.cx - 9.6, fy0, spec.cz - 8.4, 1.15, 502, M);
-    plant(g0, spec.cx - 9.6, fy0, spec.cz + 1.8, 1.0, 503, M);
+    // Adjacent Bullion Specie Showcase Pedestal (dx +9.1, dz -5.4)
+    cylAt(g0, 0.48, 0.56, 1.02, spec.cx + 9.1, fy0 + 0.51, spec.cz - 5.4, pal.kilimanjaroSlate, true, true, 18);
+    cylAt(g0, 0.5, 0.5, 0.05, spec.cx + 9.1, fy0 + 1.04, spec.cz - 5.4, pal.champagneBronze, false, false, 18);
+    boxAt(g0, 0.14, 0.08, 0.32, spec.cx + 9.0, fy0 + 1.11, spec.cz - 5.4, pal.goldSpecie, true, false, 0.01);
+    boxAt(g0, 0.14, 0.08, 0.32, spec.cx + 9.2, fy0 + 1.11, spec.cz - 5.4, pal.goldSpecie, true, false, 0.01);
+    boxAt(g0, 0.52, 0.34, 0.52, spec.cx + 9.1, fy0 + 1.24, spec.cz - 5.4, pal.clearArmorGlass, false, false);
+
+    // SE Sculpted Curved Savanna-Teal Lobby Banquette & Limestone Table (dx +8.6, dz +6.2)
+    boxAt(g0, 1.05, 0.44, 3.0, spec.cx + 8.9, fy0 + 0.22, spec.cz + 6.2, pal.makoreWood, true, true, 0.04);
+    boxAt(g0, 0.92, 0.14, 2.84, spec.cx + 8.85, fy0 + 0.48, spec.cz + 6.2, pal.savannaTealVelvet, true, true, 0.04);
+    boxAt(g0, 0.24, 0.56, 2.84, spec.cx + 9.3, fy0 + 0.72, spec.cz + 6.2, pal.savannaTealVelvet, true, true, 0.04);
+    cylAt(g0, 0.48, 0.48, 0.05, spec.cx + 7.2, fy0 + 0.46, spec.cz + 6.2, pal.riftLimestone, true, true, 20);
+    cylAt(g0, 0.07, 0.14, 0.44, spec.cx + 7.2, fy0 + 0.22, spec.cz + 6.2, pal.champagneBronze, false, false, 14);
+
+    plant(g0, spec.cx - 9.4, fy0, spec.cz - 8.4, 1.15, 602, M, 'ficus');
+    plant(g0, spec.cx - 9.4, fy0, spec.cz + 3.0, 1.0, 603, M, 'olive');
+    plant(g0, spec.cx + 2.0, fy0, spec.cz + 6.8, 1.05, 604, M, 'ficus');
   }
 
   // ============================================================================
-  // L1 — RETAIL CREDIT, MORTGAGE ATELIER & SME ADVISORY LOUNGE
+  // L1 — DOUBLE-HEIGHT ROTUNDA GALLERY, TRADE CORRIDORS & CRESCENT PODS
   // ============================================================================
   {
     const g1 = levelGroups[1];
     const fy1 = spec.groundY + spec.floorH + 0.12;
 
-    // 2 Private Brass-Framed Glass Mortgage & Credit Suites (dx -10.1..-5.6 and -5.6..-1.1, dz -8.8..-2.2, Open South portals!)
-    const wallH = spec.floorH - 0.55;
-    boxAt(g1, 0.16, wallH, 6.6, spec.cx - 10.1, fy1 + wallH * 0.5, spec.cz - 5.5, pal.smokedGlass, false, false);
-    boxAt(g1, 0.18, wallH, 6.6, spec.cx - 5.6, fy1 + wallH * 0.5, spec.cz - 5.5, pal.smokedGlass, false, false);
-    boxAt(g1, 0.16, wallH, 6.6, spec.cx - 1.1, fy1 + wallH * 0.5, spec.cz - 5.5, pal.smokedGlass, false, false);
-    // Brass vertical mullions
-    [-10.1, -5.6, -1.1].forEach((mx) => {
-      [-8.7, -5.5, -2.3].forEach((mz) => boxAt(g1, 0.2, wallH, 0.12, spec.cx + mx, fy1 + wallH * 0.5, spec.cz + mz, pal.sovereignBrass, false, false));
-    });
-    // South glass front flanking wide open 2.2m portals centered at dx -7.85 & dx -3.35
-    [-9.5, -6.2, -5.0, -1.7].forEach((fx) => {
-      boxAt(g1, 1.15, wallH, 0.14, spec.cx + fx, fy1 + wallH * 0.5, spec.cz - 2.2, pal.frostedSecurityGlass, false, false);
-    });
-    addZonePlaque(g1, 'Mortgage Atelier', 'Home & Commercial Financing', spec.cx - 7.85, fy1 + 2.48, spec.cz - 2.12, 0);
-    addZonePlaque(g1, 'SME Credit Suite', 'Trade & Working Capital', spec.cx - 3.35, fy1 + 2.48, spec.cz - 2.12, 0);
+    // 1. Double-Height Rotunda Balustrade Ring framing (+0.8..+6.8, -1.0..+5.0)
+    const addRotundaRail = (cx: number, cz: number, lx: number, lz: number) => {
+      const isX = lx >= lz;
+      boxAt(g1, lx, 0.14, lz, cx, fy1 + 0.07, cz, pal.flutedLimestone, true, true);
+      boxAt(g1, lx, 0.94, lz, cx, fy1 + 0.61, cz, pal.clearArmorGlass, false, false);
+      boxAt(g1, isX ? lx + 0.08 : 0.09, 0.06, isX ? 0.09 : lz + 0.08, cx, fy1 + 1.09, cz, pal.champagneBronze, false, false, 0.01);
+    };
+    addRotundaRail(spec.cx + 3.8, spec.cz - 1.0, 6.0, 0.08);
+    addRotundaRail(spec.cx + 3.8, spec.cz + 5.0, 6.0, 0.08);
+    addRotundaRail(spec.cx + 0.8, spec.cz + 2.0, 0.08, 6.0);
+    addRotundaRail(spec.cx + 6.8, spec.cz + 2.0, 0.08, 6.0);
+    addZonePlaque(g1, 'Rotunda Overlook', 'Kinetic Astrolabe & Trade Hall', spec.cx + 3.8, fy1 + 0.72, spec.cz + 5.08, 0);
 
-    // Inside Booth 1 & Booth 2: Walnut desks + Advisor chairs (idx 2, 3) + Client armchairs
+    // 2. Open-Plan Makore-Rib Acoustic Crescent Consultation Pods (North Wing: dx -1.6 & +4.4, dz -5.8)
     [
-      { dx: -7.9, role: 'Mortgage Structuring Advisor · L1', zone: 'Mortgage Atelier' },
-      { dx: -3.3, role: 'SME Credit Officer · L1', zone: 'SME Credit Suite' },
-    ].forEach((b, bi) => {
-      buildExecutiveDesk(g1, pal, spec.cx + b.dx, fy1, spec.cz - 5.6, 2.3, 1.0, 0, true);
-      registerChair(1, spec.cx + b.dx, fy1, spec.cz - 6.6, 0, bi % 2 === 0 ? 1 : -1);
+      { dx: -1.6, role: 'Trade Finance Structuring Lead · L1', zone: 'Trade Finance Pavilion' },
+      { dx: 4.4, role: 'Corridor LC Officer · L1', zone: 'Export Letters of Credit' },
+    ].forEach((pod, pi) => {
+      buildAcousticCrescentPod(g1, pal, spec.cx + pod.dx, fy1, spec.cz - 5.4, 2.35, 2.75);
+      buildReserveDesk(g1, pal, spec.cx + pod.dx, fy1, spec.cz - 5.6, 2.3, 1.0, 0, true);
+      registerChair(1, spec.cx + pod.dx, fy1, spec.cz - 6.6, 0, pi % 2 === 0 ? 1 : -1);
       registerMonitor(
         1,
         monIdx++,
-        [spec.cx + b.dx, fy1 + 0.78, spec.cz - 5.65],
+        [spec.cx + pod.dx, fy1 + 0.78, spec.cz - 5.65],
         Math.PI,
-        spec.cx + b.dx,
+        spec.cx + pod.dx,
         spec.cz - 6.6,
-        b.role,
-        b.zone
+        pod.role,
+        pod.zone
       );
-      armchair(g1, spec.cx + b.dx - 0.65, fy1, spec.cz - 4.15, Math.PI, pal.cognacLeather, M);
-      armchair(g1, spec.cx + b.dx + 0.65, fy1, spec.cz - 4.15, Math.PI, pal.cognacLeather, M);
+      armchair(g1, spec.cx + pod.dx - 0.65, fy1, spec.cz - 4.1, Math.PI, pal.savannaTealVelvet, M);
+      armchair(g1, spec.cx + pod.dx + 0.65, fy1, spec.cz - 4.1, Math.PI, pal.savannaTealVelvet, M);
     });
+    addZonePlaque(g1, 'Trade Finance Pods', 'Documentary Credits & Export Finance', spec.cx + 1.4, fy1 + 2.95, spec.cz - 3.3, 0);
 
-    // Illuminated Architectural Property Financing Scale-Model Vitrine Table (SW dx -5.8, dz +5.2)
-    boxAt(g1, 3.6, 0.86, 2.2, spec.cx - 5.8, fy1 + 0.43, spec.cz + 5.2, pal.ivoryTravertine, true, true, 0.03);
-    boxAt(g1, 3.66, 0.08, 2.26, spec.cx - 5.8, fy1 + 0.89, spec.cz + 5.2, pal.sovereignBrass, false, false, 0.015);
-    boxAt(g1, 3.3, 0.04, 1.9, spec.cx - 5.8, fy1 + 0.94, spec.cz + 5.2, pal.neroGoldMarble, false, true);
-    // 6 miniature financed skyscrapers on city grid
-    [
-      [-6.8, 4.9, 0.56, 0.56, 0.62],
-      [-5.8, 4.8, 0.64, 0.64, 0.92],
-      [-4.8, 5.0, 0.52, 0.52, 0.54],
-      [-6.5, 5.6, 0.48, 0.48, 0.42],
-      [-5.6, 5.6, 0.54, 0.54, 0.74],
-      [-4.6, 5.6, 0.46, 0.46, 0.48],
-    ].forEach(([tx, tz, tw, td, th], ti) => {
-      boxAt(g1, tw, th, td, spec.cx + tx, fy1 + 0.96 + th * 0.5, spec.cz + tz, ti % 2 === 0 ? pal.sovereignBrass : pal.ivoryTravertine, true, false, 0.01);
-      boxAt(g1, tw * 0.85, 0.04, td * 0.85, spec.cx + tx, fy1 + 0.98 + th, spec.cz + tz, pal.royalBlueLed, false, false);
-    });
-    boxAt(g1, 3.4, 0.62, 2.0, spec.cx - 5.8, fy1 + 1.26, spec.cz + 5.2, pal.smokedGlass, false, false);
-
-    // Retail Relationship Manager Desk (South-Center dx +0.6, dz +5.4)
-    buildExecutiveDesk(g1, pal, spec.cx + 0.6, fy1, spec.cz + 5.4, 2.4, 1.0, Math.PI, true);
-    registerChair(1, spec.cx + 0.6, fy1, spec.cz + 6.4, Math.PI, 1);
-    registerMonitor(
-      1,
-      monIdx++,
-      [spec.cx + 0.6, fy1 + 0.78, spec.cz + 5.35],
-      0,
-      spec.cx + 0.6,
-      spec.cz + 6.4,
-      'Retail Relationship Manager · L1',
-      'Retail Credit & Advisory'
-    );
-
-    // Live Mortgage & SME Credit Rate Wall Display (West Wall)
-    const creditBoard = createCustomBoardScreen(screenReg, 540, 220, (g, w, h, t) => {
-      g.fillStyle = '#0a1220';
+    // 3. SW East African Trade Corridor Wall Relief & Digital Briefing Console (Original!)
+    const tradeBoard = createCustomBoardScreen(screenReg, 580, 240, (g, w, h, t) => {
+      g.fillStyle = '#121820';
       g.fillRect(0, 0, w, h);
-      g.fillStyle = '#d9ad58';
+      g.fillStyle = '#c9a96e';
       g.fillRect(0, 0, w, 34);
-      g.fillStyle = '#09111e';
+      g.fillStyle = '#121820';
       g.font = '800 17px "Plus Jakarta Sans", sans-serif';
       g.textAlign = 'left';
       g.textBaseline = 'middle';
-      g.fillText('MORTGAGE & SME CAPITAL BENCHMARKS', 16, 17);
-      const items = [
-        ['PRIME MORTGAGE KES', '12.90% p.a.', 'UP TO 25 YRS'],
-        ['USD DIASPORA HOME', '8.25% p.a.', '90% LTV'],
-        ['SME GREEN CAPEX', '10.40% p.a.', 'FAST-TRACK 72H'],
+      g.fillText('EAST AFRICA EXPORT CORRIDOR & TRADE LC TELEMETRY', 16, 17);
+      const corridors = [
+        ['MOMBASA PORT -> KAMPALA', 'USD 42.8M', '18 ACTIVE LCS'],
+        ['NAIROBI -> KIGALI SGR', 'USD 26.4M', '94% CLEARED'],
+        ['DAR -> NAIROBI TEA/AGRI', 'USD 19.1M', '72H DISBURSE'],
       ];
-      items.forEach((it, i) => {
-        const y = 52 + i * 50;
-        g.fillStyle = 'rgba(217, 173, 88, 0.12)';
-        rr(g, 16, y, w - 32, 42, 6);
+      corridors.forEach((it, i) => {
+        const y = 52 + i * 54;
+        g.fillStyle = i === Math.floor(t / 2.5) % 3 ? 'rgba(19,78,94,0.45)' : 'rgba(201,169,110,0.12)';
+        rr(g, 16, y, w - 32, 44, 6);
         g.fill();
         g.fillStyle = '#f8fafc';
         g.font = '700 15px "IBM Plex Mono", monospace';
-        g.fillText(it[0], 26, y + 21);
-        g.fillStyle = '#60a5fa';
-        g.fillText(it[1], 240, y + 21);
-        g.fillStyle = '#d9ad58';
-        g.fillText(it[2], 385, y + 21);
+        g.fillText(it[0], 26, y + 22);
+        g.fillStyle = '#5eead4';
+        g.fillText(it[1], 295, y + 22);
+        g.fillStyle = '#e5c583';
+        g.fillText(it[2], 425, y + 22);
       });
-      void t;
     });
-    boxAt(g1, 0.14, 2.0, 4.4, spec.cx - 10.45, fy1 + 2.25, spec.cz + 5.2, pal.smokedWalnut, false, false);
-    const crMesh = new THREE.Mesh(new THREE.PlaneGeometry(4.1, 1.72), creditBoard.mat);
-    crMesh.rotation.y = Math.PI / 2;
-    crMesh.position.set(spec.cx - 10.36, fy1 + 2.25, spec.cz + 5.2);
-    g1.add(crMesh);
-    creditBoard.setMesh(crMesh);
+    boxAt(g1, 0.14, 2.05, 4.6, spec.cx - 10.45, fy1 + 2.25, spec.cz + 5.8, pal.makoreWood, false, false);
+    const trMesh = new THREE.Mesh(new THREE.PlaneGeometry(4.3, 1.75), tradeBoard.mat);
+    trMesh.rotation.y = Math.PI / 2;
+    trMesh.position.set(spec.cx - 10.35, fy1 + 2.25, spec.cz + 5.8);
+    g1.add(trMesh);
+    tradeBoard.setMesh(trMesh);
 
-    // NE Hospitality Espresso & Signing Lounge (dx +3.2..+9.4, dz -8.8..-3.8)
-    boxAt(g1, 3.8, 1.04, 1.0, spec.cx + 7.2, fy1 + 0.52, spec.cz - 8.4, pal.neroGoldMarble, true, true, 0.02);
-    boxAt(g1, 3.88, 0.07, 1.08, spec.cx + 7.2, fy1 + 1.06, spec.cz - 8.4, pal.sovereignBrass, false, false);
-    boxAt(g1, 0.65, 0.52, 0.45, spec.cx + 8.0, fy1 + 1.34, spec.cz - 8.4, pal.titaniumVault, true, false, 0.02);
-    sofaWide(g1, spec.cx + 6.4, fy1, spec.cz - 4.8, 0, pal.cognacLeather, M);
-    plant(g1, spec.cx + 9.4, fy1, spec.cz - 8.2, 1.0, 511, M);
-    plant(g1, spec.cx - 9.6, fy1, spec.cz + 8.2, 1.0, 512, M);
+    // Sculpted Copper & Slate Corridor Table (dx -6.2, dz +5.8 — ZERO miniature buildings!)
+    boxAt(g1, 2.8, 0.82, 1.6, spec.cx - 6.2, fy1 + 0.41, spec.cz + 5.8, pal.flutedLimestone, true, true, 0.03);
+    boxAt(g1, 2.92, 0.07, 1.72, spec.cx - 6.2, fy1 + 0.85, spec.cz + 5.8, pal.kilimanjaroSlate, true, true, 0.015);
+    // Bronze corridor node pylons connected by copper trade rails
+    [
+      [-0.9, -0.35],
+      [-0.1, 0.12],
+      [0.85, 0.4],
+    ].forEach(([nx, nz]) => {
+      cylAt(g1, 0.06, 0.08, 0.18, spec.cx - 6.2 + nx, fy1 + 0.98, spec.cz + 5.8 + nz, pal.banknoteCopper, false, false, 12);
+      cylAt(g1, 0.04, 0.04, 0.03, spec.cx - 6.2 + nx, fy1 + 1.09, spec.cz + 5.8 + nz, pal.tealSignalLed, false, false, 12);
+    });
+    boxAt(g1, 1.8, 0.03, 0.04, spec.cx - 6.2, fy1 + 0.92, spec.cz + 5.8, pal.champagneBronze, false, false);
+
+    // South-Center Diaspora & Commercial Advisory Desk (dx -2.2, dz +6.2)
+    buildReserveDesk(g1, pal, spec.cx - 2.2, fy1, spec.cz + 6.2, 2.4, 1.0, Math.PI, true);
+    registerChair(1, spec.cx - 2.2, fy1, spec.cz + 7.2, Math.PI, 1);
+    registerMonitor(
+      1,
+      monIdx++,
+      [spec.cx - 2.2, fy1 + 0.78, spec.cz + 6.15],
+      0,
+      spec.cx - 2.2,
+      spec.cz + 7.2,
+      'Diaspora & Commercial Advisor · L1',
+      'Trade & Commercial Advisory'
+    );
+
+    // East Gallery Specimens & Seating
+    plant(g1, spec.cx + 9.2, fy1, spec.cz - 8.2, 1.1, 611, M, 'olive');
+    plant(g1, spec.cx - 9.4, fy1, spec.cz - 8.2, 1.05, 612, M, 'ficus');
+    plant(g1, spec.cx + 9.2, fy1, spec.cz + 7.8, 1.05, 613, M, 'olive');
   }
 
   // ============================================================================
-  // L2 — INSTITUTIONAL FX TREASURY & SOVEREIGN BOND DEALING ROOM
+  // L2 — CAPITAL MARKETS & CURVED HORSESHOE FX DEALING AMPHITHEATER
   // ============================================================================
   {
     const g2 = levelGroups[2];
     const fy2 = spec.groundY + 2 * spec.floorH + 0.12;
     const ceilY2 = spec.groundY + 2 * spec.floorH + spec.floorH - 0.14;
 
-    // Suspended Overhead Acoustic Walnut & Brass Dealing Ticker Canopy
-    boxAt(g2, 7.6, 0.42, 0.36, spec.cx - 4.2, ceilY2 - 0.58, spec.cz - 0.4, pal.smokedWalnut, false, false, 0.02);
-    boxAt(g2, 7.4, 0.08, 0.4, spec.cx - 4.2, ceilY2 - 0.78, spec.cz - 0.4, pal.royalBlueLed, false, false);
+    // Circular Acoustic Halo Canopy suspended above the Horseshoe Dealing Floor (cx + 3.2, cz - 0.8)
+    const canopyRing = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.12, 10, 36), pal.makoreWood);
+    canopyRing.rotation.x = Math.PI / 2;
+    canopyRing.position.set(spec.cx + 3.2, ceilY2 - 0.45, spec.cz - 0.8);
+    g2.add(canopyRing);
+    const canopyLed = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.035, 8, 36), pal.cobaltLedgerLed);
+    canopyLed.rotation.x = Math.PI / 2;
+    canopyLed.position.set(spec.cx + 3.2, ceilY2 - 0.56, spec.cz - 0.8);
+    g2.add(canopyLed);
 
-    // Dual Institutional Curved-Edge Multi-Screen Dealing Consoles
-    [
-      { z: -3.6, seatZ: -4.7, rotChair: 0, rotMon: Math.PI, roles: ['Lead FX Spot Trader · L2', 'Money Markets Dealer · L2'] },
-      { z: 2.8, seatZ: 3.9, rotChair: Math.PI, rotMon: 0, roles: ['Sovereign Bond Strategist · L2', 'Treasury Liquidity Analyst · L2'] },
-    ].forEach((row, ri) => {
-      boxAt(g2, 7.2, 0.76, 1.18, spec.cx - 4.2, fy2 + 0.38, spec.cz + row.z, pal.midnightNavyFelt, true, true, 0.02);
-      boxAt(g2, 7.4, 0.07, 1.28, spec.cx - 4.2, fy2 + 0.78, spec.cz + row.z, pal.smokedWalnut, true, true, 0.015);
-      boxAt(g2, 7.44, 0.03, 1.3, spec.cx - 4.2, fy2 + 0.73, spec.cz + row.z, pal.sovereignBrass, false, false);
-      boxAt(g2, 6.8, 0.28, 0.06, spec.cx - 4.2, fy2 + 0.94, spec.cz + row.z, pal.sovereignBrass, false, false);
+    // Center Sculpted Sovereign Yield Totem Pillar inside Horseshoe (cx + 3.2, cz - 0.8)
+    cylAt(g2, 0.58, 0.66, 0.28, spec.cx + 3.2, fy2 + 0.14, spec.cz - 0.8, pal.kilimanjaroSlate, true, true, 20);
+    cylAt(g2, 0.26, 0.34, 2.35, spec.cx + 3.2, fy2 + 1.45, spec.cz - 0.8, pal.flutedLimestone, true, false, 18);
+    const yieldRing = new THREE.Mesh(new THREE.TorusGeometry(0.54, 0.04, 8, 28), pal.champagneBronze);
+    yieldRing.rotation.x = Math.PI / 2;
+    yieldRing.position.set(spec.cx + 3.2, fy2 + 2.25, spec.cz - 0.8);
+    g2.add(yieldRing);
+    rotatingProps.push({ obj: yieldRing, speed: 0.35, axis: 'y' });
 
-      [-6.2, -2.2].forEach((dx, ci) => {
-        buildBankersLamp(g2, pal, spec.cx + dx + 0.72, fy2 + 0.82, spec.cz + row.z, row.rotChair);
-        registerChair(2, spec.cx + dx, fy2, spec.cz + row.seatZ, row.rotChair, ci === 0 ? 1 : -1);
-        registerMonitor(
-          2,
-          monIdx++,
-          [spec.cx + dx, fy2 + 0.82, spec.cz + row.z + (ri === 0 ? -0.16 : 0.16)],
-          row.rotMon,
-          spec.cx + dx,
-          spec.cz + row.seatZ,
-          row.roles[ci],
-          'FX Treasury & Bond Dealing Room'
-        );
-      });
+    // 4 Radial Dealing Consoles arranged in Horseshoe Arc centered at (cx + 3.2, cz - 0.8)
+    const hx = spec.cx + 3.2;
+    const hz = spec.cz - 0.8;
+    const horseshoeAngles = [
+      { a: -0.9, role: 'Lead FX Spot Trader · L2' },
+      { a: -0.3, role: 'Money Markets Dealer · L2' },
+      { a: 0.3, role: 'Sovereign Bond Strategist · L2' },
+      { a: 0.9, role: 'Treasury Liquidity Analyst · L2' },
+    ];
+    horseshoeAngles.forEach((h, hi) => {
+      const rDesk = 3.45;
+      const rChair = 2.45;
+      const dx = hx + Math.sin(h.a) * rDesk;
+      const dz = hz - Math.cos(h.a) * rDesk;
+      const chX = hx + Math.sin(h.a) * rChair;
+      const chZ = hz - Math.cos(h.a) * rChair;
+      const monX = hx + Math.sin(h.a) * (rDesk - 0.16);
+      const monZ = hz - Math.cos(h.a) * (rDesk - 0.16);
+
+      const deskGrp = new THREE.Group();
+      deskGrp.position.set(dx, fy2, dz);
+      deskGrp.rotation.y = -h.a;
+      boxAt(deskGrp, 2.05, 0.74, 0.96, 0, 0.37, 0, pal.kilimanjaroSlate, true, true, 0.02);
+      boxAt(deskGrp, 2.15, 0.06, 1.04, 0, 0.76, 0, pal.makoreWood, true, true, 0.015);
+      boxAt(deskGrp, 2.18, 0.03, 1.06, 0, 0.71, 0, pal.champagneBronze, false, false);
+      boxAt(deskGrp, 1.8, 0.24, 0.05, 0, 0.9, -0.4, pal.bronzeTintedGlass, false, false);
+      g2.add(deskGrp);
+
+      registerChair(2, chX, fy2, chZ, Math.PI - h.a, hi % 2 === 0 ? 1 : -1);
+      registerMonitor(
+        2,
+        monIdx++,
+        [monX, fy2 + 0.79, monZ],
+        -h.a,
+        chX,
+        chZ,
+        h.role,
+        'FX & Sovereign Yield Horseshoe'
+      );
     });
 
-    // Giant Live CBK T-Bill Auction, SOFR & East Africa Yield Wall Display (West Wall)
-    const yieldBoard = createCustomBoardScreen(screenReg, 680, 260, (g, w, h, t) => {
-      g.fillStyle = '#070f1d';
+    // Panoramic 3-Bay Capital Markets & CBK T-Bill Telemetry Wall along North Wall (cx + 2.8, cz - 9.4)
+    const bondBoard = createCustomBoardScreen(screenReg, 720, 260, (g, w, h, t) => {
+      g.fillStyle = '#0d141d';
       g.fillRect(0, 0, w, h);
-      g.fillStyle = '#1e3a8a';
+      g.fillStyle = '#c9a96e';
       g.fillRect(0, 0, w, 36);
-      g.fillStyle = '#f8fafc';
+      g.fillStyle = '#0d141d';
       g.font = '800 18px "Plus Jakarta Sans", sans-serif';
       g.textAlign = 'left';
       g.textBaseline = 'middle';
-      g.fillText('KENYA SOVEREIGN BOND & EAST AFRICA FX TELEMETRY', 18, 18);
-      // Animated yield curve bars
-      const tenors = ['91D', '182D', '364D', '2YR', '5YR', '10YR', '15YR'];
-      const vals = [15.4, 15.85, 16.25, 16.9, 17.35, 17.8, 18.1];
-      tenors.forEach((ten, i) => {
-        const bx = 34 + i * 90;
-        const bh = 45 + (vals[i] - 14) * 26 + Math.sin(t * 0.9 + i) * 3;
-        g.fillStyle = '#3b82f6';
-        rr(g, bx, h - 42 - bh, 52, bh, 4);
+      g.fillText('SOVEREIGN BOND AUCTION & EAC FX LIQUIDITY MONITOR', 18, 18);
+      const bars = [0.68, 0.78, 0.85, 0.92, 0.88, 0.94, 0.81];
+      const lbls = ['91D', '182D', '364D', '2Y IFB', '5Y FXD', '10Y FXD', 'EUROBOND'];
+      bars.forEach((b, i) => {
+        const bx = 42 + i * 94;
+        const wave = 0.04 * Math.sin(t * 2 + i);
+        const bh = (b + wave) * 145;
+        g.fillStyle = i % 2 === 0 ? '#38bdf8' : '#2dd4bf';
+        rr(g, bx, h - 42 - bh, 52, bh, 5);
         g.fill();
-        g.fillStyle = '#d9ad58';
+        g.fillStyle = '#e2e8f0';
         g.font = '700 13px "IBM Plex Mono", monospace';
-        g.fillText(`${vals[i].toFixed(2)}%`, bx, h - 50 - bh);
-        g.fillStyle = '#cbd5e1';
-        g.fillText(ten, bx + 8, h - 22);
+        g.fillText(lbls[i], bx + 4, h - 22);
       });
     });
-    boxAt(g2, 0.16, 2.4, 5.8, spec.cx - 10.45, fy2 + 2.2, spec.cz - 0.4, pal.smokedWalnut, false, false, 0.02);
-    const yMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 2.15), yieldBoard.mat);
-    yMesh.rotation.y = Math.PI / 2;
-    yMesh.position.set(spec.cx - 10.35, fy2 + 2.2, spec.cz - 0.4);
-    g2.add(yMesh);
-    yieldBoard.setMesh(yMesh);
-    addZonePlaque(g2, 'FX Treasury Floor', 'Interbank Spot · Sovereign Bonds', spec.cx - 10.32, fy2 + 3.55, spec.cz - 0.4, Math.PI / 2);
+    boxAt(g2, 7.6, 2.45, 0.16, spec.cx + 2.8, fy2 + 2.15, spec.cz - 9.6, pal.makoreWood, false, false, 0.02);
+    boxAt(g2, 7.35, 2.24, 0.08, spec.cx + 2.8, fy2 + 2.15, spec.cz - 9.52, pal.champagneBronze, false, false);
+    const bMesh = new THREE.Mesh(new THREE.PlaneGeometry(7.1, 2.05), bondBoard.mat);
+    bMesh.position.set(spec.cx + 2.8, fy2 + 2.15, spec.cz - 9.46);
+    g2.add(bMesh);
+    bondBoard.setMesh(bMesh);
 
-    // NE Quantitative Risk & Treasury Settlement Desk (dx +5.2, dz -6.6)
-    boxAt(g2, 0.14, 2.8, 5.4, spec.cx + 2.0, fy2 + 1.4, spec.cz - 6.6, pal.smokedGlass, false, false);
-    buildExecutiveDesk(g2, pal, spec.cx + 5.2, fy2, spec.cz - 6.6, 2.5, 1.05, 0, true);
-    registerChair(2, spec.cx + 5.2, fy2, spec.cz - 7.6, 0, 1);
+    // Quantitative Risk Strategist Alcove (SW dx -1.8, dz +5.8)
+    buildReserveDesk(g2, pal, spec.cx - 1.8, fy2, spec.cz + 5.8, 2.5, 1.05, Math.PI, true);
+    registerChair(2, spec.cx - 1.8, fy2, spec.cz + 6.8, Math.PI, 1);
     registerMonitor(
       2,
       monIdx++,
-      [spec.cx + 5.2, fy2 + 0.78, spec.cz - 6.65],
-      Math.PI,
-      spec.cx + 5.2,
-      spec.cz - 7.6,
+      [spec.cx - 1.8, fy2 + 0.78, spec.cz + 5.75],
+      0,
+      spec.cx - 1.8,
+      spec.cz + 6.8,
       'Treasury Risk Quant · L2',
       'Quantitative Hedging Alcove'
     );
-    plant(g2, spec.cx + 9.2, fy2, spec.cz - 8.2, 1.0, 521, M);
-    plant(g2, spec.cx - 9.4, fy2, spec.cz + 8.0, 1.0, 522, M);
+    plant(g2, spec.cx + 9.4, fy2, spec.cz - 8.2, 1.05, 621, M, 'olive');
+    plant(g2, spec.cx - 9.4, fy2, spec.cz + 8.0, 1.05, 622, M, 'ficus');
   }
 
   // ============================================================================
-  // L3 — PRIVATE WEALTH MANAGEMENT, FAMILY OFFICE & GOLD-BULLION SAFE DEPOSIT GALLERY
+  // L3 — PRIVATE BANKING SANCTUARY & CIRCULAR BULLION ASSAY ROTUNDA
   // ============================================================================
   {
     const g3 = levelGroups[3];
     const fy3 = spec.groundY + 3 * spec.floorH + 0.12;
-    const wallH3 = spec.floorH - 0.55;
 
-    // NW Safe Deposit Viewing Sanctuary (dx -10.2..-2.2, dz -9.2..-1.8, Open South Doorway dx -7.4..-5.0!)
-    boxAt(g3, 0.18, wallH3, 7.4, spec.cx - 10.2, fy3 + wallH3 * 0.5, spec.cz - 5.5, pal.smokedGlass, false, false);
-    boxAt(g3, 0.18, wallH3, 7.4, spec.cx - 2.2, fy3 + wallH3 * 0.5, spec.cz - 5.5, pal.smokedGlass, false, false);
-    boxAt(g3, 2.8, wallH3, 0.18, spec.cx - 8.8, fy3 + wallH3 * 0.5, spec.cz - 1.8, pal.frostedSecurityGlass, false, false);
-    boxAt(g3, 2.8, wallH3, 0.18, spec.cx - 3.6, fy3 + wallH3 * 0.5, spec.cz - 1.8, pal.frostedSecurityGlass, false, false);
-    // Brass doorway pilasters
-    [-7.4, -5.0].forEach((px) => boxAt(g3, 0.12, wallH3, 0.22, spec.cx + px, fy3 + wallH3 * 0.5, spec.cz - 1.8, pal.sovereignBrass, false, false));
-    addZonePlaque(g3, 'Safe Deposit Gallery', 'Dual-Key Custody & Bullion Assay', spec.cx - 6.2, fy3 + 2.55, spec.cz - 1.66, 0);
-
-    // Backlit Brushed-Titanium & Brass Safe-Deposit Locker Matrix Wall along North wall of enclosure
-    boxAt(g3, 6.8, 2.72, 0.48, spec.cx - 6.2, fy3 + 1.36, spec.cz - 8.95, pal.titaniumVault, true, true, 0.03);
-    boxAt(g3, 6.4, 2.42, 0.06, spec.cx - 6.2, fy3 + 1.36, spec.cz - 8.68, pal.lockerFaceMat, false, false);
-    boxAt(g3, 6.5, 0.05, 0.12, spec.cx - 6.2, fy3 + 2.66, spec.cz - 8.65, pal.warmCoveLed, false, false);
-
-    // Centered Dual-Key Nero-Marble Bullion Examination Table with Velvet Tray & 24K Gold Ingots!
-    boxAt(g3, 1.85, 0.88, 1.1, spec.cx - 6.2, fy3 + 0.44, spec.cz - 5.4, pal.neroGoldMarble, true, true, 0.02);
-    boxAt(g3, 1.9, 0.06, 1.15, spec.cx - 6.2, fy3 + 0.9, spec.cz - 5.4, pal.sovereignBrass, false, false, 0.01);
-    boxAt(g3, 0.95, 0.04, 0.62, spec.cx - 6.2, fy3 + 0.95, spec.cz - 5.4, pal.midnightNavyFelt, false, false);
-    // 4 stacked 24K bullion bars under acrylic vitrine
-    [-0.22, 0.0, 0.22].forEach((bx) => {
-      boxAt(g3, 0.14, 0.08, 0.34, spec.cx - 6.2 + bx, fy3 + 1.01, spec.cz - 5.4, pal.goldBullion, true, false, 0.01);
+    // 1. NE Circular Bronze-Colonnade Safe Deposit & Assay Rotunda (centered at cx + 4.4, cz - 3.6, r = 4.2m)
+    const rx = spec.cx + 4.4;
+    const rz = spec.cz - 3.6;
+    const rotRad = 4.15;
+    // Circular Kilimanjaro-Slate floor plinth inlay
+    cylAt(g3, rotRad + 0.25, rotRad + 0.25, 0.025, rx, fy3 + 0.028, rz, pal.kilimanjaroSlate, false, true, 36);
+    // 6 fluted limestone colonnade piers framing generous NW & SW walking portals
+    [0.2, 1.15, 2.25, 3.35, 4.35, 5.4].forEach((ang) => {
+      buildLimestoneColumn(g3, pal, rx + Math.cos(ang) * rotRad, fy3, rz + Math.sin(ang) * rotRad, spec.floorH - 0.55);
     });
-    boxAt(g3, 0.14, 0.08, 0.34, spec.cx - 6.2, fy3 + 1.09, spec.cz - 5.4, pal.goldBullion, true, false, 0.01);
-    boxAt(g3, 1.05, 0.36, 0.72, spec.cx - 6.2, fy3 + 1.12, spec.cz - 5.4, pal.smokedGlass, false, false);
+    // Overhead circular bronze frieze crowning the rotunda
+    const rotCap = new THREE.Mesh(new THREE.TorusGeometry(rotRad, 0.14, 10, 40), pal.champagneBronze);
+    rotCap.rotation.x = Math.PI / 2;
+    rotCap.position.set(rx, fy3 + spec.floorH - 0.58, rz);
+    g3.add(rotCap);
+    addZonePlaque(g3, 'Bullion Assay Rotunda', '24K Specie & Dual-Key Custody', rx - 2.6, fy3 + 2.55, rz + 3.2, -0.5);
 
-    // SW Private Wealth Parlor: Walnut Library Credenza, Sofa Lounge & Wealth Director Desk
-    boxAt(g3, 0.56, 2.7, 3.8, spec.cx - 9.95, fy3 + 1.35, spec.cz + 5.2, pal.smokedWalnut, true, true, 0.02);
+    // Curved Safe-Deposit Locker Matrix along North-East Arc behind Rotunda (dz -9.2)
+    boxAt(g3, 6.8, 2.72, 0.48, spec.cx + 4.4, fy3 + 1.36, spec.cz - 9.0, pal.bullionVaultSteel, true, true, 0.03);
+    boxAt(g3, 6.4, 2.42, 0.06, spec.cx + 4.4, fy3 + 1.36, spec.cz - 8.72, pal.lockerFaceMat, false, false);
+    boxAt(g3, 6.5, 0.05, 0.12, spec.cx + 4.4, fy3 + 2.68, spec.cz - 8.7, pal.warmCoveLed, false, false);
+
+    // Center Circular Bullion Assay Precision Balance Table (rx, rz)
+    cylAt(g3, 0.96, 1.04, 0.9, rx, fy3 + 0.45, rz, pal.kilimanjaroSlate, true, true, 24);
+    cylAt(g3, 1.04, 1.04, 0.06, rx, fy3 + 0.93, rz, pal.champagneBronze, false, false, 24);
+    // 24K Gold Ingot Triad + Precision Apothecary Balance Beam under Glass Dome
+    [-0.32, 0.0, 0.32].forEach((bx) => {
+      boxAt(g3, 0.14, 0.075, 0.3, rx + bx, fy3 + 1.0, rz + 0.24, pal.goldSpecie, true, false, 0.01);
+    });
+    cylAt(g3, 0.025, 0.04, 0.44, rx, fy3 + 1.18, rz - 0.18, pal.champagneBronze, false, false, 12);
+    boxAt(g3, 0.54, 0.025, 0.025, rx, fy3 + 1.38, rz - 0.18, pal.champagneBronze, false, false);
+    [-0.24, 0.24].forEach((px) => {
+      cylAt(g3, 0.11, 0.09, 0.02, rx + px, fy3 + 1.16, rz - 0.18, pal.goldSpecie, false, false, 14);
+    });
+    cylAt(g3, 0.62, 0.62, 0.56, rx, fy3 + 1.24, rz, pal.clearArmorGlass, false, false, 24);
+
+    // 2. SE Private Wealth Parlor: Makore Heritage Library Wall + Wealth Director Desk
+    boxAt(g3, 0.56, 2.7, 3.8, spec.cx + 10.0, fy3 + 1.35, spec.cz + 5.6, pal.makoreWood, true, true, 0.02);
     [0.75, 1.45, 2.15].forEach((shY) => {
-      boxAt(g3, 0.58, 0.04, 3.6, spec.cx - 9.9, fy3 + shY, spec.cz + 5.2, pal.sovereignBrass, false, false);
+      boxAt(g3, 0.58, 0.04, 3.6, spec.cx + 9.94, fy3 + shY, spec.cz + 5.6, pal.champagneBronze, false, false);
     });
-    sofaWide(g3, spec.cx - 6.8, fy3, spec.cz + 6.4, Math.PI, pal.cognacLeather, M);
-    buildExecutiveDesk(g3, pal, spec.cx - 2.6, fy3, spec.cz + 4.6, 2.4, 1.0, Math.PI, true);
-    registerChair(3, spec.cx - 2.6, fy3, spec.cz + 5.6, Math.PI, -1);
+    buildReserveDesk(g3, pal, spec.cx + 0.8, fy3, spec.cz + 5.2, 2.4, 1.0, Math.PI, true);
+    registerChair(3, spec.cx + 0.8, fy3, spec.cz + 6.2, Math.PI, -1);
     registerMonitor(
       3,
       monIdx++,
-      [spec.cx - 2.6, fy3 + 0.78, spec.cz + 4.55],
+      [spec.cx + 0.8, fy3 + 0.78, spec.cz + 5.15],
       0,
-      spec.cx - 2.6,
-      spec.cz + 5.6,
+      spec.cx + 0.8,
+      spec.cz + 6.2,
       'Private Wealth Director · L3',
       'Private Wealth Parlor'
     );
+    armchair(g3, spec.cx + 5.6, fy3, spec.cz + 5.8, -Math.PI / 2, pal.savannaTealVelvet, M);
+    armchair(g3, spec.cx + 7.2, fy3, spec.cz + 7.2, Math.PI, pal.ochreSaddleHide, M);
 
-    // NE Family Office & Trust Fiduciary Pods (dx +3.2 & +7.2, dz -6.6)
+    // 3. West-Center Family Office Fiduciary Stations (clear of West Stairwell dx -5.00)
     [
-      { dx: 3.2, role: 'Trust & Estate Fiduciary · L3', zone: 'Family Office Advisory' },
-      { dx: 7.2, role: 'Portfolio Strategist · L3', zone: 'Family Office Advisory' },
-    ].forEach((p, pi) => {
-      buildExecutiveDesk(g3, pal, spec.cx + p.dx, fy3, spec.cz - 6.6, 2.3, 1.0, 0, true);
-      registerChair(3, spec.cx + p.dx, fy3, spec.cz - 7.6, 0, pi % 2 === 0 ? 1 : -1);
+      { dz: -6.2, seatDz: -7.2, rotC: 0, rotM: Math.PI, role: 'Trust & Estate Fiduciary · L3' },
+      { dz: 3.2, seatDz: 4.2, rotC: Math.PI, rotM: 0, role: 'Diaspora Custody Strategist · L3' },
+    ].forEach((f, fi) => {
+      buildReserveDesk(g3, pal, spec.cx - 2.2, fy3, spec.cz + f.dz, 2.3, 1.0, f.rotC, true);
+      registerChair(3, spec.cx - 2.2, fy3, spec.cz + f.seatDz, f.rotC, fi % 2 === 0 ? 1 : -1);
       registerMonitor(
         3,
         monIdx++,
-        [spec.cx + p.dx, fy3 + 0.78, spec.cz - 6.65],
-        Math.PI,
-        spec.cx + p.dx,
-        spec.cz - 7.6,
-        p.role,
-        p.zone
+        [spec.cx - 2.2, fy3 + 0.78, spec.cz + f.dz + (fi === 0 ? -0.05 : 0.05)],
+        f.rotM,
+        spec.cx - 2.2,
+        spec.cz + f.seatDz,
+        f.role,
+        'Family Office Advisory'
       );
     });
-    plant(g3, spec.cx + 9.2, fy3, spec.cz - 8.4, 1.0, 531, M);
-    plant(g3, spec.cx - 9.2, fy3, spec.cz + 8.2, 1.0, 532, M);
+    plant(g3, spec.cx - 9.4, fy3, spec.cz + 8.0, 1.05, 631, M, 'ficus');
+    plant(g3, spec.cx + 9.2, fy3, spec.cz - 8.2, 1.0, 632, M, 'olive');
   }
 
   // ============================================================================
-  // L4 — RISK GOVERNANCE, INTERNAL AUDIT, AML COMPLIANCE & SWIFT OPERATIONS HUB
+  // L4 — CLEARINGHOUSE COMMAND BRIDGE, CYBER-FRAUD DEFENSE & AUDIT TRIBUNAL
   // ============================================================================
   {
     const g4 = levelGroups[4];
     const fy4 = spec.groundY + 4 * spec.floorH + 0.12;
-    const wallH4 = spec.floorH - 0.55;
 
-    // NW SWIFT & AML Screening Operations Center (dx -9.8..-0.6, dz -8.6..+0.6, open South portal dx -6.4..-4.0)
-    boxAt(g4, 0.16, wallH4, 9.2, spec.cx - 9.8, fy4 + wallH4 * 0.5, spec.cz - 4.0, pal.smokedGlass, false, false);
-    boxAt(g4, 0.16, wallH4, 9.2, spec.cx - 0.6, fy4 + wallH4 * 0.5, spec.cz - 4.0, pal.smokedGlass, false, false);
-    boxAt(g4, 3.4, wallH4, 0.16, spec.cx - 8.1, fy4 + wallH4 * 0.5, spec.cz + 0.6, pal.frostedSecurityGlass, false, false);
-    boxAt(g4, 3.4, wallH4, 0.16, spec.cx - 2.3, fy4 + wallH4 * 0.5, spec.cz + 0.6, pal.frostedSecurityGlass, false, false);
-    [-6.4, -4.0].forEach((px) => boxAt(g4, 0.12, wallH4, 0.2, spec.cx + px, fy4 + wallH4 * 0.5, spec.cz + 0.6, pal.sovereignBrass, false, false));
-    addZonePlaque(g4, 'SWIFT & AML Ops', 'ISO-20022 Clearing & Sanctions Hub', spec.cx - 5.2, fy4 + 2.55, spec.cz + 0.72, 0);
-
-    // Live SWIFT & AML Regional Clearing Wall Display
-    const swiftBoard = createCustomBoardScreen(screenReg, 640, 230, (g, w, h, t) => {
-      g.fillStyle = '#07111e';
+    // 1. Live Panoramic ISO-20022 Clearing & Sanctions Command Wall (North Wing: dx +2.8, dz -9.4)
+    const swiftBoard = createCustomBoardScreen(screenReg, 680, 240, (g, w, h, t) => {
+      g.fillStyle = '#0d141d';
       g.fillRect(0, 0, w, h);
-      g.fillStyle = '#0f2942';
-      g.fillRect(0, 0, w, 34);
-      g.fillStyle = '#60a5fa';
+      g.fillStyle = '#134e5e';
+      g.fillRect(0, 0, w, 36);
+      g.fillStyle = '#5eead4';
       g.font = '800 17px "Plus Jakarta Sans", sans-serif';
       g.textAlign = 'left';
       g.textBaseline = 'middle';
-      g.fillText('SWIFT ISO-20022 & AML COMPLIANCE SCREENING MATRIX', 16, 17);
+      g.fillText('SWIFT ISO-20022 CLEARINGHOUSE & CYBER-FRAUD TELEMETRY', 18, 18);
       const metrics = [
         ['RTGS CLEARING VOLUME', 'KES 48.2B', '99.98% SLA'],
-        ['SWIFT MT/MX MESSAGES', '14,820 / HR', 'ZERO QUEUE'],
-        ['AML SANCTIONS ENGINE', '0 CRITICAL', 'AUTO-VERIFIED'],
+        ['ISO-20022 MESSAGES', '14,820 / HR', 'ZERO QUEUE'],
+        ['AML ANOMALY SHIELD', '0 CRITICAL', 'VERIFIED'],
       ];
       metrics.forEach((m, i) => {
-        const y = 52 + i * 52;
-        g.fillStyle = 'rgba(59, 130, 246, 0.14)';
+        const y = 54 + i * 54;
+        g.fillStyle = i === Math.floor(t / 3) % 3 ? 'rgba(56, 189, 248, 0.2)' : 'rgba(201, 169, 110, 0.1)';
         rr(g, 16, y, w - 32, 44, 6);
         g.fill();
         g.fillStyle = '#f8fafc';
         g.font = '700 15px "IBM Plex Mono", monospace';
         g.fillText(m[0], 28, y + 22);
-        g.fillStyle = '#d9ad58';
-        g.fillText(m[1], 300, y + 22);
+        g.fillStyle = '#e5c583';
+        g.fillText(m[1], 325, y + 22);
         g.fillStyle = '#4ade80';
-        g.fillText(m[2], 470, y + 22);
+        g.fillText(m[2], 495, y + 22);
       });
-      void t;
     });
-    boxAt(g4, 5.8, 2.2, 0.16, spec.cx - 5.2, fy4 + 2.25, spec.cz - 8.38, pal.smokedWalnut, false, false, 0.02);
-    const swMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 1.92), swiftBoard.mat);
-    swMesh.position.set(spec.cx - 5.2, fy4 + 2.25, spec.cz - 8.28);
+    boxAt(g4, 6.8, 2.35, 0.16, spec.cx + 2.8, fy4 + 2.25, spec.cz - 9.5, pal.makoreWood, false, false, 0.02);
+    boxAt(g4, 6.55, 2.15, 0.08, spec.cx + 2.8, fy4 + 2.25, spec.cz - 9.42, pal.champagneBronze, false, false);
+    const swMesh = new THREE.Mesh(new THREE.PlaneGeometry(6.35, 1.98), swiftBoard.mat);
+    swMesh.position.set(spec.cx + 2.8, fy4 + 2.25, spec.cz - 9.36);
     g4.add(swMesh);
     swiftBoard.setMesh(swMesh);
+    addZonePlaque(g4, 'Clearinghouse Bridge', 'ISO-20022 & Fraud Telemetry', spec.cx + 2.8, fy4 + 3.62, spec.cz - 9.3, 0);
 
+    // Twin Open Clearing Consoles facing North toward Command Wall (dx +0.4 & +5.2, dz -4.2)
     [
-      { dx: -7.4, role: 'SWIFT Settlement Officer · L4' },
-      { dx: -3.0, role: 'AML Sanctions Analyst · L4' },
+      { dx: 0.4, role: 'SWIFT Settlement Officer · L4' },
+      { dx: 5.2, role: 'Cyber-Fraud Defense Lead · L4' },
     ].forEach((s, si) => {
-      buildExecutiveDesk(g4, pal, spec.cx + s.dx, fy4, spec.cz - 4.2, 2.4, 1.0, Math.PI, true);
+      buildReserveDesk(g4, pal, spec.cx + s.dx, fy4, spec.cz - 4.2, 2.4, 1.0, Math.PI, true);
+      boxAt(g4, 2.3, 0.36, 0.05, spec.cx + s.dx, fy4 + 0.96, spec.cz - 4.72, pal.bronzeTintedGlass, false, false);
       registerChair(4, spec.cx + s.dx, fy4, spec.cz - 3.2, Math.PI, si === 0 ? 1 : -1);
       registerMonitor(
         4,
@@ -1203,83 +1360,86 @@ export function buildNairobiTrustBankWholeBuilding(ctx: BankBuildContext) {
         spec.cx + s.dx,
         spec.cz - 3.2,
         s.role,
-        'SWIFT & AML Operations Hub'
+        'Clearinghouse Command Bridge'
       );
     });
 
-    // SW Audit Committee Table + Archival Compliance Steel Cabinets
-    boxAt(g4, 5.2, 0.08, 1.8, spec.cx - 4.6, fy4 + 0.74, spec.cz + 5.4, pal.smokedWalnut, true, true, 0.02);
-    [-6.6, -2.6].forEach((px) => boxAt(g4, 0.24, 0.7, 1.1, spec.cx + px, fy4 + 0.35, spec.cz + 5.4, pal.ivoryTravertine, true, true, 0.02));
-    boxAt(g4, 0.65, 2.35, 3.8, spec.cx - 10.1, fy4 + 1.175, spec.cz + 5.4, pal.titaniumVault, true, true, 0.02);
+    // 2. SE Regulatory Audit & Compliance Tribunal Chamber (Boat-shaped Makore & Limestone Table at dx +4.8, dz +5.4)
+    boxAt(g4, 5.2, 0.08, 1.8, spec.cx + 4.8, fy4 + 0.74, spec.cz + 5.4, pal.makoreWood, true, true, 0.025);
+    boxAt(g4, 4.4, 0.025, 0.44, spec.cx + 4.8, fy4 + 0.79, spec.cz + 5.4, pal.champagneBronze, false, false);
+    [2.8, 6.8].forEach((px) => boxAt(g4, 0.24, 0.7, 1.1, spec.cx + px, fy4 + 0.35, spec.cz + 5.4, pal.flutedLimestone, true, true, 0.02));
+    boxAt(g4, 0.65, 2.35, 3.8, spec.cx + 10.0, fy4 + 1.175, spec.cz + 5.4, pal.bullionVaultSteel, true, true, 0.02);
 
-    registerChair(4, spec.cx - 6.4, fy4, spec.cz + 4.0, 0, 1);
+    registerChair(4, spec.cx + 3.2, fy4, spec.cz + 4.0, 0, 1);
     registerMonitor(
       4,
       monIdx++,
-      [spec.cx - 6.4, fy4 + 0.8, spec.cz + 4.85],
+      [spec.cx + 3.2, fy4 + 0.8, spec.cz + 4.85],
       Math.PI,
-      spec.cx - 6.4,
+      spec.cx + 3.2,
       spec.cz + 4.0,
       'Internal Audit Director · L4',
-      'Audit Committee Chamber'
+      'Audit Tribunal Chamber'
     );
-    registerChair(4, spec.cx - 2.8, fy4, spec.cz + 6.8, Math.PI, -1);
+    registerChair(4, spec.cx + 6.4, fy4, spec.cz + 6.8, Math.PI, -1);
     registerMonitor(
       4,
       monIdx++,
-      [spec.cx - 2.8, fy4 + 0.8, spec.cz + 5.95],
+      [spec.cx + 6.4, fy4 + 0.8, spec.cz + 5.95],
       0,
-      spec.cx - 2.8,
+      spec.cx + 6.4,
       spec.cz + 6.8,
       'Chief Compliance Officer · L4',
-      'Audit Committee Chamber'
+      'Audit Tribunal Chamber'
     );
 
-    // NE Operational Risk Lead Desk (dx +5.8, dz -6.4)
-    buildExecutiveDesk(g4, pal, spec.cx + 5.8, fy4, spec.cz - 6.4, 2.5, 1.05, 0, true);
-    registerChair(4, spec.cx + 5.8, fy4, spec.cz - 7.4, 0, 1);
+    // 3. SW Operational Risk Directorate Alcove (dx -6.6, dz +5.8)
+    buildReserveDesk(g4, pal, spec.cx - 6.6, fy4, spec.cz + 5.8, 2.4, 1.0, Math.PI, true);
+    registerChair(4, spec.cx - 6.6, fy4, spec.cz + 6.8, Math.PI, 1);
     registerMonitor(
       4,
       monIdx++,
-      [spec.cx + 5.8, fy4 + 0.78, spec.cz - 6.45],
-      Math.PI,
-      spec.cx + 5.8,
-      spec.cz - 7.4,
-      'Operational Risk Lead · L4',
+      [spec.cx - 6.6, fy4 + 0.78, spec.cz + 5.75],
+      0,
+      spec.cx - 6.6,
+      spec.cz + 6.8,
+      'Operational Risk Director · L4',
       'Regulatory Risk Directorate'
     );
-    plant(g4, spec.cx + 9.2, fy4, spec.cz - 8.2, 1.0, 541, M);
-    plant(g4, spec.cx + 2.6, fy4, spec.cz + 8.0, 1.0, 542, M);
+    plant(g4, spec.cx - 9.4, fy4, spec.cz + 8.0, 1.05, 641, M, 'ficus');
+    plant(g4, spec.cx + 9.2, fy4, spec.cz - 8.2, 1.0, 642, M, 'olive');
   }
 
   // ============================================================================
-  // L5 — EXECUTIVE BOARDROOM, GOVERNOR/CEO PENTHOUSE SUITE & RESERVE SKY-BAR
+  // L5 — DIPLOMATIC BOARDROOM, GOVERNOR SUITE & MONETARY HERITAGE ARCHIVE
   // ============================================================================
   {
     const g5 = levelGroups[5];
     const fy5 = spec.groundY + 5 * spec.floorH + 0.12;
     const wallH5 = spec.floorH - 0.55;
 
-    // Monumental West Executive Bank Boardroom Enclosure (dx -10.0..-0.8, dz -8.8..+1.2, open East doorway dz -5.0..-2.6)
-    boxAt(g5, 9.2, wallH5, 0.18, spec.cx - 5.4, fy5 + wallH5 * 0.5, spec.cz - 8.8, pal.midnightNavyFelt, true, false);
-    boxAt(g5, 9.2, wallH5, 0.18, spec.cx - 5.4, fy5 + wallH5 * 0.5, spec.cz + 1.2, pal.smokedGlass, false, false);
-    boxAt(g5, 0.18, wallH5, 3.8, spec.cx - 0.8, fy5 + wallH5 * 0.5, spec.cz - 6.9, pal.smokedGlass, false, false);
-    boxAt(g5, 0.18, wallH5, 3.8, spec.cx - 0.8, fy5 + wallH5 * 0.5, spec.cz - 0.7, pal.smokedGlass, false, false);
-    [-5.0, -2.6].forEach((pz) => boxAt(g5, 0.22, wallH5, 0.12, spec.cx - 0.8, fy5 + wallH5 * 0.5, spec.cz + pz, pal.sovereignBrass, false, false));
-    addZonePlaque(g5, 'Executive Boardroom', 'Bank Directorate & Monetary Policy', spec.cx - 0.66, fy5 + 2.55, spec.cz - 3.8, Math.PI / 2);
+    // 1. NE Diplomatic Boardroom framed by Fluted Makore Colonnade (cx +3.2, cz -3.8 — open West & South circulation)
+    [-0.4, 6.8].forEach((px) => {
+      [-7.4, -0.2].forEach((pz) => {
+        buildLimestoneColumn(g5, pal, spec.cx + px, fy5, spec.cz + pz, wallH5);
+      });
+    });
+    // Vertical bronze-and-parchment acoustic baffle screen on North perimeter (dz -8.8)
+    boxAt(g5, 7.6, wallH5, 0.18, spec.cx + 3.2, fy5 + wallH5 * 0.5, spec.cz - 8.8, pal.parchmentLinen, true, false);
+    addZonePlaque(g5, 'Diplomatic Boardroom', 'Bank Directorate & Reserve Policy', spec.cx + 3.2, fy5 + 2.8, spec.cz - 8.66, 0);
 
-    // 5.6m Bookmatched Nero-Gold Marble & Brass-Inlay Boardroom Table
-    boxAt(g5, 5.6, 0.08, 2.0, spec.cx - 5.4, fy5 + 0.75, spec.cz - 3.8, pal.neroGoldMarble, true, true, 0.025);
-    boxAt(g5, 5.66, 0.03, 2.06, spec.cx - 5.4, fy5 + 0.7, spec.cz - 3.8, pal.sovereignBrass, false, false);
-    boxAt(g5, 4.2, 0.02, 0.55, spec.cx - 5.4, fy5 + 0.8, spec.cz - 3.8, pal.midnightNavyFelt, false, false);
-    [-7.2, -3.6].forEach((lx) => boxAt(g5, 0.36, 0.7, 1.15, spec.cx + lx, fy5 + 0.35, spec.cz - 3.8, pal.ivoryTravertine, true, true, 0.02));
+    // 5.8m Kilimanjaro-Slate & Makore Executive Boardroom Table (cx +3.2, cz -3.8)
+    boxAt(g5, 5.8, 0.08, 2.0, spec.cx + 3.2, fy5 + 0.75, spec.cz - 3.8, pal.kilimanjaroSlate, true, true, 0.03);
+    boxAt(g5, 5.2, 0.022, 1.2, spec.cx + 3.2, fy5 + 0.8, spec.cz - 3.8, pal.makoreWood, false, false);
+    boxAt(g5, 4.2, 0.025, 0.36, spec.cx + 3.2, fy5 + 0.815, spec.cz - 3.8, pal.champagneBronze, false, false);
+    [1.4, 5.0].forEach((lx) => boxAt(g5, 0.34, 0.7, 1.15, spec.cx + lx, fy5 + 0.35, spec.cz - 3.8, pal.flutedLimestone, true, true, 0.02));
 
-    // 4 Registered Active Board Chairs + Monitors on Boardroom Table
+    // 4 Board Members (Chairs 0..3)
     const boardRoles = [
-      { dx: -7.0, dz: -5.2, mdz: -4.4, rotC: 0, rotM: Math.PI, role: 'Board Chairperson · L5' },
-      { dx: -3.8, dz: -5.2, mdz: -4.4, rotC: 0, rotM: Math.PI, role: 'Chief Risk Officer · L5' },
-      { dx: -7.0, dz: -2.4, mdz: -3.2, rotC: Math.PI, rotM: 0, role: 'Managing Director · L5' },
-      { dx: -3.8, dz: -2.4, mdz: -3.2, rotC: Math.PI, rotM: 0, role: 'General Counsel · L5' },
+      { dx: 1.6, dz: -5.2, mdz: -4.4, rotC: 0, rotM: Math.PI, role: 'Board Chairperson · L5' },
+      { dx: 4.8, dz: -5.2, mdz: -4.4, rotC: 0, rotM: Math.PI, role: 'Chief Risk Officer · L5' },
+      { dx: 1.6, dz: -2.4, mdz: -3.2, rotC: Math.PI, rotM: 0, role: 'Managing Director · L5' },
+      { dx: 4.8, dz: -2.4, mdz: -3.2, rotC: Math.PI, rotM: 0, role: 'General Counsel · L5' },
     ];
     boardRoles.forEach((b, bi) => {
       registerChair(5, spec.cx + b.dx, fy5, spec.cz + b.dz, b.rotC, bi % 2 === 0 ? 1 : -1);
@@ -1291,17 +1451,17 @@ export function buildNairobiTrustBankWholeBuilding(ctx: BankBuildContext) {
         spec.cx + b.dx,
         spec.cz + b.dz,
         b.role,
-        'Executive Bank Boardroom'
+        'Diplomatic Boardroom'
       );
     });
 
-    // Sovereign Capital Strategy Boardroom Screen on West Boardroom Wall
+    // Reserve Capital Strategy Boardroom Screen on East Wall (cx +10.0, cz -3.8)
     const execBoard = createCustomBoardScreen(screenReg, 620, 230, (g, w, h, t) => {
-      g.fillStyle = '#080e1a';
+      g.fillStyle = '#121820';
       g.fillRect(0, 0, w, h);
-      g.fillStyle = '#d9ad58';
+      g.fillStyle = '#c9a96e';
       g.fillRect(0, 0, w, 34);
-      g.fillStyle = '#080e1a';
+      g.fillStyle = '#121820';
       g.font = '800 18px "Plus Jakarta Sans", sans-serif';
       g.textAlign = 'left';
       g.textBaseline = 'middle';
@@ -1313,76 +1473,84 @@ export function buildNairobiTrustBankWholeBuilding(ctx: BankBuildContext) {
       ];
       kpis.forEach((k, i) => {
         const y = 52 + i * 52;
-        g.fillStyle = 'rgba(217, 173, 88, 0.12)';
+        g.fillStyle = 'rgba(201, 169, 110, 0.14)';
         rr(g, 16, y, w - 32, 44, 6);
         g.fill();
         g.fillStyle = '#f8fafc';
         g.font = '700 15px "IBM Plex Mono", monospace';
         g.fillText(k[0], 26, y + 22);
-        g.fillStyle = '#60a5fa';
+        g.fillStyle = '#5eead4';
         g.fillText(k[1], 295, y + 22);
-        g.fillStyle = '#d9ad58';
+        g.fillStyle = '#e5c583';
         g.fillText(k[2], 445, y + 22);
       });
       void t;
     });
-    boxAt(g5, 0.16, 2.2, 5.2, spec.cx - 9.88, fy5 + 2.2, spec.cz - 3.8, pal.smokedWalnut, false, false, 0.02);
+    boxAt(g5, 0.16, 2.2, 5.2, spec.cx + 10.1, fy5 + 2.2, spec.cz - 3.8, pal.makoreWood, false, false, 0.02);
     const ebMesh = new THREE.Mesh(new THREE.PlaneGeometry(4.9, 1.9), execBoard.mat);
-    ebMesh.rotation.y = Math.PI / 2;
-    ebMesh.position.set(spec.cx - 9.78, fy5 + 2.2, spec.cz - 3.8);
+    ebMesh.rotation.y = -Math.PI / 2;
+    ebMesh.position.set(spec.cx + 9.98, fy5 + 2.2, spec.cz - 3.8);
     g5.add(ebMesh);
     execBoard.setMesh(ebMesh);
 
-    // SW Governor / Group CEO Corner Penthouse Suite (dx -6.2, dz +6.2)
-    boxAt(g5, 0.56, 2.75, 4.0, spec.cx - 9.95, fy5 + 1.375, spec.cz + 6.0, pal.smokedWalnut, true, true, 0.02);
-    [0.75, 1.45, 2.15].forEach((shY) => {
-      boxAt(g5, 0.58, 0.04, 3.8, spec.cx - 9.9, fy5 + shY, spec.cz + 6.0, pal.sovereignBrass, false, false);
+    // 2. SW Governor / Group CEO Corner Suite & Illuminated Kenyan Monetary Heritage Archive (dx -5.8, dz +6.0)
+    boxAt(g5, 0.56, 2.75, 4.0, spec.cx - 10.0, fy5 + 1.375, spec.cz + 6.0, pal.makoreWood, true, true, 0.02);
+    // Illuminated archive vitrines housing sovereign gold medals & historic mint plates
+    [0.85, 1.65].forEach((shY) => {
+      boxAt(g5, 0.58, 0.04, 3.8, spec.cx - 9.94, fy5 + shY, spec.cz + 6.0, pal.champagneBronze, false, false);
+      [-1.0, 0.0, 1.0].forEach((oz) => {
+        cylAt(g5, 0.09, 0.09, 0.04, spec.cx - 9.88, fy5 + shY + 0.06, spec.cz + 6.0 + oz, pal.goldSpecie, false, false, 16);
+      });
     });
-    buildExecutiveDesk(g5, pal, spec.cx - 6.2, fy5, spec.cz + 6.2, 2.8, 1.12, Math.PI, true);
-    registerChair(5, spec.cx - 6.2, fy5, spec.cz + 7.2, Math.PI, 1);
+    buildReserveDesk(g5, pal, spec.cx - 5.8, fy5, spec.cz + 6.0, 2.8, 1.1, Math.PI, true);
+    registerChair(5, spec.cx - 5.8, fy5, spec.cz + 7.0, Math.PI, 1);
     registerMonitor(
       5,
       monIdx++,
-      [spec.cx - 6.2, fy5 + 0.78, spec.cz + 6.15],
+      [spec.cx - 5.8, fy5 + 0.78, spec.cz + 5.95],
       0,
-      spec.cx - 6.2,
-      spec.cz + 7.2,
+      spec.cx - 5.8,
+      spec.cz + 7.0,
       'Group CEO · Nairobi Trust Bank · L5',
       'Governor & CEO Penthouse Suite'
     );
-    armchair(g5, spec.cx - 2.8, fy5, spec.cz + 5.8, -Math.PI / 2, pal.cognacLeather, M);
-    cylAt(g5, 0.42, 0.42, 0.04, spec.cx - 3.6, fy5 + 0.44, spec.cz + 5.8, pal.neroGoldMarble, false, true, 16);
-    cylAt(g5, 0.05, 0.1, 0.42, spec.cx - 3.6, fy5 + 0.21, spec.cz + 5.8, pal.sovereignBrass, false, false, 12);
+    armchair(g5, spec.cx - 2.2, fy5, spec.cz + 5.8, -Math.PI / 2, pal.ochreSaddleHide, M);
+    cylAt(g5, 0.42, 0.42, 0.04, spec.cx - 3.0, fy5 + 0.44, spec.cz + 5.8, pal.kilimanjaroSlate, false, true, 16);
+    cylAt(g5, 0.05, 0.1, 0.42, spec.cx - 3.0, fy5 + 0.21, spec.cz + 5.8, pal.champagneBronze, false, false, 12);
 
-    // NE CFO Suite + Nero-Marble & Brass Private Hospitality Sky-Bar
-    buildExecutiveDesk(g5, pal, spec.cx + 2.8, fy5, spec.cz - 6.6, 2.4, 1.0, 0, true);
-    registerChair(5, spec.cx + 2.8, fy5, spec.cz - 7.6, 0, -1);
+    // 3. SE Chief Financial Officer Directorate & Ceremonial Kenyan Tea Signing Terrace (dx +6.4, dz +4.2)
+    buildReserveDesk(g5, pal, spec.cx + 6.4, fy5, spec.cz + 4.2, 2.4, 1.0, -Math.PI / 2, true);
+    registerChair(5, spec.cx + 7.4, fy5, spec.cz + 4.2, -Math.PI / 2, -1);
     registerMonitor(
       5,
       monIdx++,
-      [spec.cx + 2.8, fy5 + 0.78, spec.cz - 6.65],
-      Math.PI,
-      spec.cx + 2.8,
-      spec.cz - 7.6,
+      [spec.cx + 6.35, fy5 + 0.78, spec.cz + 4.2],
+      Math.PI / 2,
+      spec.cx + 7.4,
+      spec.cz + 4.2,
       'Chief Financial Officer · L5',
       'CFO Capital Directorate'
     );
+    // Ceremonial Rift-Limestone Tea & Signing Credenza (dz +8.0)
+    boxAt(g5, 3.4, 0.96, 0.9, spec.cx + 6.6, fy5 + 0.48, spec.cz + 8.0, pal.flutedLimestone, true, true, 0.02);
+    boxAt(g5, 3.48, 0.06, 0.98, spec.cx + 6.6, fy5 + 0.99, spec.cz + 8.0, pal.champagneBronze, false, false);
+    // Ceramic Kericho tea carafe & bronze tray (unique Kenyan hospitality touch)
+    cylAt(g5, 0.28, 0.28, 0.02, spec.cx + 6.2, fy5 + 1.03, spec.cz + 8.0, pal.champagneBronze, false, false, 16);
+    cylAt(g5, 0.07, 0.09, 0.22, spec.cx + 6.14, fy5 + 1.15, spec.cz + 8.0, M.ceramicMat, false, false, 14);
+    cylAt(g5, 0.035, 0.03, 0.07, spec.cx + 6.32, fy5 + 1.07, spec.cz + 8.04, M.ceramicMat, false, false, 12);
 
-    boxAt(g5, 3.8, 1.06, 0.96, spec.cx + 7.4, fy5 + 0.53, spec.cz - 7.6, pal.neroGoldMarble, true, true, 0.02);
-    boxAt(g5, 3.88, 0.07, 1.04, spec.cx + 7.4, fy5 + 1.08, spec.cz - 7.6, pal.sovereignBrass, false, false);
-    boxAt(g5, 0.65, 0.52, 0.45, spec.cx + 8.4, fy5 + 1.36, spec.cz - 7.6, pal.sovereignBrass, true, false, 0.02);
-    plant(g5, spec.cx + 9.4, fy5, spec.cz - 5.2, 1.05, 551, M);
-    plant(g5, spec.cx + 3.2, fy5, spec.cz + 7.4, 1.0, 552, M);
+    plant(g5, spec.cx - 9.2, fy5, spec.cz - 8.2, 1.1, 651, M, 'olive');
+    plant(g5, spec.cx + 9.4, fy5, spec.cz + 8.0, 1.05, 652, M, 'ficus');
   }
 
   // ============================================================================
-  // ROOFTOP CROWN — SOVEREIGN RESERVE SKY-ROTUNDA & BRASS VAULT LANTERN
+  // ROOFTOP CROWN — RIFT-LIMESTONE COLONNADE, WEST STAIR BULKHEAD & SKY ASTROLABE
   // ============================================================================
   {
     const roofY = spec.groundY + spec.h;
     const roofDeck = new THREE.Mesh(
       getRoundedSlabGeo(spec.w + 2.6, spec.d + 2.6, 3.1, 0.36, 0.08),
-      pal.ivoryTravertine
+      pal.riftLimestone
     );
     roofDeck.position.set(spec.cx, roofY + 0.05, spec.cz);
     roofDeck.castShadow = true;
@@ -1390,43 +1558,39 @@ export function buildNairobiTrustBankWholeBuilding(ctx: BankBuildContext) {
     roofShellGroup.add(roofDeck);
     pickMeshes.push(roofDeck);
 
-    // Smoked-glass rooftop balustrade with brass cap rail
-    boxAt(roofShellGroup, spec.w + 1.8, 0.06, 0.12, spec.cx, roofY + 1.15, spec.cz + spec.d * 0.5 + 0.95, pal.sovereignBrass, false, false);
-    boxAt(roofShellGroup, spec.w + 1.8, 0.06, 0.12, spec.cx, roofY + 1.15, spec.cz - spec.d * 0.5 - 0.95, pal.sovereignBrass, false, false);
+    // Bronze perimeter terrace rail
+    boxAt(roofShellGroup, spec.w + 1.8, 0.06, 0.12, spec.cx, roofY + 1.15, spec.cz + spec.d * 0.5 + 0.95, pal.champagneBronze, false, false);
+    boxAt(roofShellGroup, spec.w + 1.8, 0.06, 0.12, spec.cx, roofY + 1.15, spec.cz - spec.d * 0.5 - 0.95, pal.champagneBronze, false, false);
 
-    // Central Octagonal Travertine & Brass Reserve Lantern Cupola
-    const rotX = spec.cx - 2.2;
-    const rotZ = spec.cz - 1.2;
-    cylAt(roofShellGroup, 4.4, 4.6, 0.24, rotX, roofY + 0.34, rotZ, pal.neroGoldMarble, true, true, 8);
-    cylAt(roofShellGroup, 3.6, 3.6, 2.2, rotX, roofY + 1.56, rotZ, pal.smokedGlass, false, false, 8);
-    for (let p = 0; p < 8; p++) {
-      const ang = (p * Math.PI) / 4;
-      cylAt(roofShellGroup, 0.14, 0.16, 2.4, rotX + Math.cos(ang) * 3.55, roofY + 1.58, rotZ + Math.sin(ang) * 3.55, pal.flutedTravertine, true, false, 12);
+    // Dodecagonal Fluted-Limestone & Champagne-Bronze Reserve Lantern Pavilion (cx + 2.8, cz - 0.8)
+    const rotX = spec.cx + 2.8;
+    const rotZ = spec.cz - 0.8;
+    cylAt(roofShellGroup, 4.4, 4.6, 0.24, rotX, roofY + 0.34, rotZ, pal.kilimanjaroSlate, true, true, 12);
+    cylAt(roofShellGroup, 3.6, 3.6, 2.2, rotX, roofY + 1.56, rotZ, pal.bronzeTintedGlass, false, false, 12);
+    for (let p = 0; p < 12; p++) {
+      const ang = (p * Math.PI) / 6;
+      cylAt(roofShellGroup, 0.13, 0.15, 2.4, rotX + Math.cos(ang) * 3.55, roofY + 1.58, rotZ + Math.sin(ang) * 3.55, pal.flutedLimestone, true, false, 12);
     }
-    cylAt(roofShellGroup, 4.3, 3.8, 0.42, rotX, roofY + 2.86, rotZ, pal.ivoryTravertine, true, false, 8);
-    cylAt(roofShellGroup, 2.8, 3.1, 0.34, rotX, roofY + 3.22, rotZ, pal.sovereignBrass, true, false, 8);
-    // Illuminated Sovereign Vault Compass Crown atop Cupola
-    const skyHalo = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.08, 10, 28), pal.sovereignBrass);
-    skyHalo.rotation.x = Math.PI / 2;
-    skyHalo.position.set(rotX, roofY + 3.68, rotZ);
-    roofShellGroup.add(skyHalo);
-    rotatingProps.push({ obj: skyHalo, speed: 0.22, axis: 'y' });
+    cylAt(roofShellGroup, 4.3, 3.8, 0.42, rotX, roofY + 2.86, rotZ, pal.riftLimestone, true, false, 12);
+    cylAt(roofShellGroup, 2.8, 3.1, 0.34, rotX, roofY + 3.22, rotZ, pal.champagneBronze, true, false, 12);
 
-    // Stairwell Penthouse Bulkhead above East Stair Void
-    boxAt(roofShellGroup, 5.4, 2.1, 7.6, spec.cx + 7.85, roofY + 1.26, spec.cz + 2.9, pal.ivoryTravertine, true, true, 0.05);
-    boxAt(roofShellGroup, 5.7, 0.22, 7.9, spec.cx + 7.85, roofY + 2.38, spec.cz + 2.9, pal.sovereignBrass, true, false, 0.03);
+    const skyAstrolabe = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.08, 10, 28), pal.champagneBronze);
+    skyAstrolabe.rotation.x = Math.PI / 2 - 0.22;
+    skyAstrolabe.position.set(rotX, roofY + 3.85, rotZ);
+    roofShellGroup.add(skyAstrolabe);
+    rotatingProps.push({ obj: skyAstrolabe, speed: 0.24, axis: 'y' });
 
-    // Sculpted Terrace Planters
-    [-7.6, -2.2, 3.2].forEach((px, pi) => {
-      boxAt(roofShellGroup, 1.4, 0.62, 1.4, spec.cx + px, roofY + 0.54, spec.cz + spec.d * 0.36, pal.neroGoldMarble, true, true, 0.02);
-      plant(roofShellGroup, spec.cx + px, roofY + 0.86, spec.cz + spec.d * 0.36, 1.2, 560 + pi, M);
-    });
+    // Stairwell Penthouse Bulkhead accurately capping NEW West Stairwell Void (dx -7.75, dz -2.5)
+    boxAt(roofShellGroup, 5.4, 2.1, 7.8, spec.cx - 7.75, roofY + 1.26, spec.cz - 2.5, pal.flutedLimestone, true, true, 0.05);
+    boxAt(roofShellGroup, 5.7, 0.22, 8.1, spec.cx - 7.75, roofY + 2.38, spec.cz - 2.5, pal.champagneBronze, true, false, 0.03);
+
+    // Rooftop Tropical Palms & Terrace Planter Troughs
+    buildTropicalPalm(roofShellGroup, spec.cx + 8.6, roofY + 0.22, spec.cz + 6.8, 3.5, 661, M, archMats);
+    buildTropicalPalm(roofShellGroup, spec.cx - 8.2, roofY + 0.22, spec.cz + 6.8, 3.2, 662, M, archMats);
+    buildPlanterTrough(roofShellGroup, spec.cx + 2.4, roofY + 0.24, spec.cz + spec.d * 0.5 + 0.65, 5.4, 0, 663, archMats);
     downlight(roofShellGroup, rotX, roofY + 2.6, rotZ, M, 0.35);
     void frameDarkMat;
-    void archMats;
+    void getRoundedBox;
+    void contact;
   }
-
-  // Keep floor surface height aligned cleanly
-  void getRoundedBox;
-  void contact;
 }

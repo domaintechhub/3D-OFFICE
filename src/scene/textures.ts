@@ -50,38 +50,38 @@ export function heightCanvasToNormalTex(
   drawHeight(g, w, h);
   const img = g.getImageData(0, 0, w, h).data;
   const out = new Uint8Array(w * h * 4);
-
-  const sample = (x: number, y: number): number => {
-    const wx = ((x % w) + w) % w;
-    const wy = ((y % h) + h) % h;
-    return img[(wy * w + wx) * 4] / 255;
-  };
+  const scale = strength * (1 / 255);
+  const wMask = (w & (w - 1)) === 0 ? w - 1 : -1;
+  const hMask = (h & (h - 1)) === 0 ? h - 1 : -1;
 
   for (let y = 0; y < h; y++) {
+    const ym1 = hMask >= 0 ? (y - 1) & hMask : (y - 1 + h) % h;
+    const yp1 = hMask >= 0 ? (y + 1) & hMask : (y + 1) % h;
+    const rowU = ym1 * w;
+    const rowM = y * w;
+    const rowD = yp1 * w;
+
     for (let x = 0; x < w; x++) {
-      const tl = sample(x - 1, y - 1);
-      const t = sample(x, y - 1);
-      const tr = sample(x + 1, y - 1);
-      const l = sample(x - 1, y);
-      const r = sample(x + 1, y);
-      const bl = sample(x - 1, y + 1);
-      const b = sample(x, y + 1);
-      const br = sample(x + 1, y + 1);
+      const xm1 = wMask >= 0 ? (x - 1) & wMask : (x - 1 + w) % w;
+      const xp1 = wMask >= 0 ? (x + 1) & wMask : (x + 1) % w;
 
-      const dx = tr + 2 * r + br - (tl + 2 * l + bl);
-      const dy = bl + 2 * b + br - (tl + 2 * t + tr);
-      let nx = -dx * strength;
-      let ny = -dy * strength;
-      let nz = 1.0;
-      const len = Math.hypot(nx, ny, nz) || 1;
-      nx /= len;
-      ny /= len;
-      nz /= len;
+      const tl = img[(rowU + xm1) << 2];
+      const t = img[(rowU + x) << 2];
+      const tr = img[(rowU + xp1) << 2];
+      const l = img[(rowM + xm1) << 2];
+      const r = img[(rowM + xp1) << 2];
+      const bl = img[(rowD + xm1) << 2];
+      const b = img[(rowD + x) << 2];
+      const br = img[(rowD + xp1) << 2];
 
-      const i = (y * w + x) * 4;
-      out[i] = Math.round((nx * 0.5 + 0.5) * 255);
-      out[i + 1] = Math.round((ny * 0.5 + 0.5) * 255);
-      out[i + 2] = Math.round((nz * 0.5 + 0.5) * 255);
+      const nx = -(tr + 2 * r + br - (tl + 2 * l + bl)) * scale;
+      const ny = -(bl + 2 * b + br - (tl + 2 * t + tr)) * scale;
+      const invLen = 1 / Math.sqrt(nx * nx + ny * ny + 1);
+
+      const i = (rowM + x) << 2;
+      out[i] = ((nx * invLen * 0.5 + 0.5) * 255 + 0.5) | 0;
+      out[i + 1] = ((ny * invLen * 0.5 + 0.5) * 255 + 0.5) | 0;
+      out[i + 2] = ((invLen * 0.5 + 0.5) * 255 + 0.5) | 0;
       out[i + 3] = 255;
     }
   }
@@ -387,13 +387,38 @@ export function buildCoreTextures() {
   slatNormal.repeat.set(4, 1);
 
   const mossTex = makeCanvasTex('moss', 256, 256, (g, W, H) => {
-    g.fillStyle = '#2c6432';
-    g.fillRect(0, 0, W, H);
-    const cs = ['#2e783a', '#3d8e46', '#215628', '#4ca657', '#1c4a23', '#5ab264'];
-    for (let i = 0; i < 2200; i++) {
-      g.fillStyle = cs[(Math.random() * cs.length) | 0];
-      g.globalAlpha = 0.38 + Math.random() * 0.5;
-      circ(g, Math.random() * W, Math.random() * H, 1.0 + Math.random() * 2.8);
+    const img = g.createImageData(W, H);
+    const d = img.data;
+    const palette: Array<[number, number, number]> = [
+      [46, 120, 58],
+      [61, 142, 70],
+      [33, 86, 40],
+      [76, 166, 87],
+      [28, 74, 35],
+      [90, 178, 100],
+    ];
+    let seed = 1723;
+    for (let y = 0; y < H; y += 2) {
+      for (let x = 0; x < W; x += 2) {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        const c = palette[(seed >>> 24) % palette.length];
+        for (let dy = 0; dy < 2; dy++) {
+          for (let dx = 0; dx < 2; dx++) {
+            const idx = ((y + dy) * W + (x + dx)) << 2;
+            d[idx] = c[0];
+            d[idx + 1] = c[1];
+            d[idx + 2] = c[2];
+            d[idx + 3] = 255;
+          }
+        }
+      }
+    }
+    g.putImageData(img, 0, 0);
+    const cs = ['#2e783a', '#3d8e46', '#4ca657', '#5ab264'];
+    g.globalAlpha = 0.55;
+    for (let i = 0; i < 160; i++) {
+      g.fillStyle = cs[i % cs.length];
+      circ(g, Math.random() * W, Math.random() * H, 2.0 + Math.random() * 3.0);
     }
     g.globalAlpha = 1;
   });
@@ -401,13 +426,25 @@ export function buildCoreTextures() {
   mossTex.repeat.set(3, 1.4);
 
   const mossNormal = heightCanvasToNormalTex('moss', 256, 256, (g, W, H) => {
-    g.fillStyle = '#606060';
-    g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 1600; i++) {
-      const v = 90 + ((Math.random() * 140) | 0);
-      g.fillStyle = `rgb(${v},${v},${v})`;
-      circ(g, Math.random() * W, Math.random() * H, 1.2 + Math.random() * 3.5);
+    const img = g.createImageData(W, H);
+    const d = img.data;
+    let seed = 4919;
+    for (let y = 0; y < H; y += 2) {
+      for (let x = 0; x < W; x += 2) {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        const v = 90 + ((seed >>> 24) % 140);
+        for (let dy = 0; dy < 2; dy++) {
+          for (let dx = 0; dx < 2; dx++) {
+            const idx = ((y + dy) * W + (x + dx)) << 2;
+            d[idx] = v;
+            d[idx + 1] = v;
+            d[idx + 2] = v;
+            d[idx + 3] = 255;
+          }
+        }
+      }
     }
+    g.putImageData(img, 0, 0);
   }, 2.6);
   mossNormal.repeat.set(3, 1.4);
 
@@ -495,13 +532,25 @@ export function buildCoreTextures() {
 
   // Architectural gypsum / matte plaster wall relief (micro-roller texture + architectural panel shadow-gaps)
   const plasterNormal = heightCanvasToNormalTex('plaster', 256, 256, (g, W, H) => {
-    g.fillStyle = '#868686';
-    g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 4500; i++) {
-      const v = 114 + ((Math.random() * 40) | 0);
-      g.fillStyle = `rgb(${v},${v},${v})`;
-      circ(g, Math.random() * W, Math.random() * H, 0.8 + Math.random() * 2.2);
+    const img = g.createImageData(W, H);
+    const d = img.data;
+    let seed = 7713;
+    for (let y = 0; y < H; y += 2) {
+      for (let x = 0; x < W; x += 2) {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        const v = 114 + ((seed >>> 24) % 40);
+        for (let dy = 0; dy < 2; dy++) {
+          for (let dx = 0; dx < 2; dx++) {
+            const idx = ((y + dy) * W + (x + dx)) << 2;
+            d[idx] = v;
+            d[idx + 1] = v;
+            d[idx + 2] = v;
+            d[idx + 3] = 255;
+          }
+        }
+      }
     }
+    g.putImageData(img, 0, 0);
     // subtle vertical architectural shadow-gap seams every 128px
     g.strokeStyle = '#383838';
     g.lineWidth = 2.5;
@@ -517,7 +566,7 @@ export function buildCoreTextures() {
   const plasterRoughness = makeCanvasTex('plaster_rough', 256, 256, (g, W, H) => {
     g.fillStyle = '#d4d4d4';
     g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 240; i++) {
+    for (let i = 0; i < 120; i++) {
       const v = 186 + ((Math.random() * 54) | 0);
       g.fillStyle = `rgba(${v},${v},${v},0.35)`;
       circ(g, Math.random() * W, Math.random() * H, 6 + Math.random() * 24);
@@ -535,12 +584,22 @@ export function buildCoreTextures() {
   plasterRoughness.repeat.set(4, 2);
 
   const concreteTex = makeCanvasTex('concrete', 256, 256, (g, W, H) => {
-    g.fillStyle = '#e2dfd7';
-    g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 54; i++) {
+    const img = g.createImageData(W, H);
+    const d = img.data;
+    let seed = 2029;
+    for (let i = 0; i < d.length; i += 4) {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      const n = ((seed >>> 24) & 7) - 3;
+      d[i] = 226 + n;
+      d[i + 1] = 223 + n;
+      d[i + 2] = 215 + n;
+      d[i + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    for (let i = 0; i < 42; i++) {
       const v = 148 + ((Math.random() * 62) | 0);
       g.fillStyle = `rgba(${v},${v},${v - 4},0.04)`;
-      circ(g, Math.random() * W, Math.random() * H, 12 + Math.random() * 46);
+      circ(g, Math.random() * W, Math.random() * H, 14 + Math.random() * 44);
     }
     g.strokeStyle = 'rgba(90,88,82,0.16)';
     g.lineWidth = 1.2;
@@ -550,13 +609,13 @@ export function buildCoreTextures() {
       g.lineTo(W, y);
       g.stroke();
     }
+    g.fillStyle = 'rgba(72,70,64,0.22)';
     for (let x = 32; x < W; x += 64) {
       for (let y = 32; y < H; y += 64) {
-        g.fillStyle = 'rgba(72,70,64,0.22)';
         circ(g, x, y, 2.2);
       }
     }
-    for (let i = 0; i < 64; i++) {
+    for (let i = 0; i < 40; i++) {
       const x = Math.random() * W;
       const w = 0.6 + Math.random() * 2.5;
       const a = 0.03 + Math.random() * 0.06;
@@ -568,22 +627,30 @@ export function buildCoreTextures() {
       g.fillStyle = grd;
       g.fillRect(x, Math.random() * H * 0.35, w, H * 0.65);
     }
-    for (let i = 0; i < 2800; i++) {
-      g.fillStyle = `rgba(155,153,147,${Math.random() * 0.07})`;
-      g.fillRect(Math.random() * W, Math.random() * H, 2, 2);
-    }
   });
   concreteTex.wrapS = concreteTex.wrapT = THREE.RepeatWrapping;
   concreteTex.repeat.set(4, 2);
 
   const concreteNormal = heightCanvasToNormalTex('concrete', 256, 256, (g, W, H) => {
-    g.fillStyle = '#848484';
-    g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 3600; i++) {
-      const v = 104 + ((Math.random() * 54) | 0);
-      g.fillStyle = `rgb(${v},${v},${v})`;
-      g.fillRect(Math.random() * W, Math.random() * H, 2 + Math.random() * 4, 2 + Math.random() * 4);
+    const img = g.createImageData(W, H);
+    const d = img.data;
+    let seed = 6553;
+    for (let y = 0; y < H; y += 2) {
+      for (let x = 0; x < W; x += 2) {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        const v = 104 + ((seed >>> 24) % 54);
+        for (let dy = 0; dy < 2; dy++) {
+          for (let dx = 0; dx < 2; dx++) {
+            const idx = ((y + dy) * W + (x + dx)) << 2;
+            d[idx] = v;
+            d[idx + 1] = v;
+            d[idx + 2] = v;
+            d[idx + 3] = 255;
+          }
+        }
+      }
     }
+    g.putImageData(img, 0, 0);
     // formwork panel joints & tie-cone dimples aligned with concreteTex
     g.strokeStyle = '#484848';
     g.lineWidth = 2;
@@ -593,9 +660,9 @@ export function buildCoreTextures() {
       g.lineTo(W, y);
       g.stroke();
     }
+    g.fillStyle = '#383838';
     for (let x = 32; x < W; x += 64) {
       for (let y = 32; y < H; y += 64) {
-        g.fillStyle = '#383838';
         circ(g, x, y, 2.5);
       }
     }
@@ -603,46 +670,69 @@ export function buildCoreTextures() {
   concreteNormal.repeat.set(4, 2);
 
   const roughTex = makeCanvasTex('rough', 256, 256, (g, W, H) => {
-    g.fillStyle = '#c8c8c8';
-    g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 5200; i++) {
-      const v = 148 + ((Math.random() * 100) | 0);
-      g.fillStyle = `rgb(${v},${v},${v})`;
-      g.fillRect(Math.random() * W, Math.random() * H, 3 + Math.random() * 9, 2 + Math.random() * 7);
+    const img = g.createImageData(W, H);
+    const d = img.data;
+    let seed = 9187;
+    for (let y = 0; y < H; y += 4) {
+      for (let x = 0; x < W; x += 4) {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        const v = 152 + ((seed >>> 24) % 92);
+        for (let dy = 0; dy < 4; dy++) {
+          for (let dx = 0; dx < 4; dx++) {
+            const idx = ((y + dy) * W + (x + dx)) << 2;
+            d[idx] = v;
+            d[idx + 1] = v;
+            d[idx + 2] = v;
+            d[idx + 3] = 255;
+          }
+        }
+      }
     }
-    for (let i = 0; i < 160; i++) {
-      const v = 170 + ((Math.random() * 60) | 0);
-      g.fillStyle = `rgba(${v},${v},${v},0.12)`;
-      circ(g, Math.random() * W, Math.random() * H, 8 + Math.random() * 30);
+    g.putImageData(img, 0, 0);
+    for (let i = 0; i < 64; i++) {
+      const v = 170 + ((i * 19) % 60);
+      g.fillStyle = `rgba(${v},${v},${v},0.14)`;
+      circ(g, Math.random() * W, Math.random() * H, 10 + Math.random() * 28);
     }
   }, false);
   roughTex.wrapS = roughTex.wrapT = THREE.RepeatWrapping;
   roughTex.repeat.set(6, 6);
 
   const fabricNormal = heightCanvasToNormalTex('fabric', 128, 128, (g, W, H) => {
-    g.fillStyle = '#808080';
-    g.fillRect(0, 0, W, H);
-    for (let y = 0; y < H; y += 4) {
-      for (let x = 0; x < W; x += 4) {
-        const alt = ((x + y) / 4) % 2 === 0;
-        g.fillStyle = alt ? '#9e9e9e' : '#626262';
-        g.fillRect(x, y, 3, 3);
+    const img = g.createImageData(W, H);
+    const d = img.data;
+    for (let y = 0; y < H; y++) {
+      const ym = y & 3;
+      for (let x = 0; x < W; x++) {
+        const xm = x & 3;
+        const v = xm === 3 || ym === 3 ? 128 : ((((x >> 2) + (y >> 2)) & 1) === 0 ? 158 : 98);
+        const idx = (y * W + x) << 2;
+        d[idx] = v;
+        d[idx + 1] = v;
+        d[idx + 2] = v;
+        d[idx + 3] = 255;
       }
     }
+    g.putImageData(img, 0, 0);
   }, 1.5);
   fabricNormal.repeat.set(8, 8);
 
   const acousticTex = makeCanvasTex('acoustic_felt', 256, 256, (g, W, H) => {
-    g.fillStyle = '#4e555e';
-    g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 4200; i++) {
-      const v = 64 + ((Math.random() * 36) | 0);
-      g.fillStyle = `rgba(${v},${v + 4},${v + 9},0.45)`;
-      g.fillRect(Math.random() * W, Math.random() * H, 1.5, 2.5);
+    const img = g.createImageData(W, H);
+    const d = img.data;
+    let seed = 3371;
+    for (let i = 0; i < d.length; i += 4) {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      const v = 72 + ((seed >>> 24) % 24);
+      d[i] = v;
+      d[i + 1] = v + 6;
+      d[i + 2] = v + 14;
+      d[i + 3] = 255;
     }
+    g.putImageData(img, 0, 0);
     // Subtle architectural acoustic vertical ribbing
+    g.fillStyle = 'rgba(20,24,28,0.16)';
     for (let x = 0; x < W; x += 16) {
-      g.fillStyle = 'rgba(20,24,28,0.16)';
       g.fillRect(x, 0, 2, H);
     }
   });
@@ -746,13 +836,18 @@ export function buildCoreTextures() {
 
   // Acoustic suspended ceiling tile grid (normal + roughness)
   const ceilNormal = heightCanvasToNormalTex('ceil', 256, 256, (g, W, H) => {
-    g.fillStyle = '#929292';
-    g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 2400; i++) {
-      const v = 104 + ((Math.random() * 52) | 0);
-      g.fillStyle = `rgb(${v},${v},${v})`;
-      circ(g, Math.random() * W, Math.random() * H, 0.9);
+    const img = g.createImageData(W, H);
+    const d = img.data;
+    let seed = 8291;
+    for (let i = 0; i < d.length; i += 4) {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      const v = 108 + ((seed >>> 24) % 48);
+      d[i] = v;
+      d[i + 1] = v;
+      d[i + 2] = v;
+      d[i + 3] = 255;
     }
+    g.putImageData(img, 0, 0);
     g.strokeStyle = '#383838';
     g.lineWidth = 3;
     for (let i = 0; i < W; i += 64) {
@@ -1113,29 +1208,41 @@ export function buildCoreTextures() {
   asphaltRoughness.wrapS = asphaltRoughness.wrapT = THREE.RepeatWrapping;
   asphaltRoughness.repeat.set(20, 5);
 
-  // Natural organic sunlit grass turf (fast crisp 256x256 blades)
+  // Natural organic sunlit grass turf (fast crisp 256x256 blades using batched paths)
   const lawnTex = makeCanvasTex('natural_lawn', 256, 256, (g, W, H) => {
-    g.fillStyle = '#486632';
-    g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 36; i++) {
+    const img = g.createImageData(W, H);
+    const d = img.data;
+    let seed = 5101;
+    for (let i = 0; i < d.length; i += 4) {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      const n = (seed >>> 24) & 31;
+      d[i] = 62 + n;
+      d[i + 1] = 94 + n;
+      d[i + 2] = 44 + (n >> 1);
+      d[i + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    for (let i = 0; i < 18; i++) {
       const x = Math.random() * W;
       const y = Math.random() * H;
-      const rg = g.createRadialGradient(x, y, 2, x, y, 24 + Math.random() * 34);
+      const rg = g.createRadialGradient(x, y, 2, x, y, 26 + Math.random() * 34);
       rg.addColorStop(0, i % 3 === 0 ? 'rgba(116,136,64,0.28)' : 'rgba(54,82,38,0.28)');
       rg.addColorStop(1, 'rgba(72,102,50,0)');
       g.fillStyle = rg;
       g.fillRect(0, 0, W, H);
     }
     const bladeCols = ['#3c5928', '#527337', '#6a8742', '#7d924b', '#334c22', '#8fa059'];
-    for (let i = 0; i < 2400; i++) {
-      g.strokeStyle = bladeCols[i % bladeCols.length];
-      g.globalAlpha = 0.55;
-      g.lineWidth = 1.2;
-      const x = Math.random() * W;
-      const y = Math.random() * H;
+    g.globalAlpha = 0.55;
+    g.lineWidth = 1.2;
+    for (let c = 0; c < bladeCols.length; c++) {
+      g.strokeStyle = bladeCols[c];
       g.beginPath();
-      g.moveTo(x, y);
-      g.lineTo(x + (Math.random() - 0.5) * 3.5, y - (3 + Math.random() * 5));
+      for (let i = 0; i < 220; i++) {
+        const x = Math.random() * W;
+        const y = Math.random() * H;
+        g.moveTo(x, y);
+        g.lineTo(x + (Math.random() - 0.5) * 3.5, y - (3 + Math.random() * 5));
+      }
       g.stroke();
     }
     g.globalAlpha = 1;
@@ -1143,17 +1250,29 @@ export function buildCoreTextures() {
   lawnTex.wrapS = lawnTex.wrapT = THREE.RepeatWrapping;
 
   const grassNormal = heightCanvasToNormalTex('grass_v2', 256, 256, (g, W, H) => {
-    g.fillStyle = '#7c7c7c';
-    g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 2000; i++) {
-      const v = 56 + ((Math.random() * 145) | 0);
+    const img = g.createImageData(W, H);
+    const d = img.data;
+    let seed = 6089;
+    for (let i = 0; i < d.length; i += 4) {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      const v = 74 + ((seed >>> 24) % 108);
+      d[i] = v;
+      d[i + 1] = v;
+      d[i + 2] = v;
+      d[i + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    g.lineWidth = 1.4;
+    for (let c = 0; c < 4; c++) {
+      const v = 64 + c * 42;
       g.strokeStyle = `rgb(${v},${v},${v})`;
-      g.lineWidth = 1.4;
-      const x = Math.random() * W;
-      const y = Math.random() * H;
       g.beginPath();
-      g.moveTo(x, y);
-      g.lineTo(x + (Math.random() - 0.5) * 3, y - (3 + Math.random() * 4));
+      for (let i = 0; i < 240; i++) {
+        const x = Math.random() * W;
+        const y = Math.random() * H;
+        g.moveTo(x, y);
+        g.lineTo(x + (Math.random() - 0.5) * 3, y - (3 + Math.random() * 4));
+      }
       g.stroke();
     }
   }, 2.1);
@@ -1287,22 +1406,25 @@ export function buildCoreTextures() {
 
   // Dark basalt/slate tile floor (Crypto / Logistics)
   const slateFloorTex = makeCanvasTex('slate_floor', 512, 512, (g, W, H) => {
-    g.fillStyle = '#252b35';
-    g.fillRect(0, 0, W, H);
+    const img = g.createImageData(W, H);
+    const d = img.data;
     const grid = 4;
     const ts = W / grid;
-    for (let r = 0; r < grid; r++) {
-      for (let c = 0; c < grid; c++) {
-        const shade = 40 + (((r * 11 + c * 17) % 5) * 3);
-        g.fillStyle = `rgb(${shade},${shade + 6},${shade + 14})`;
-        g.fillRect(c * ts + 2, r * ts + 2, ts - 4, ts - 4);
+    let seed = 3917;
+    for (let y = 0; y < H; y++) {
+      const r = (y / ts) | 0;
+      for (let x = 0; x < W; x++) {
+        const c = (x / ts) | 0;
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        const base = 36 + (((r * 11 + c * 17) % 5) * 3) + ((seed >>> 24) & 7);
+        const idx = (y * W + x) << 2;
+        d[idx] = base;
+        d[idx + 1] = base + 6;
+        d[idx + 2] = base + 14;
+        d[idx + 3] = 255;
       }
     }
-    for (let i = 0; i < 2400; i++) {
-      const v = 32 + ((Math.random() * 44) | 0);
-      g.fillStyle = `rgba(${v},${v + 5},${v + 12},0.22)`;
-      g.fillRect(Math.random() * W, Math.random() * H, 2 + Math.random() * 5, 1.5 + Math.random() * 4);
-    }
+    g.putImageData(img, 0, 0);
     g.strokeStyle = 'rgba(15,18,24,0.65)';
     g.lineWidth = 2;
     for (let i = 0; i <= W; i += ts) {
@@ -1319,13 +1441,25 @@ export function buildCoreTextures() {
   slateFloorTex.wrapS = slateFloorTex.wrapT = THREE.RepeatWrapping;
 
   const slateFloorNormal = heightCanvasToNormalTex('slate_floor', 512, 512, (g, W, H) => {
-    g.fillStyle = '#8e8e8e';
-    g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 1200; i++) {
-      const v = 122 + ((Math.random() * 34) | 0);
-      g.fillStyle = `rgb(${v},${v},${v})`;
-      g.fillRect(Math.random() * W, Math.random() * H, 3 + Math.random() * 8, 2 + Math.random() * 6);
+    const img = g.createImageData(W, H);
+    const d = img.data;
+    let seed = 8821;
+    for (let y = 0; y < H; y += 2) {
+      for (let x = 0; x < W; x += 2) {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        const v = 124 + ((seed >>> 24) % 30);
+        for (let dy = 0; dy < 2; dy++) {
+          for (let dx = 0; dx < 2; dx++) {
+            const idx = ((y + dy) * W + (x + dx)) << 2;
+            d[idx] = v;
+            d[idx + 1] = v;
+            d[idx + 2] = v;
+            d[idx + 3] = 255;
+          }
+        }
+      }
     }
+    g.putImageData(img, 0, 0);
     g.strokeStyle = '#323232';
     g.lineWidth = 3;
     for (let i = 0; i <= W; i += W / 4) {
@@ -1424,15 +1558,32 @@ export function buildCoreTextures() {
   });
 
   const gymRubberTex = makeCanvasTex('gym_rubber', 256, 256, (g, W, H) => {
-    g.fillStyle = '#1e2228';
-    g.fillRect(0, 0, W, H);
-    const specks = ['#3a4352', '#526072', '#4fe38a', '#3b82f6', '#94a3b8'];
-    for (let i = 0; i < 1600; i++) {
-      g.fillStyle = specks[(Math.random() * specks.length) | 0];
-      g.globalAlpha = 0.28 + Math.random() * 0.36;
-      g.fillRect(Math.random() * W, Math.random() * H, 1.5 + Math.random() * 1.5, 1.5 + Math.random() * 1.5);
+    const img = g.createImageData(W, H);
+    const d = img.data;
+    const specks: Array<[number, number, number]> = [
+      [58, 67, 82],
+      [82, 96, 114],
+      [79, 227, 138],
+      [59, 130, 246],
+      [148, 163, 184],
+    ];
+    let seed = 4457;
+    for (let i = 0; i < d.length; i += 4) {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      const roll = (seed >>> 24) & 31;
+      if (roll < 5) {
+        const sp = specks[roll];
+        d[i] = (30 + sp[0]) >> 1;
+        d[i + 1] = (34 + sp[1]) >> 1;
+        d[i + 2] = (40 + sp[2]) >> 1;
+      } else {
+        d[i] = 30;
+        d[i + 1] = 34;
+        d[i + 2] = 40;
+      }
+      d[i + 3] = 255;
     }
-    g.globalAlpha = 1;
+    g.putImageData(img, 0, 0);
     g.strokeStyle = 'rgba(10,12,16,0.55)';
     g.lineWidth = 2;
     for (let x = 0; x <= W; x += 128) {

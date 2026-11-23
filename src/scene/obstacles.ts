@@ -1117,34 +1117,36 @@ function populateDistrictBuildingGeometry(
       [-3.8, -1.9, 1.9, 3.8].forEach((ox) => {
         circles.push({ x: spec.doorX + ox, z: spec.doorZ + 1.4, r: 0.44 });
       });
-      // Monumental interior fluted columns
+      // Monumental interior fluted limestone columns framing Banking Hall & Rotunda
       [
-        [-7.8, -0.6],
-        [2.6, -0.6],
-        [2.6, 5.2],
+        [-3.8, -0.8],
+        [7.6, -1.6],
+        [7.6, 5.4],
       ].forEach(([cx, cz]) => circles.push({ x: spec.cx + cx, z: spec.cz + cz, r: 0.36 }));
-      // SW 24/7 Express ATM screen & 3 kiosks
-      addBox(boxes, spec.cx - 3.3, spec.cz + 6.4, 0.22, 2.26);
-      [-8.5, -6.5, -4.5].forEach((ox) => {
-        addBox(boxes, spec.cx + ox, spec.cz + 6.2, 0.96, 0.94);
+      // SW 24/7 Biometric ATM screen & 3 kiosks
+      addBox(boxes, spec.cx - 3.3, spec.cz + 7.2, 0.2, 2.06);
+      [-8.8, -6.8, -4.8].forEach((ox) => {
+        addBox(boxes, spec.cx + ox, spec.cz + 7.4, 0.96, 0.92);
       });
-      // Teller counter & flanking velvet queue stanchions
-      addBox(boxes, spec.cx - 2.4, spec.cz - 3.6, 9.48, 1.38);
-      addBox(boxes, spec.cx - 4.2, spec.cz - 1.35, 0.24, 1.68);
-      addBox(boxes, spec.cx - 0.6, spec.cz - 1.35, 0.24, 1.68);
-      // Rear Treasury Vault assembly & flanking biometric iris pedestals
-      addBox(boxes, spec.cx + 6.2, spec.cz - 9.35, 4.36, 1.06);
+      // North-Center Teller Counter (front -4.8 + rear work-deck -5.6) & queue stanchions
+      addBox(boxes, spec.cx - 0.3, spec.cz - 5.2, 8.9, 1.8);
+      addBox(boxes, spec.cx - 1.8, spec.cz - 2.7, 0.22, 1.75);
+      addBox(boxes, spec.cx + 1.2, spec.cz - 2.7, 0.22, 1.75);
+      // NE Geared Biometric Vault Portal, flanking iris pedestals & bullion showcase
+      addBox(boxes, spec.cx + 7.2, spec.cz - 9.0, 4.46, 1.1);
       circles.push(
-        { x: spec.cx + 4.35, z: spec.cz - 8.6, r: 0.28 },
-        { x: spec.cx + 8.05, z: spec.cz - 8.6, r: 0.28 }
+        { x: spec.cx + 5.35, z: spec.cz - 8.35, r: 0.28 },
+        { x: spec.cx + 9.05, z: spec.cz - 8.35, r: 0.28 },
+        { x: spec.cx + 9.1, z: spec.cz - 5.4, r: 0.56 }
       );
-      // Central Waiting Rotunda Lounge (Chesterfield bench + round marble coffee table) & plants
-      addBox(boxes, spec.cx + 1.9, spec.cz + 4.4, 1.04, 2.58);
+      // SE Savanna-Teal Banquette + Limestone Table + Specimen Planters
+      addBox(boxes, spec.cx + 8.9, spec.cz + 6.2, 1.12, 3.06);
       circles.push(
-        { x: spec.cx + 0.3, z: spec.cz + 4.4, r: 0.62 },
-        { x: spec.cx - 9.6, z: spec.cz - 8.4, r: 0.45 },
-        { x: spec.cx - 9.6, z: spec.cz + 1.8, r: 0.45 },
-        { x: spec.cx + 4.3, z: spec.cz + 6.3, r: 0.45 }
+        { x: spec.cx + 7.2, z: spec.cz + 6.2, r: 0.54 },
+        { x: spec.cx - 9.4, z: spec.cz - 8.4, r: 0.45 },
+        { x: spec.cx - 9.4, z: spec.cz + 3.0, r: 0.45 },
+        { x: spec.cx + 2.0, z: spec.cz + 6.8, r: 0.45 },
+        { x: spec.cx - 4.2, z: spec.cz + 1.2, r: 0.45 }
       );
     } else if (spec.id === 'crypto') {
       // Cold-storage MPC vault pod (cx, cz - 5.1)
@@ -2413,81 +2415,109 @@ function populateDistrictBuildingGeometry(
       { x: spec.cx + 11.2, z: spec.cz + 5.8, r: 0.45 }
     );
   } else if (spec.id === 'bank' && lv === 1) {
-    // 2 Private Mortgage & Credit Glass Suites (open South portals dx -7.85 & -3.35)
-    [-10.1, -5.6, -1.1].forEach((mx) => addBox(boxes, spec.cx + mx, spec.cz - 5.5, 0.2, 6.64));
-    [-9.5, -6.2, -5.0, -1.7].forEach((fx) => addBox(boxes, spec.cx + fx, spec.cz - 2.2, 1.18, 0.18));
-    [-7.9, -3.3].forEach((dx) => addBox(boxes, spec.cx + dx, spec.cz - 5.6, 2.34, 1.04));
-    [-8.55, -7.25, -3.95, -2.65].forEach((ax) => circles.push({ x: spec.cx + ax, z: spec.cz - 4.15, r: 0.44 }));
-    // SW Illuminated Property Scale-Model Vitrine & Relationship Manager Desk
-    addBox(boxes, spec.cx - 5.8, spec.cz + 5.2, 3.68, 2.28);
-    addBox(boxes, spec.cx + 0.6, spec.cz + 5.4, 2.44, 1.04);
-    // NE Espresso Bar & Lounge
-    addBox(boxes, spec.cx + 7.2, spec.cz - 8.4, 3.9, 1.08);
-    addBox(boxes, spec.cx + 6.4, spec.cz - 4.8, 2.55, 1.02);
-    circles.push(
-      { x: spec.cx + 9.4, z: spec.cz - 8.2, r: 0.45 },
-      { x: spec.cx - 9.6, z: spec.cz + 8.2, r: 0.45 }
-    );
-  } else if (spec.id === 'bank' && lv === 2) {
-    // Dual Institutional FX & Sovereign Bond Dealing Consoles
-    addBox(boxes, spec.cx - 4.2, spec.cz - 3.6, 7.42, 1.28);
-    addBox(boxes, spec.cx - 4.2, spec.cz + 2.8, 7.42, 1.28);
-    // NE Quantitative Risk Screen & Desk
-    addBox(boxes, spec.cx + 2.0, spec.cz - 6.6, 0.18, 5.44);
-    addBox(boxes, spec.cx + 5.2, spec.cz - 6.6, 2.54, 1.08);
+    // Double-Height Rotunda Overlook Balustrades framing (+0.8..+6.8, -1.0..+5.0)
+    addBox(boxes, spec.cx + 3.8, spec.cz - 1.0, 6.08, 0.16);
+    addBox(boxes, spec.cx + 3.8, spec.cz + 5.0, 6.08, 0.16);
+    addBox(boxes, spec.cx + 0.8, spec.cz + 2.0, 0.16, 6.08);
+    addBox(boxes, spec.cx + 6.8, spec.cz + 2.0, 0.16, 6.08);
+    // 2 Curved Acoustic Crescent Consultation Pods (dx -1.6 & +4.4, dz -5.4, open South entries)
+    [-1.6, 4.4].forEach((podDx) => {
+      for (let i = 0; i < 11; i++) {
+        const a = Math.PI * 0.12 + (i / 10) * Math.PI * 0.76;
+        circles.push({
+          x: spec.cx + podDx + Math.cos(a) * 2.35,
+          z: spec.cz - 5.4 - Math.sin(a) * 2.35,
+          r: 0.22,
+        });
+      }
+      addBox(boxes, spec.cx + podDx, spec.cz - 5.6, 2.34, 1.04);
+    });
+    [-2.25, -0.95, 3.75, 5.05].forEach((ax) => circles.push({ x: spec.cx + ax, z: spec.cz - 4.1, r: 0.44 }));
+    // SW East African Trade Corridor Table & South Diaspora Desk
+    addBox(boxes, spec.cx - 6.2, spec.cz + 5.8, 2.98, 1.78);
+    addBox(boxes, spec.cx - 2.2, spec.cz + 6.2, 2.44, 1.04);
     circles.push(
       { x: spec.cx + 9.2, z: spec.cz - 8.2, r: 0.45 },
+      { x: spec.cx - 9.4, z: spec.cz - 8.2, r: 0.45 },
+      { x: spec.cx + 9.2, z: spec.cz + 7.8, r: 0.45 }
+    );
+  } else if (spec.id === 'bank' && lv === 2) {
+    // Center Sovereign Yield Totem Pillar & 4 Radial Horseshoe FX Dealing Consoles
+    circles.push({ x: spec.cx + 3.2, z: spec.cz - 0.8, r: 0.72 });
+    [-0.9, -0.3, 0.3, 0.9].forEach((a) => {
+      addObb(
+        obbs,
+        spec.cx + 3.2 + Math.sin(a) * 3.45,
+        spec.cz - 0.8 - Math.cos(a) * 3.45,
+        2.18,
+        1.08,
+        -a
+      );
+    });
+    // SW Quantitative Risk Strategist Desk
+    addBox(boxes, spec.cx - 1.8, spec.cz + 5.8, 2.54, 1.08);
+    circles.push(
+      { x: spec.cx + 9.4, z: spec.cz - 8.2, r: 0.45 },
       { x: spec.cx - 9.4, z: spec.cz + 8.0, r: 0.45 }
     );
   } else if (spec.id === 'bank' && lv === 3) {
-    // NW Safe Deposit Sanctuary Enclosure (open South doorway dx -7.4..-5.0)
-    [-10.2, -2.2].forEach((wx) => addBox(boxes, spec.cx + wx, spec.cz - 5.5, 0.22, 7.44));
-    [-8.8, -3.6].forEach((fx) => addBox(boxes, spec.cx + fx, spec.cz - 1.8, 2.84, 0.22));
-    addBox(boxes, spec.cx - 6.2, spec.cz - 8.95, 6.84, 0.54);
-    addBox(boxes, spec.cx - 6.2, spec.cz - 5.4, 1.92, 1.18);
-    // SW Private Wealth Parlor
-    addBox(boxes, spec.cx - 9.95, spec.cz + 5.2, 0.62, 3.84);
-    addBox(boxes, spec.cx - 6.8, spec.cz + 6.4, 2.55, 1.02);
-    addBox(boxes, spec.cx - 2.6, spec.cz + 4.6, 2.44, 1.04);
-    // NE Family Office Fiduciary Pods
-    addBox(boxes, spec.cx + 3.2, spec.cz - 6.6, 2.34, 1.04);
-    addBox(boxes, spec.cx + 7.2, spec.cz - 6.6, 2.34, 1.04);
+    // NE Circular Bullion Assay Rotunda (cx +4.4, cz -3.6, r 4.15m): 6 colonnade piers, North locker wall & assay table
+    [0.2, 1.15, 2.25, 3.35, 4.35, 5.4].forEach((ang) => {
+      circles.push({
+        x: spec.cx + 4.4 + Math.cos(ang) * 4.15,
+        z: spec.cz - 3.6 + Math.sin(ang) * 4.15,
+        r: 0.38,
+      });
+    });
+    addBox(boxes, spec.cx + 4.4, spec.cz - 9.0, 6.84, 0.56);
+    circles.push({ x: spec.cx + 4.4, z: spec.cz - 3.6, r: 1.08 });
+    // SE Private Wealth Parlor
+    addBox(boxes, spec.cx + 10.0, spec.cz + 5.6, 0.62, 3.84);
+    addBox(boxes, spec.cx + 0.8, spec.cz + 5.2, 2.44, 1.04);
     circles.push(
-      { x: spec.cx + 9.2, z: spec.cz - 8.4, r: 0.45 },
-      { x: spec.cx - 9.2, z: spec.cz + 8.2, r: 0.45 }
+      { x: spec.cx + 5.6, z: spec.cz + 5.8, r: 0.52 },
+      { x: spec.cx + 7.2, z: spec.cz + 7.2, r: 0.52 }
+    );
+    // West-Center Family Office Fiduciary Desks
+    addBox(boxes, spec.cx - 2.2, spec.cz - 6.2, 2.34, 1.04);
+    addBox(boxes, spec.cx - 2.2, spec.cz + 3.2, 2.34, 1.04);
+    circles.push(
+      { x: spec.cx - 9.4, z: spec.cz + 8.0, r: 0.45 },
+      { x: spec.cx + 9.2, z: spec.cz - 8.2, r: 0.45 }
     );
   } else if (spec.id === 'bank' && lv === 4) {
-    // NW SWIFT & AML Ops Enclave (open South portal dx -6.4..-4.0)
-    [-9.8, -0.6].forEach((wx) => addBox(boxes, spec.cx + wx, spec.cz - 4.0, 0.2, 9.24));
-    [-8.1, -2.3].forEach((fx) => addBox(boxes, spec.cx + fx, spec.cz + 0.6, 3.44, 0.2));
-    [-7.4, -3.0].forEach((sx) => addBox(boxes, spec.cx + sx, spec.cz - 4.2, 2.44, 1.04));
-    // SW Audit Committee Table & Archival Compliance Cabinets
-    addBox(boxes, spec.cx - 4.6, spec.cz + 5.4, 5.24, 1.84);
-    addBox(boxes, spec.cx - 10.1, spec.cz + 5.4, 0.7, 3.84);
-    // NE Operational Risk Desk
-    addBox(boxes, spec.cx + 5.8, spec.cz - 6.4, 2.54, 1.08);
+    // Twin Open Clearing Consoles (dx +0.4 & +5.2, dz -4.2)
+    addBox(boxes, spec.cx + 0.4, spec.cz - 4.2, 2.44, 1.08);
+    addBox(boxes, spec.cx + 5.2, spec.cz - 4.2, 2.44, 1.08);
+    // SE Audit Tribunal Table & Archive Cabinets
+    addBox(boxes, spec.cx + 4.8, spec.cz + 5.4, 5.24, 1.84);
+    addBox(boxes, spec.cx + 10.0, spec.cz + 5.4, 0.72, 3.84);
+    // SW Operational Risk Desk
+    addBox(boxes, spec.cx - 6.6, spec.cz + 5.8, 2.44, 1.04);
     circles.push(
-      { x: spec.cx + 9.2, z: spec.cz - 8.2, r: 0.45 },
-      { x: spec.cx + 2.6, z: spec.cz + 8.0, r: 0.45 }
+      { x: spec.cx - 9.4, z: spec.cz + 8.0, r: 0.45 },
+      { x: spec.cx + 9.2, z: spec.cz - 8.2, r: 0.45 }
     );
   } else if (spec.id === 'bank' && lv === 5) {
-    // West Executive Bank Boardroom (open East doorway dz -5.0..-2.6)
-    [-8.8, 1.2].forEach((wz) => addBox(boxes, spec.cx - 5.4, spec.cz + wz, 9.24, 0.22));
-    [-6.9, -0.7].forEach((ez) => addBox(boxes, spec.cx - 0.8, spec.cz + ez, 0.22, 3.84));
-    addBox(boxes, spec.cx - 5.4, spec.cz - 3.8, 5.66, 2.06);
-    // SW Governor / CEO Suite
-    addBox(boxes, spec.cx - 9.95, spec.cz + 6.0, 0.62, 4.04);
-    addBox(boxes, spec.cx - 6.2, spec.cz + 6.2, 2.84, 1.16);
+    // NE Diplomatic Boardroom Colonnade + North Acoustic Screen + Boardroom Table
+    [-0.4, 6.8].forEach((px) => {
+      [-7.4, -0.2].forEach((pz) => circles.push({ x: spec.cx + px, z: spec.cz + pz, r: 0.36 }));
+    });
+    addBox(boxes, spec.cx + 3.2, spec.cz - 8.8, 7.64, 0.24);
+    addBox(boxes, spec.cx + 3.2, spec.cz - 3.8, 5.84, 2.04);
+    // SW Governor / CEO Suite & Monetary Archive Credenza
+    addBox(boxes, spec.cx - 10.0, spec.cz + 6.0, 0.62, 4.04);
+    addBox(boxes, spec.cx - 5.8, spec.cz + 6.0, 2.84, 1.14);
     circles.push(
-      { x: spec.cx - 2.8, z: spec.cz + 5.8, r: 0.56 },
-      { x: spec.cx - 3.6, z: spec.cz + 5.8, r: 0.46 }
+      { x: spec.cx - 2.2, z: spec.cz + 5.8, r: 0.56 },
+      { x: spec.cx - 3.0, z: spec.cz + 5.8, r: 0.46 }
     );
-    // NE CFO Desk & Sky-Bar
-    addBox(boxes, spec.cx + 2.8, spec.cz - 6.6, 2.44, 1.04);
-    addBox(boxes, spec.cx + 7.4, spec.cz - 7.6, 3.9, 1.04);
+    // SE CFO Desk & Ceremonial Kenyan Tea Credenza
+    addBox(boxes, spec.cx + 6.4, spec.cz + 4.2, 1.04, 2.44);
+    addBox(boxes, spec.cx + 6.6, spec.cz + 8.0, 3.48, 0.98);
     circles.push(
-      { x: spec.cx + 9.4, z: spec.cz - 5.2, r: 0.45 },
-      { x: spec.cx + 3.2, z: spec.cz + 7.4, r: 0.45 }
+      { x: spec.cx - 9.2, z: spec.cz - 8.2, r: 0.45 },
+      { x: spec.cx + 9.4, z: spec.cz + 8.0, r: 0.45 }
     );
   } else {
     // Upper floors: desks, shelf unit & 2 corner plants
@@ -2627,17 +2657,17 @@ function populateDistrictBuildingGeometry(
     addBox(boxes, spec.cx + 3.2, spec.cz - 5.975, 0.22, 1.65, undefined, lv >= 1);
   }
 
-  // Nairobi Trust Bank continuous 6-Story Reserve Stairwell & Bullion Lightwell Spine Colliders (0..5)
+  // Nairobi Trust Bank continuous 6-Story West Reserve Stairwell & Light-Loom Spine Colliders (0..5)
   if (spec.id === 'bank') {
-    // West shaft balustrade (dx +5.10) & South overhang balustrade (dz +6.90)
-    addBox(boxes, spec.cx + 5.1, spec.cz + 2.9, 0.16, 8.08);
-    addBox(boxes, spec.cx + 7.85, spec.cz + 6.9, 5.56, 0.16);
-    // Center 6-story Sovereign Gold-Ledger Lightwell Spine separating West (up) & East (arrival) flights
-    addBox(boxes, spec.cx + 7.85, spec.cz + 1.78, 0.18, 5.78);
-    // North West-Lane Ascent Mouth (dz -1.10, dx +5.10..+7.85): stairwellGate on G..L4, solid safety glass on L5
-    addBox(boxes, spec.cx + 6.48, spec.cz - 1.1, 2.66, 0.22, undefined, lv < spec.floors - 1);
-    // North East-Lane Arrival Mouth (dz -1.10, dx +7.85..+10.60): solid under-stair divider on G, stairwellGate on L1..L5
-    addBox(boxes, spec.cx + 9.22, spec.cz - 1.1, 2.68, 0.22, undefined, lv >= 1);
+    // East shaft balustrade (dx -5.00) & North drop-guard balustrade (dz -6.50)
+    addBox(boxes, spec.cx - 5.0, spec.cz - 2.5, 0.16, 8.08);
+    addBox(boxes, spec.cx - 7.75, spec.cz - 6.5, 5.56, 0.16);
+    // Center 6-story Makore & Bronze Light-Loom Spine separating East (up) & West (arrival) flights
+    addBox(boxes, spec.cx - 7.75, spec.cz - 1.38, 0.18, 5.78);
+    // South East-Lane Ascent Mouth (dz +1.50, dx -7.75..-5.00): stairwellGate on G..L4, solid safety glass on L5
+    addBox(boxes, spec.cx - 6.38, spec.cz + 1.5, 2.66, 0.22, undefined, lv < spec.floors - 1);
+    // South West-Lane Arrival Mouth (dz +1.50, dx -10.50..-7.75): solid relief wall on G, stairwellGate on L1..L5
+    addBox(boxes, spec.cx - 9.12, spec.cz + 1.5, 2.68, 0.22, undefined, lv >= 1);
   }
 }
 

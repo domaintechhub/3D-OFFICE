@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
   build3DEyeballGeo,
@@ -599,6 +598,22 @@ function prepareSkinnedPart(
   return g;
 }
 
+const SKINNED_PART_CACHE = new Map<string, THREE.BufferGeometry>();
+
+function getCachedSkinnedPart(
+  cacheKey: string,
+  weightFn: (x: number, y: number, z: number) => BoneWeightResult,
+  buildRaw: () => { geo: THREE.BufferGeometry; temp?: boolean }
+): THREE.BufferGeometry {
+  const cached = SKINNED_PART_CACHE.get(cacheKey);
+  if (cached) return cached;
+  const { geo, temp } = buildRaw();
+  const skinned = prepareSkinnedPart(geo, weightFn);
+  if (temp) geo.dispose();
+  SKINNED_PART_CACHE.set(cacheKey, skinned);
+  return skinned;
+}
+
 function weightTorsoSpine(y: number): BoneWeightResult {
   if (y < 0.96) {
     const k = smoothstep(0.88, 0.96, y);
@@ -746,14 +761,23 @@ interface AnatomyGeos {
   sleevelessCapMale: THREE.BufferGeometry;
   legBare: THREE.BufferGeometry;
   legTrouser: THREE.BufferGeometry;
+  ankleGeo: THREE.BufferGeometry;
   armFullBare: THREE.BufferGeometry;
   armFullSleeve: THREE.BufferGeometry;
   armShortSleeve: THREE.BufferGeometry;
   armShortBare: THREE.BufferGeometry;
   armRolledUpper: THREE.BufferGeometry;
   armRolledBare: THREE.BufferGeometry;
+  armFullBareRight: THREE.BufferGeometry;
+  armFullSleeveRight: THREE.BufferGeometry;
+  armShortSleeveRight: THREE.BufferGeometry;
+  armShortBareRight: THREE.BufferGeometry;
+  armRolledUpperRight: THREE.BufferGeometry;
+  armRolledBareRight: THREE.BufferGeometry;
   handSkin: THREE.BufferGeometry;
   handNails: THREE.BufferGeometry;
+  handSkinRight: THREE.BufferGeometry;
+  handNailsRight: THREE.BufferGeometry;
   heelSole: THREE.BufferGeometry;
   heelUpper: THREE.BufferGeometry;
   heelInstep?: THREE.BufferGeometry;
@@ -904,6 +928,22 @@ function initAnatomyGeos(detail: DetailLevel = 'office'): AnatomyGeos {
     hairFem[hName] = buildSculptedHairStyle(hName, true, detail);
   }
 
+  const armFullBare = buildContinuousArmGeo(1.445, 0.91, 'bare', detail);
+  const armFullSleeve = buildContinuousArmGeo(1.445, 0.91, 'sleeve', detail);
+  const armShortSleeve = buildContinuousArmGeo(1.445, 1.295, 'shortSleeve', detail);
+  const armShortBare = buildContinuousArmGeo(1.295, 0.91, 'bare', detail);
+  const armRolledUpper = buildContinuousArmGeo(1.445, 1.055, 'rolledUpper', detail);
+  const armRolledBare = buildContinuousArmGeo(1.055, 0.91, 'forearmBare', detail);
+  const ankleGeo = latheFromProfile(
+    [
+      [0.001, 0.026],
+      [0.028, 0.026],
+      [0.031, 0.082],
+      [0.001, 0.082],
+    ],
+    12
+  );
+
   const built: AnatomyGeos = {
     torsoMale: buildContinuousTorsoPelvisGeo(false, false, false, detail),
     torsoFem: buildContinuousTorsoPelvisGeo(true, false, false, detail),
@@ -922,14 +962,23 @@ function initAnatomyGeos(detail: DetailLevel = 'office'): AnatomyGeos {
     sleevelessCapMale: buildSleevelessShoulderCapGeo(false),
     legBare: buildContinuousLegGeo(false, detail),
     legTrouser: buildContinuousLegGeo(true, detail),
-    armFullBare: buildContinuousArmGeo(1.445, 0.91, 'bare', detail),
-    armFullSleeve: buildContinuousArmGeo(1.445, 0.91, 'sleeve', detail),
-    armShortSleeve: buildContinuousArmGeo(1.445, 1.295, 'shortSleeve', detail),
-    armShortBare: buildContinuousArmGeo(1.295, 0.91, 'bare', detail),
-    armRolledUpper: buildContinuousArmGeo(1.445, 1.055, 'rolledUpper', detail),
-    armRolledBare: buildContinuousArmGeo(1.055, 0.91, 'forearmBare', detail),
+    ankleGeo,
+    armFullBare,
+    armFullSleeve,
+    armShortSleeve,
+    armShortBare,
+    armRolledUpper,
+    armRolledBare,
+    armFullBareRight: mirrorGeometryX(armFullBare.clone()),
+    armFullSleeveRight: mirrorGeometryX(armFullSleeve.clone()),
+    armShortSleeveRight: mirrorGeometryX(armShortSleeve.clone()),
+    armShortBareRight: mirrorGeometryX(armShortBare.clone()),
+    armRolledUpperRight: mirrorGeometryX(armRolledUpper.clone()),
+    armRolledBareRight: mirrorGeometryX(armRolledBare.clone()),
     handSkin: hand.skin,
     handNails: hand.nails,
+    handSkinRight: mirrorGeometryX(hand.skin.clone()),
+    handNailsRight: mirrorGeometryX(hand.nails.clone()),
     heelSole: heel.sole,
     heelUpper: heel.upper,
     heelInstep: heel.instep,
@@ -1517,6 +1566,22 @@ function buildStandardClips(hipYStand = 0.9): THREE.AnimationClip[] {
   return [idle, walk, sitting, talking];
 }
 
+let cachedOfficeClips: THREE.AnimationClip[] | null = null;
+const OFFICE_MAT_POOL = new WeakMap<HumanPalette, Map<string, THREE.Material>>();
+
+function getPooledMat<T extends THREE.Material>(
+  pool: Map<string, THREE.Material> | null,
+  key: string,
+  factory: () => T
+): T {
+  if (!pool) return factory();
+  const existing = pool.get(key);
+  if (existing) return existing as T;
+  const created = factory();
+  pool.set(key, created);
+  return created;
+}
+
 /* =========================================================
    MAIN RIGGED SKINNED CHARACTER CONSTRUCTOR
    ========================================================= */
@@ -1570,15 +1635,20 @@ export function makePerson(
     return m;
   };
 
-  // Clone material swatches cleanly (preserve exact curated colors in studio detail mode)
-  const colorJitter = detail === 'studio' ? 0 : 1;
-  const skin = o.skin.clone();
-  skin.color.offsetHSL((Math.random() - 0.5) * 0.012 * colorJitter, 0, (Math.random() - 0.5) * 0.03 * colorJitter);
-  const shirt = (o.shirt as THREE.MeshStandardMaterial).clone();
-  shirt.color.offsetHSL((Math.random() - 0.5) * 0.018 * colorJitter, 0, (Math.random() - 0.5) * 0.04 * colorJitter);
-  const trou = (o.trou as THREE.MeshStandardMaterial).clone();
-  const hair = (o.hair as THREE.MeshStandardMaterial).clone();
-  hair.color.offsetHSL(0, 0, (Math.random() - 0.5) * 0.008 * colorJitter);
+  // Share palette swatches cleanly in office mode to avoid shader/texture duplication; keep isolated clones in studio mode
+  const isStudio = detail === 'studio';
+  let matPool: Map<string, THREE.Material> | null = null;
+  if (!isStudio) {
+    matPool = OFFICE_MAT_POOL.get(P_LIB) ?? null;
+    if (!matPool) {
+      matPool = new Map<string, THREE.Material>();
+      OFFICE_MAT_POOL.set(P_LIB, matPool);
+    }
+  }
+  const skin = isStudio ? o.skin.clone() : o.skin;
+  const shirt = isStudio ? (o.shirt as THREE.MeshStandardMaterial).clone() : (o.shirt as THREE.MeshStandardMaterial);
+  const trou = isStudio ? (o.trou as THREE.MeshStandardMaterial).clone() : (o.trou as THREE.MeshStandardMaterial);
+  const hair = isStudio ? (o.hair as THREE.MeshStandardMaterial).clone() : (o.hair as THREE.MeshStandardMaterial);
 
   const seed = Math.abs((shirt.color.getHex() >> 3) + (skin.color.getHex() >> 4) + (hair.color.getHex() >> 2));
   const hs = o.hs != null ? o.hs : seed % 6;
@@ -1656,17 +1726,27 @@ export function makePerson(
   const hasWatch = seed % 2 === 0;
   const hasHeadphones = !!o.headphones;
 
-  const garmentTopMat = isKnit ? P_LIB.knits[seed % P_LIB.knits.length].clone() : shirt;
-  if (isKnit && o.shirt !== P_LIB.shirts[seed % P_LIB.shirts.length]) {
-    garmentTopMat.color.copy(shirt.color);
-  }
+  const baseKnit = P_LIB.knits[seed % P_LIB.knits.length];
+  const garmentTopMat = isKnit
+    ? o.shirt === P_LIB.shirts[seed % P_LIB.shirts.length] && !isStudio
+      ? baseKnit
+      : getPooledMat(matPool, `knit:${baseKnit.uuid}:${shirt.color.getHex()}`, () => {
+          const m = baseKnit.clone();
+          if (o.shirt !== P_LIB.shirts[seed % P_LIB.shirts.length]) {
+            m.color.copy(shirt.color);
+          }
+          return m;
+        })
+    : shirt;
   const innerShirtMat = hasBlazer || hasCoat ? P_LIB.white : garmentTopMat;
 
   // Photorealistic dermal face texture + 3D eyeball iris texture
+  const skinHex = skin.color.getHex();
+  const hairHex = hair.color.getHex();
   const irisHex = P_LIB.irisHexes[hs % P_LIB.irisHexes.length];
   const faceTex = getPhotorealFaceTexture({
-    skinHex: skin.color.getHex(),
-    hairHex: hair.color.getHex(),
+    skinHex,
+    hairHex,
     irisHex,
     fem: isFem,
     beardStyle,
@@ -1675,34 +1755,40 @@ export function makePerson(
     warmSmile: o.warmSmile ?? (seed % 2 === 0),
     size: o.faceSize || (detail === 'studio' ? 512 : 256),
   });
-  const faceMat = new THREE.MeshPhysicalMaterial({
-    map: faceTex,
-    normalMap: micro.skinNormalTex,
-    normalScale: new THREE.Vector2(0.12, 0.12),
-    roughnessMap: micro.skinRoughTex,
-    roughness: 0.88,
-    metalness: 0,
-    envMapIntensity: 0.1,
-    sheen: 0.16,
-    sheenRoughness: 0.86,
-    sheenColor: skin.color.clone().lerp(new THREE.Color(0xffb899), 0.26),
-  });
+  const faceMat = getPooledMat(matPool, `face:${faceTex.uuid}:${skinHex}`, () =>
+    new THREE.MeshPhysicalMaterial({
+      map: faceTex,
+      normalMap: micro.skinNormalTex,
+      normalScale: new THREE.Vector2(0.12, 0.12),
+      roughnessMap: micro.skinRoughTex,
+      roughness: 0.88,
+      metalness: 0,
+      envMapIntensity: 0.1,
+      sheen: 0.16,
+      sheenRoughness: 0.86,
+      sheenColor: skin.color.clone().lerp(new THREE.Color(0xffb899), 0.26),
+    })
+  );
 
   // Glossy corneal eyeball material
-  const eyeBallMat = new THREE.MeshStandardMaterial({
-    map: getEyeIrisTexture(irisHex),
-    roughness: 0.08,
-    metalness: 0,
-    envMapIntensity: 0.65,
-  });
+  const eyeBallMat = getPooledMat(matPool, `eye:${irisHex}`, () =>
+    new THREE.MeshStandardMaterial({
+      map: getEyeIrisTexture(irisHex),
+      roughness: 0.08,
+      metalness: 0,
+      envMapIntensity: 0.65,
+    })
+  );
 
   // Subtle keratin fingernail material tinted gently to skin tone
-  const nailMat = new THREE.MeshStandardMaterial({
-    color: skin.color.clone().lerp(new THREE.Color(0xd9b8a6), 0.48),
-    roughness: 0.42,
-    metalness: 0,
-    envMapIntensity: 0.24,
-  });
+  const nailMat = getPooledMat(matPool, `nail:${skinHex}`, () =>
+    new THREE.MeshStandardMaterial({
+      color: skin.color.clone().lerp(new THREE.Color(0xd9b8a6), 0.48),
+      roughness: 0.42,
+      metalness: 0,
+      envMapIntensity: 0.24,
+    })
+  );
 
   /* ---------------------------------------------------------
      BUILD SKINNED MESH HELPER (CASUAL OR SWIMWEAR ON SAME RIG)
@@ -1729,45 +1815,58 @@ export function makePerson(
 
   // Volumetric Hairstyles + Alpha-Cutout Hair Cards + 3D Facial Hair
   const builtHair = (isFem ? G.hairFem : G.hairMale)[hairStyle];
-  const hairCoreMat = hair.clone();
-  if (builtHair.isCoily) {
-    hairCoreMat.map = null;
-    hairCoreMat.normalMap = micro.hairCoilNormalTex;
-    hairCoreMat.normalScale = new THREE.Vector2(0.32, 0.32);
-    hairCoreMat.roughness = 0.66;
-  } else {
-    hairCoreMat.normalMap = micro.hairStrandNormalTex;
-    hairCoreMat.normalScale = new THREE.Vector2(0.38, 0.38);
-    hairCoreMat.roughness = 0.62;
-  }
-  hairCoreMat.envMapIntensity = 0.05;
+  const hairCoreMat = getPooledMat(matPool, `hairCore:${hairHex}:${builtHair.isCoily ? 1 : 0}`, () => {
+    const m = hair.clone();
+    if (builtHair.isCoily) {
+      m.map = null;
+      m.normalMap = micro.hairCoilNormalTex;
+      m.normalScale = new THREE.Vector2(0.32, 0.32);
+      m.roughness = 0.66;
+    } else {
+      m.normalMap = micro.hairStrandNormalTex;
+      m.normalScale = new THREE.Vector2(0.38, 0.38);
+      m.roughness = 0.62;
+    }
+    m.envMapIntensity = 0.05;
+    return m;
+  });
 
-  const cardMat = builtHair.cardGeo ? hairCoreMat.clone() : null;
-  if (cardMat) {
-    cardMat.alphaMap = builtHair.isCoily ? micro.afroHaloAlphaTex : micro.hairCardAlphaTex;
-    cardMat.alphaTest = 0.28;
-    cardMat.transparent = false;
-    cardMat.side = THREE.DoubleSide;
-  }
-  const beardMat = !isFem && beardStyle === 'full' && G.beardFull ? hairCoreMat.clone() : null;
-  if (beardMat) {
-    beardMat.alphaMap = micro.afroHaloAlphaTex;
-    beardMat.alphaTest = 0.22;
-    beardMat.side = THREE.DoubleSide;
-  }
+  const cardMat = builtHair.cardGeo
+    ? getPooledMat(matPool, `hairCard:${hairHex}:${builtHair.isCoily ? 1 : 0}`, () => {
+        const m = hairCoreMat.clone();
+        m.alphaMap = builtHair.isCoily ? micro.afroHaloAlphaTex : micro.hairCardAlphaTex;
+        m.alphaTest = 0.28;
+        m.transparent = false;
+        m.side = THREE.DoubleSide;
+        return m;
+      })
+    : null;
+  const beardMat =
+    !isFem && beardStyle === 'full' && G.beardFull
+      ? getPooledMat(matPool, `beard:${hairHex}`, () => {
+          const m = hairCoreMat.clone();
+          m.alphaMap = micro.afroHaloAlphaTex;
+          m.alphaTest = 0.22;
+          m.side = THREE.DoubleSide;
+          return m;
+        })
+      : null;
   const bandMat = builtHair.bandGeo
-    ? new THREE.MeshStandardMaterial({ color: 0x1a1c22, roughness: 0.45 })
+    ? getPooledMat(matPool, 'hairBand', () => new THREE.MeshStandardMaterial({ color: 0x1a1c22, roughness: 0.45 }))
     : null;
 
+  const swimCol = o.swimColor ?? (isFem ? 0x0ea5e9 : 0x14b8a6);
   const swimMat = o.withSwimwear
-    ? new THREE.MeshStandardMaterial({
-        color: o.swimColor ?? (isFem ? 0x0ea5e9 : 0x14b8a6),
-        normalMap: micro.weaveNormalTex,
-        normalScale: new THREE.Vector2(0.28, 0.28),
-        roughness: 0.46,
-        metalness: 0.02,
-        envMapIntensity: 0.26,
-      })
+    ? getPooledMat(matPool, `swim:${swimCol}`, () =>
+        new THREE.MeshStandardMaterial({
+          color: swimCol,
+          normalMap: micro.weaveNormalTex,
+          normalScale: new THREE.Vector2(0.28, 0.28),
+          roughness: 0.46,
+          metalness: 0.02,
+          envMapIntensity: 0.26,
+        })
+      )
     : null;
 
   const hairWeight = (_x: number, y: number): BoneWeightResult => {
@@ -1778,32 +1877,43 @@ export function makePerson(
 
   const hipX = isFem ? 0.084 : 0.092;
   const shoulderX = isFem ? 0.138 : 0.164;
+  const femKey = isFem ? 'f' : 'm';
 
   const buildSkinnedOutfit = (asSwimwear: boolean): THREE.SkinnedMesh => {
     const skinnedParts: THREE.BufferGeometry[] = [];
     const skinnedMats: THREE.Material[] = [];
 
-    const pushPart = (
-      rawGeo: THREE.BufferGeometry,
+    const pushCached = (
+      partKey: string,
       mat: THREE.Material,
-      wFn: (x: number, y: number, z: number) => BoneWeightResult
+      wFn: (x: number, y: number, z: number) => BoneWeightResult,
+      buildRaw: () => { geo: THREE.BufferGeometry; temp?: boolean }
     ) => {
-      skinnedParts.push(prepareSkinnedPart(rawGeo, wFn));
+      skinnedParts.push(getCachedSkinnedPart(`${detail}:${partKey}`, wFn, buildRaw));
       skinnedMats.push(mat);
     };
 
     if (asSwimwear && swimMat) {
       // 1A. Bare torso + fitted swimwear garment (one-piece for female, swim trunks for male)
-      pushPart(isFem ? G.torsoFem : G.torsoMale, skin, (_x, y) => weightTorsoSpine(y));
+      pushCached(`${femKey}:torsoStd`, skin, (_x, y) => weightTorsoSpine(y), () => ({
+        geo: isFem ? G.torsoFem : G.torsoMale,
+      }));
       if (isFem) {
-        pushPart(G.swimOnePieceFem, swimMat, (_x, y) => weightTorsoSpine(y));
-        pushPart(G.swimStrapsFem, swimMat, (_x, y) => weightTorsoSpine(y));
+        pushCached('f:swimOnePiece', swimMat, (_x, y) => weightTorsoSpine(y), () => ({
+          geo: G.swimOnePieceFem,
+        }));
+        pushCached('f:swimStraps', swimMat, (_x, y) => weightTorsoSpine(y), () => ({
+          geo: G.swimStrapsFem,
+        }));
       } else {
-        pushPart(G.swimTrunksBandMale, swimMat, (_x, y) => weightTorsoSpine(y));
+        pushCached('m:swimTrunksBand', swimMat, (_x, y) => weightTorsoSpine(y), () => ({
+          geo: G.swimTrunksBandMale,
+        }));
       }
     } else {
       // 1B. Tailored street / lounge / office clothing torso
       const lowerMat = outfit === 'dress' ? garmentTopMat : trou;
+      const torsoKind = outfit === 'dress' ? 'dress' : isKnit ? 'knit' : 'std';
       const torsoGeo =
         outfit === 'dress'
           ? G.torsoFemDress
@@ -1814,91 +1924,125 @@ export function makePerson(
           : isFem
           ? G.torsoFem
           : G.torsoMale;
-      pushPart(torsoGeo, innerShirtMat, (_x, y) => weightTorsoSpine(y));
+      pushCached(`${femKey}:torso:${torsoKind}`, innerShirtMat, (_x, y) => weightTorsoSpine(y), () => ({
+        geo: torsoGeo,
+      }));
 
       if (outfit !== 'dress') {
-        const hipWrap = torsoGeo.clone();
-        const hp = hipWrap.attributes.position;
-        for (let i = 0; i < hp.count; i++) {
-          const y = hp.getY(i);
-          if (y > 0.915) hp.setY(i, 0.915);
-          else hp.setXYZ(i, hp.getX(i) * 1.015, y, hp.getZ(i) * 1.015);
-        }
-        pushPart(hipWrap, trou, (_x, y) => weightTorsoSpine(y));
-        hipWrap.dispose();
+        pushCached(`${femKey}:hipWrap:${torsoKind}`, trou, (_x, y) => weightTorsoSpine(y), () => {
+          const hipWrap = torsoGeo.clone();
+          const hp = hipWrap.attributes.position;
+          for (let i = 0; i < hp.count; i++) {
+            const y = hp.getY(i);
+            if (y > 0.915) hp.setY(i, 0.915);
+            else hp.setXYZ(i, hp.getX(i) * 1.015, y, hp.getZ(i) * 1.015);
+          }
+          return { geo: hipWrap, temp: true };
+        });
       }
 
       if (outfit === 'dress') {
-        pushPart(isFem ? G.dressCollarFem : G.dressCollarMale, garmentTopMat, (_x, y) => weightTorsoSpine(y));
+        pushCached(`${femKey}:dressCollar`, garmentTopMat, (_x, y) => weightTorsoSpine(y), () => ({
+          geo: isFem ? G.dressCollarFem : G.dressCollarMale,
+        }));
       }
       if (sleeve === 'sleeveless') {
-        pushPart(isFem ? G.sleevelessCapFem : G.sleevelessCapMale, garmentTopMat, (_x, y) => weightTorsoSpine(y));
+        pushCached(`${femKey}:sleevelessCap`, garmentTopMat, (_x, y) => weightTorsoSpine(y), () => ({
+          geo: isFem ? G.sleevelessCapFem : G.sleevelessCapMale,
+        }));
       }
 
       if (isKnit) {
-        const col = G.ribCollar.clone().rotateX(Math.PI / 2).translate(0, 1.478, 0.004);
-        const hem = G.ribHem.clone().rotateX(Math.PI / 2).scale(isFem ? 0.94 : 1.04, 0.74, 1).translate(0, 0.89, 0.004);
-        pushPart(col, garmentTopMat, (_x, y) => weightTorsoSpine(y));
-        pushPart(hem, garmentTopMat, (_x, y) => weightTorsoSpine(y));
-        col.dispose();
-        hem.dispose();
+        pushCached('knitCollar', garmentTopMat, (_x, y) => weightTorsoSpine(y), () => ({
+          geo: G.ribCollar.clone().rotateX(Math.PI / 2).translate(0, 1.478, 0.004),
+          temp: true,
+        }));
+        pushCached(`${femKey}:knitHem`, garmentTopMat, (_x, y) => weightTorsoSpine(y), () => ({
+          geo: G.ribHem.clone().rotateX(Math.PI / 2).scale(isFem ? 0.94 : 1.04, 0.74, 1).translate(0, 0.89, 0.004),
+          temp: true,
+        }));
       } else if (outfit !== 'dress' && outfit !== 'smartCasual') {
-        pushPart(isFem ? G.shirtCollarFem : G.shirtCollarMale, innerShirtMat, (_x, y) => weightTorsoSpine(y));
+        pushCached(`${femKey}:shirtCollar`, innerShirtMat, (_x, y) => weightTorsoSpine(y), () => ({
+          geo: isFem ? G.shirtCollarFem : G.shirtCollarMale,
+        }));
         for (let b = 0; b < 4; b++) {
           const by = 1.08 + b * 0.092;
           const bz = isFem ? 0.114 + (b === 2 ? 0.012 : 0) : 0.118 + (b > 1 ? 0.005 : 0);
-          const btn = G.buttonDot.clone().rotateX(Math.PI / 2).translate(0, by, bz);
-          pushPart(btn, P_LIB.buckle, (_x, y) => weightTorsoSpine(y));
-          btn.dispose();
+          pushCached(`${femKey}:btn:${b}`, P_LIB.buckle, (_x, y) => weightTorsoSpine(y), () => ({
+            geo: G.buttonDot.clone().rotateX(Math.PI / 2).translate(0, by, bz),
+            temp: true,
+          }));
         }
       }
 
       if (hasCoat) {
-        const coatM = shirt.clone();
-        pushPart(isFem ? G.coatFem : G.coatMale, coatM, (_x, y) => weightTorsoSpine(y));
+        pushCached(`${femKey}:coat`, shirt, (_x, y) => weightTorsoSpine(y), () => ({
+          geo: isFem ? G.coatFem : G.coatMale,
+        }));
       } else if (hasBlazer) {
-        const bMat = shirt.clone();
-        pushPart(isFem ? G.blazerFem : G.blazerMale, bMat, (_x, y) => weightTorsoSpine(y));
+        pushCached(`${femKey}:blazer`, shirt, (_x, y) => weightTorsoSpine(y), () => ({
+          geo: isFem ? G.blazerFem : G.blazerMale,
+        }));
         if (!isFem) {
-          const ps = G.pocketSquare.clone().rotateZ(0.12).translate(0.088, 1.325, 0.118);
-          pushPart(ps, P_LIB.white, (_x, y) => weightTorsoSpine(y));
-          ps.dispose();
+          pushCached('m:pocketSquare', P_LIB.white, (_x, y) => weightTorsoSpine(y), () => ({
+            geo: G.pocketSquare.clone().rotateZ(0.12).translate(0.088, 1.325, 0.118),
+            temp: true,
+          }));
         }
       }
 
       if (outfit !== 'dress' && !hasCoat && !hasSkirt && !isKnit) {
-        pushPart(isFem ? G.trouserBeltFemBand : G.trouserBeltMaleBand, P_LIB.belt, (_x, y) => weightTorsoSpine(y));
-        pushPart(isFem ? G.trouserBeltFemBuckle : G.trouserBeltMaleBuckle, P_LIB.buckle, (_x, y) => weightTorsoSpine(y));
+        pushCached(`${femKey}:trouserBeltBand`, P_LIB.belt, (_x, y) => weightTorsoSpine(y), () => ({
+          geo: isFem ? G.trouserBeltFemBand : G.trouserBeltMaleBand,
+        }));
+        pushCached(`${femKey}:trouserBeltBuckle`, P_LIB.buckle, (_x, y) => weightTorsoSpine(y), () => ({
+          geo: isFem ? G.trouserBeltFemBuckle : G.trouserBeltMaleBuckle,
+        }));
       } else if (outfit === 'dress') {
-        pushPart(G.dressBeltBand, P_LIB.belt, (_x, y) => weightTorsoSpine(y));
-        pushPart(G.dressBeltBuckle, P_LIB.buckle, (_x, y) => weightTorsoSpine(y));
+        pushCached('dressBeltBand', P_LIB.belt, (_x, y) => weightTorsoSpine(y), () => ({
+          geo: G.dressBeltBand,
+        }));
+        pushCached('dressBeltBuckle', P_LIB.buckle, (_x, y) => weightTorsoSpine(y), () => ({
+          geo: G.dressBeltBuckle,
+        }));
       }
 
       if (o.tie != null && !isFem) {
-        const tieMat = new THREE.MeshStandardMaterial({
-          color: o.tie,
-          normalMap: micro.weaveNormalTex,
-          normalScale: new THREE.Vector2(0.25, 0.25),
-          roughness: 0.44,
-        });
-        pushPart(G.tieBladeMale, tieMat, (_x, y) => weightTorsoSpine(y));
+        const tieColor = o.tie;
+        const tieMat = getPooledMat(matPool, `tie:${tieColor}`, () =>
+          new THREE.MeshStandardMaterial({
+            color: tieColor,
+            normalMap: micro.weaveNormalTex,
+            normalScale: new THREE.Vector2(0.25, 0.25),
+            roughness: 0.44,
+          })
+        );
+        pushCached('m:tieBlade', tieMat, (_x, y) => weightTorsoSpine(y), () => ({
+          geo: G.tieBladeMale,
+        }));
       }
 
       if (o.lanyard && !hasCoat && outfit !== 'dress') {
-        const l1 = G.lanyardStrap.clone().rotateX(-0.1).rotateZ(0.19).translate(-0.038, 1.36, 0.122);
-        const l2 = G.lanyardStrap.clone().rotateX(-0.1).rotateZ(-0.14).translate(-0.072, 1.36, 0.116);
-        const card = G.badgeCard.clone().rotateX(-0.06).translate(-0.056, 1.24, 0.13);
-        pushPart(l1, P_LIB.lanyard, (_x, y) => weightTorsoSpine(y));
-        pushPart(l2, P_LIB.lanyard, (_x, y) => weightTorsoSpine(y));
-        pushPart(card, P_LIB.badge, (_x, y) => weightTorsoSpine(y));
-        l1.dispose();
-        l2.dispose();
-        card.dispose();
+        pushCached('lanyard1', P_LIB.lanyard, (_x, y) => weightTorsoSpine(y), () => ({
+          geo: G.lanyardStrap.clone().rotateX(-0.1).rotateZ(0.19).translate(-0.038, 1.36, 0.122),
+          temp: true,
+        }));
+        pushCached('lanyard2', P_LIB.lanyard, (_x, y) => weightTorsoSpine(y), () => ({
+          geo: G.lanyardStrap.clone().rotateX(-0.1).rotateZ(-0.14).translate(-0.072, 1.36, 0.116),
+          temp: true,
+        }));
+        pushCached('badgeCard', P_LIB.badge, (_x, y) => weightTorsoSpine(y), () => ({
+          geo: G.badgeCard.clone().rotateX(-0.06).translate(-0.056, 1.24, 0.13),
+          temp: true,
+        }));
       }
 
       if (hasSkirt) {
-        const skirtMat = lowerMat.clone();
-        skirtMat.side = THREE.DoubleSide;
+        const skirtMat = getPooledMat(matPool, `skirt:${lowerMat.uuid}`, () => {
+          const m = lowerMat.clone();
+          m.side = THREE.DoubleSide;
+          return m;
+        });
         const skirtGeo =
           outfit === 'dress'
             ? skirtKind === 'midi'
@@ -1907,77 +2051,110 @@ export function makePerson(
             : skirtKind === 'midi'
             ? G.skirtMidi
             : G.skirtShort;
-        pushPart(skirtGeo, skirtMat, (x, y, z) => weightSkirt(x, y, z));
+        pushCached(
+          `skirt:${outfit === 'dress' ? 'd' : 's'}:${skirtKind}`,
+          skirtMat,
+          (x, y, z) => weightSkirt(x, y, z),
+          () => ({ geo: skirtGeo })
+        );
       }
     }
 
     // 2. Shared Sculpted Head, Neck, Eyeballs, Ears & Hair
-    pushPart(headGeo, faceMat, (_x, y) => weightTorsoSpine(y));
+    pushCached(`${femKey}:head:${headVariant % 4}`, faceMat, (_x, y) => weightTorsoSpine(y), () => ({
+      geo: headGeo,
+    }));
+    const headOnlyW = () => [5, 0, 0, 0, 1, 0, 0, 0] as BoneWeightResult;
     for (const sx of [-1, 1]) {
-      const eb = G.eyeball.clone().translate(sx * eyeX, eyeY, eyeZ);
-      const loLid = (isFem ? G.lowerLidFem : G.lowerLidMale).clone().translate(sx * eyeX, eyeY, eyeZ);
-      pushPart(eb, eyeBallMat, () => [5, 0, 0, 0, 1, 0, 0, 0]);
-      pushPart(loLid, skin, () => [5, 0, 0, 0, 1, 0, 0, 0]);
-      eb.dispose();
-      loLid.dispose();
+      pushCached(`eyeball:${sx}`, eyeBallMat, headOnlyW, () => ({
+        geo: G.eyeball.clone().translate(sx * eyeX, eyeY, eyeZ),
+        temp: true,
+      }));
+      pushCached(`${femKey}:loLid:${sx}`, skin, headOnlyW, () => ({
+        geo: (isFem ? G.lowerLidFem : G.lowerLidMale).clone().translate(sx * eyeX, eyeY, eyeZ),
+        temp: true,
+      }));
     }
 
-    const earL = G.earLeft.clone().translate(earOffsetX, 1.644, -0.008);
-    const earR = G.earRight.clone().translate(-earOffsetX, 1.644, -0.008);
-    pushPart(earL, skin, () => [5, 0, 0, 0, 1, 0, 0, 0]);
-    pushPart(earR, skin, () => [5, 0, 0, 0, 1, 0, 0, 0]);
-    earL.dispose();
-    earR.dispose();
+    pushCached(`${femKey}:earL`, skin, headOnlyW, () => ({
+      geo: G.earLeft.clone().translate(earOffsetX, 1.644, -0.008),
+      temp: true,
+    }));
+    pushCached(`${femKey}:earR`, skin, headOnlyW, () => ({
+      geo: G.earRight.clone().translate(-earOffsetX, 1.644, -0.008),
+      temp: true,
+    }));
 
     if (isFem && o.hardHat == null && !asSwimwear) {
       for (const sx of [-1, 1]) {
-        const stud = G.earringStud.clone().translate(sx * (earOffsetX + 0.002), 1.622, -0.004);
-        pushPart(stud, P_LIB.pearlStud, () => [5, 0, 0, 0, 1, 0, 0, 0]);
-        stud.dispose();
+        pushCached(`${femKey}:stud:${sx}`, P_LIB.pearlStud, headOnlyW, () => ({
+          geo: G.earringStud.clone().translate(sx * (earOffsetX + 0.002), 1.622, -0.004),
+          temp: true,
+        }));
       }
     }
 
     if (hasGlasses && !asSwimwear) {
-      pushPart(G.glassesFrames, P_LIB.glassesFrame, () => [5, 0, 0, 0, 1, 0, 0, 0]);
-      pushPart(G.glassesLenses, P_LIB.glassesLens, () => [5, 0, 0, 0, 1, 0, 0, 0]);
+      pushCached('glassesFrames', P_LIB.glassesFrame, headOnlyW, () => ({ geo: G.glassesFrames }));
+      pushCached('glassesLenses', P_LIB.glassesLens, headOnlyW, () => ({ geo: G.glassesLenses }));
     }
 
     if (hasHeadphones && !asSwimwear) {
-      const band = G.headphoneBand.clone().rotateZ(-0.04).translate(0, 1.668, 0);
-      pushPart(band, P_LIB.headphoneMat, () => [5, 0, 0, 0, 1, 0, 0, 0]);
-      band.dispose();
+      pushCached('headphoneBand', P_LIB.headphoneMat, headOnlyW, () => ({
+        geo: G.headphoneBand.clone().rotateZ(-0.04).translate(0, 1.668, 0),
+        temp: true,
+      }));
       [-1, 1].forEach((sx) => {
-        const cup = G.headphoneCup.clone().rotateZ(Math.PI / 2).translate(sx * 0.083, 1.647, -0.004);
-        pushPart(cup, P_LIB.headphoneMat, () => [5, 0, 0, 0, 1, 0, 0, 0]);
-        cup.dispose();
+        pushCached(`headphoneCup:${sx}`, P_LIB.headphoneMat, headOnlyW, () => ({
+          geo: G.headphoneCup.clone().rotateZ(Math.PI / 2).translate(sx * 0.083, 1.647, -0.004),
+          temp: true,
+        }));
       });
     }
 
     if (o.hardHat != null && !asSwimwear) {
-      const hatMat = new THREE.MeshStandardMaterial({
-        color: o.hardHat,
-        roughness: 0.34,
-        metalness: 0.06,
-        envMapIntensity: 0.35,
-      });
-      const dome = G.hardHatDome.clone().scale(0.95, 1.0, 1.06).translate(0, 1.69, -0.006);
-      const brim = G.hardHatBrim.clone().rotateX(0.14).translate(0, 1.694, 0.095);
-      const ridge = G.hardHatRidge.clone().translate(0, 1.78, -0.006);
-      pushPart(dome, hatMat, () => [5, 0, 0, 0, 1, 0, 0, 0]);
-      pushPart(brim, hatMat, () => [5, 0, 0, 0, 1, 0, 0, 0]);
-      pushPart(ridge, hatMat, () => [5, 0, 0, 0, 1, 0, 0, 0]);
-      dome.dispose();
-      brim.dispose();
-      ridge.dispose();
+      const hatCol = o.hardHat;
+      const hatMat = getPooledMat(matPool, `hardHat:${hatCol}`, () =>
+        new THREE.MeshStandardMaterial({
+          color: hatCol,
+          roughness: 0.34,
+          metalness: 0.06,
+          envMapIntensity: 0.35,
+        })
+      );
+      pushCached('hardHatDome', hatMat, headOnlyW, () => ({
+        geo: G.hardHatDome.clone().scale(0.95, 1.0, 1.06).translate(0, 1.69, -0.006),
+        temp: true,
+      }));
+      pushCached('hardHatBrim', hatMat, headOnlyW, () => ({
+        geo: G.hardHatBrim.clone().rotateX(0.14).translate(0, 1.694, 0.095),
+        temp: true,
+      }));
+      pushCached('hardHatRidge', hatMat, headOnlyW, () => ({
+        geo: G.hardHatRidge.clone().translate(0, 1.78, -0.006),
+        temp: true,
+      }));
     }
 
-    pushPart(builtHair.coreGeo, hairCoreMat, hairWeight);
-    if (builtHair.cardGeo && cardMat) pushPart(builtHair.cardGeo, cardMat, hairWeight);
-    if (builtHair.bandGeo && bandMat) pushPart(builtHair.bandGeo, bandMat, () => [5, 0, 0, 0, 1, 0, 0, 0]);
-    if (beardMat && G.beardFull) pushPart(G.beardFull, beardMat, () => [5, 0, 0, 0, 1, 0, 0, 0]);
+    pushCached(`${femKey}:hairCore:${hairStyle}`, hairCoreMat, hairWeight, () => ({
+      geo: builtHair.coreGeo,
+    }));
+    if (builtHair.cardGeo && cardMat) {
+      const cg = builtHair.cardGeo;
+      pushCached(`${femKey}:hairCard:${hairStyle}`, cardMat, hairWeight, () => ({ geo: cg }));
+    }
+    if (builtHair.bandGeo && bandMat) {
+      const bg = builtHair.bandGeo;
+      pushCached(`${femKey}:hairBand:${hairStyle}`, bandMat, headOnlyW, () => ({ geo: bg }));
+    }
+    if (beardMat && G.beardFull) {
+      const bf = G.beardFull;
+      pushCached('m:beardFull', beardMat, headOnlyW, () => ({ geo: bf }));
+    }
 
     // 3. Legs & Footwear (bare legs + pool slides in swimwear mode)
     const legMat = asSwimwear || hasSkirt ? skin : trou;
+    const legKind = asSwimwear || hasSkirt ? 'bare' : 'trouser';
     const legGeoSrc = asSwimwear || hasSkirt ? G.legBare : G.legTrouser;
     const upperShoeMat =
       shoeStyle === 'sneaker'
@@ -2007,110 +2184,117 @@ export function makePerson(
     const shoeInstepGeo = shoeStyle === 'heel' ? G.heelInstep : shoeStyle === 'flat' ? G.flatInstep : undefined;
 
     [true, false].forEach((sideLeft) => {
+      const sideKey = sideLeft ? 'L' : 'R';
       const lx = (sideLeft ? 1 : -1) * hipX;
-      const legClone = legGeoSrc.clone().translate(lx, 0, 0);
-      pushPart(legClone, legMat, (_x, y) => weightLeg(sideLeft, y));
-      legClone.dispose();
+      const legW = (_x: number, y: number) => weightLeg(sideLeft, y);
+
+      pushCached(`${femKey}:leg:${legKind}:${sideKey}`, legMat, legW, () => ({
+        geo: legGeoSrc.clone().translate(lx, 0, 0),
+        temp: true,
+      }));
 
       if (asSwimwear && !isFem && swimMat) {
-        const trunksSleeve = G.swimTrunksLeg.clone().translate(lx, 0, 0);
-        pushPart(trunksSleeve, swimMat, (_x, y) => weightLeg(sideLeft, y));
-        trunksSleeve.dispose();
+        pushCached(`${femKey}:swimTrunksLeg:${sideKey}`, swimMat, legW, () => ({
+          geo: G.swimTrunksLeg.clone().translate(lx, 0, 0),
+          temp: true,
+        }));
       }
 
-      const ankleG = latheFromProfile(
-        [
-          [0.001, 0.026],
-          [0.028, 0.026],
-          [0.031, 0.082],
-          [0.001, 0.082],
-        ],
-        12
-      ).translate(lx, 0, 0);
-      pushPart(ankleG, skin, (_x, y) => weightLeg(sideLeft, y));
-      ankleG.dispose();
+      pushCached(`${femKey}:ankle:${sideKey}`, skin, legW, () => ({
+        geo: G.ankleGeo.clone().translate(lx, 0, 0),
+        temp: true,
+      }));
 
       if (asSwimwear && swimMat) {
-        const slideSole = G.flatSole.clone().translate(lx, 0, 0);
-        const slideFoot = G.flatUpper.clone().translate(lx, 0, 0);
-        const slideBand = G.slideStrap.clone().translate(lx, 0, 0);
-        pushPart(slideSole, P_LIB.sneakerSole, (_x, y) => weightLeg(sideLeft, y));
-        pushPart(slideFoot, skin, (_x, y) => weightLeg(sideLeft, y));
-        pushPart(slideBand, swimMat, (_x, y) => weightLeg(sideLeft, y));
+        pushCached(`${femKey}:slideSole:${sideKey}`, P_LIB.sneakerSole, legW, () => ({
+          geo: G.flatSole.clone().translate(lx, 0, 0),
+          temp: true,
+        }));
+        pushCached(`${femKey}:slideFoot:${sideKey}`, skin, legW, () => ({
+          geo: G.flatUpper.clone().translate(lx, 0, 0),
+          temp: true,
+        }));
+        pushCached(`${femKey}:slideBand:${sideKey}`, swimMat, legW, () => ({
+          geo: G.slideStrap.clone().translate(lx, 0, 0),
+          temp: true,
+        }));
         if (G.flatInstep) {
-          const ins = G.flatInstep.clone().translate(lx, 0, 0);
-          pushPart(ins, skin, (_x, y) => weightLeg(sideLeft, y));
-          ins.dispose();
+          const fi = G.flatInstep;
+          pushCached(`${femKey}:slideInstep:${sideKey}`, skin, legW, () => ({
+            geo: fi.clone().translate(lx, 0, 0),
+            temp: true,
+          }));
         }
-        slideSole.dispose();
-        slideFoot.dispose();
-        slideBand.dispose();
       } else {
         if (shoeInstepGeo) {
-          const ins = shoeInstepGeo.clone().translate(lx, 0, 0);
-          pushPart(ins, skin, (_x, y) => weightLeg(sideLeft, y));
-          ins.dispose();
+          const si = shoeInstepGeo;
+          pushCached(`${femKey}:shoeInstep:${shoeStyle}:${sideKey}`, skin, legW, () => ({
+            geo: si.clone().translate(lx, 0, 0),
+            temp: true,
+          }));
         }
-        const soleG = shoeSoleGeo.clone().translate(lx, 0, 0);
-        const upperG = shoeUpperGeo.clone().translate(lx, 0, 0);
-        pushPart(soleG, soleMat, (_x, y) => weightLeg(sideLeft, y));
-        pushPart(upperG, upperShoeMat, (_x, y) => weightLeg(sideLeft, y));
-        soleG.dispose();
-        upperG.dispose();
+        pushCached(`${femKey}:shoeSole:${shoeStyle}:${sideKey}`, soleMat, legW, () => ({
+          geo: shoeSoleGeo.clone().translate(lx, 0, 0),
+          temp: true,
+        }));
+        pushCached(`${femKey}:shoeUpper:${shoeStyle}:${sideKey}`, upperShoeMat, legW, () => ({
+          geo: shoeUpperGeo.clone().translate(lx, 0, 0),
+          temp: true,
+        }));
       }
     });
 
     // 4. Arms + Hands (always bare full arms when in swimwear)
     const topArmMat = hasBlazer || hasCoat || isKnit ? garmentTopMat : innerShirtMat;
     [true, false].forEach((sideLeft) => {
+      const sideKey = sideLeft ? 'L' : 'R';
       const sx = sideLeft ? 1 : -1;
       const ax = sx * shoulderX;
+      const armW = (x: number, y: number) => weightArm(sideLeft, x, y, shoulderX);
 
-      const addArmPart = (src: THREE.BufferGeometry, mat: THREE.Material) => {
-        const c = src.clone();
-        if (!sideLeft) mirrorGeometryX(c);
-        c.translate(ax, 0, 0);
-        pushPart(c, mat, (x, y) => weightArm(sideLeft, x, y, shoulderX));
-        c.dispose();
+      const addArmPart = (armPartKey: string, src: THREE.BufferGeometry, mat: THREE.Material) => {
+        pushCached(`${femKey}:arm:${armPartKey}:${sideKey}`, mat, armW, () => ({
+          geo: src.clone().translate(ax, 0, 0),
+          temp: true,
+        }));
       };
 
       if (asSwimwear || sleeve === 'sleeveless') {
-        addArmPart(G.armFullBare, skin);
+        addArmPart('fullBare', sideLeft ? G.armFullBare : G.armFullBareRight, skin);
       } else if (sleeve === 'short') {
-        addArmPart(G.armShortSleeve, topArmMat);
-        addArmPart(G.armShortBare, skin);
+        addArmPart('shortSleeve', sideLeft ? G.armShortSleeve : G.armShortSleeveRight, topArmMat);
+        addArmPart('shortBare', sideLeft ? G.armShortBare : G.armShortBareRight, skin);
       } else if (sleeve === 'rolled') {
-        addArmPart(G.armRolledUpper, topArmMat);
-        addArmPart(G.armRolledBare, skin);
+        addArmPart('rolledUpper', sideLeft ? G.armRolledUpper : G.armRolledUpperRight, topArmMat);
+        addArmPart('rolledBare', sideLeft ? G.armRolledBare : G.armRolledBareRight, skin);
       } else {
-        addArmPart(G.armFullSleeve, topArmMat);
+        addArmPart('fullSleeve', sideLeft ? G.armFullSleeve : G.armFullSleeveRight, topArmMat);
       }
 
       if (hasWatch && sideLeft && !asSwimwear) {
-        const ws = G.watchStrap.clone().translate(ax, 0.935, 0);
-        const wf = G.watchFace.clone().translate(ax + 0.022, 0.935, 0);
-        pushPart(ws, P_LIB.belt, (x, y) => weightArm(sideLeft, x, y, shoulderX));
-        pushPart(wf, P_LIB.watchMat, (x, y) => weightArm(sideLeft, x, y, shoulderX));
-        ws.dispose();
-        wf.dispose();
+        pushCached(`${femKey}:watchStrap`, P_LIB.belt, armW, () => ({
+          geo: G.watchStrap.clone().translate(ax, 0.935, 0),
+          temp: true,
+        }));
+        pushCached(`${femKey}:watchFace`, P_LIB.watchMat, armW, () => ({
+          geo: G.watchFace.clone().translate(ax + 0.022, 0.935, 0),
+          temp: true,
+        }));
       }
 
-      const handSkinG = G.handSkin.clone();
-      const handNailG = G.handNails.clone();
-      if (!sideLeft) {
-        mirrorGeometryX(handSkinG);
-        mirrorGeometryX(handNailG);
-      }
-      handSkinG.rotateZ(sx * 0.04).translate(ax, 0.91, 0.002);
-      handNailG.rotateZ(sx * 0.04).translate(ax, 0.91, 0.002);
-      pushPart(handSkinG, skin, (x, y) => weightArm(sideLeft, x, y, shoulderX));
-      pushPart(handNailG, nailMat, (x, y) => weightArm(sideLeft, x, y, shoulderX));
-      handSkinG.dispose();
-      handNailG.dispose();
+      const handSrcSkin = sideLeft ? G.handSkin : G.handSkinRight;
+      const handSrcNails = sideLeft ? G.handNails : G.handNailsRight;
+      pushCached(`${femKey}:handSkin:${sideKey}`, skin, armW, () => ({
+        geo: handSrcSkin.clone().rotateZ(sx * 0.04).translate(ax, 0.91, 0.002),
+        temp: true,
+      }));
+      pushCached(`${femKey}:handNails:${sideKey}`, nailMat, armW, () => ({
+        geo: handSrcNails.clone().rotateZ(sx * 0.04).translate(ax, 0.91, 0.002),
+        temp: true,
+      }));
     });
 
     const mergedGeo = mergeGeometries(skinnedParts, true);
-    for (const part of skinnedParts) part.dispose();
 
     const mesh = new THREE.SkinnedMesh(mergedGeo, skinnedMats);
     const suffix = asSwimwear ? 'SwimMesh' : 'Mesh';
@@ -2134,7 +2318,7 @@ export function makePerson(
 
   const shadow = contact(g, 0, 0.006, 0, 0.68, 0.68, 0.48, M.textures.shadowTex);
 
-  const clips = buildStandardClips(0.9);
+  const clips = detail === 'office' ? (cachedOfficeClips ??= buildStandardClips(0.9)) : buildStandardClips(0.9);
 
   return {
     g,
@@ -2839,6 +3023,7 @@ export const OFFICE_CHARACTER_ROSTER: CharacterRosterPreset[] = [
 ];
 
 export async function exportActorToGLB(actor: PersonActor, filename = 'character.glb'): Promise<void> {
+  const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter.js');
   const exporter = new GLTFExporter();
 
   const shadowChildren: THREE.Object3D[] = [];

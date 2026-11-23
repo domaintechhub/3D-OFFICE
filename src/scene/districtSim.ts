@@ -263,13 +263,20 @@ export class DistrictSim {
 
   private populateAllBuildings(M: MaterialLibrary) {
     const P = this.P_LIB;
-    const sMat = (col: number) =>
-      new THREE.MeshStandardMaterial({
-        color: col,
-        normalMap: M.textures.fabricNormal,
-        normalScale: new THREE.Vector2(0.32, 0.32),
-        roughness: 0.82,
-      });
+    const sMatCache = new Map<number, THREE.MeshStandardMaterial>();
+    const sMat = (col: number) => {
+      let mat = sMatCache.get(col);
+      if (!mat) {
+        mat = new THREE.MeshStandardMaterial({
+          color: col,
+          normalMap: M.textures.fabricNormal,
+          normalScale: new THREE.Vector2(0.32, 0.32),
+          roughness: 0.82,
+        });
+        sMatCache.set(col, mat);
+      }
+      return mat;
+    };
 
     const femHair = ['braids', 'bun', 'puff', 'afro', 'bob', 'pixie'] as const;
     const maleHair = ['fade', 'twists', 'afro', 'fade'] as const;
@@ -434,10 +441,10 @@ export class DistrictSim {
 
     // 3. Nairobi Trust Bank
     const bank = DISTRICT_BUILDING_MAP.bank;
-    [-4.6, -0.2].forEach((ox, i) => {
+    [-2.4, 1.8].forEach((ox, i) => {
       const fem = i === 0;
       this.spawnActor(
-        'bank', 0, bank.cx + ox, bank.cz - 4.75, 0, i === 0 ? 'type' : 'monitorLook',
+        'bank', 0, bank.cx + ox, bank.cz - 6.4, 0, i === 0 ? 'type' : 'monitorLook',
         nextPersonOpts(fem, 0x1c2b46, { outfit: 'suit', blazer: true, lanyard: true }),
         {
           id: `bank-teller-${i}`,
@@ -452,7 +459,7 @@ export class DistrictSim {
       );
     });
     this.spawnActor(
-      'bank', 0, bank.cx - 2.4, bank.cz - 1.8, Math.PI, 'stand',
+      'bank', 0, bank.cx - 0.3, bank.cz - 2.6, Math.PI, 'stand',
       nextPersonOpts(true),
       {
         id: 'bank-client-1',
@@ -466,7 +473,7 @@ export class DistrictSim {
       'Retail Banking & RTGS Hall', M, 0.95
     );
     this.spawnActor(
-      'bank', 0, bank.cx + 3.2, bank.cz - 7.4, -Math.PI / 4, 'radio',
+      'bank', 0, bank.cx + 4.4, bank.cz - 6.8, -Math.PI / 4, 'radio',
       nextPersonOpts(false, 0x162238, { outfit: 'shirtTrousers', sleeve: 'short' }),
       {
         id: 'bank-guard',
@@ -478,7 +485,7 @@ export class DistrictSim {
         personality: pickPersonality(75),
         topicKey: 'bank',
       },
-      'Biometric Main Vault', M, 0.94
+      'Treasury Vault II', M, 0.94
     );
 
     // 4. BitVault Crypto Exchange
@@ -997,35 +1004,35 @@ export class DistrictSim {
       { role: 'Recovery & Nutrition Lead · L4', dept: 'Botanical Sky-Sanctuary', zone: 'Therapeutic Sky-Sanctuary' },
     ];
     const bankL1Roles = [
-      { role: 'Mortgage Structuring Advisor · L1', dept: 'Mortgage Atelier', zone: 'Mortgage Atelier' },
-      { role: 'SME Credit Officer · L1', dept: 'SME Credit Suite', zone: 'SME Credit Suite' },
-      { role: 'Retail Relationship Manager · L1', dept: 'Retail Credit & Advisory', zone: 'Retail Credit & Advisory' },
+      { role: 'Trade Finance Structuring Lead · L1', dept: 'Trade Finance Pavilion', zone: 'Trade Finance Pavilion' },
+      { role: 'Corridor LC Officer · L1', dept: 'Export Letters of Credit', zone: 'Export Letters of Credit' },
+      { role: 'Diaspora & Commercial Advisor · L1', dept: 'Trade & Commercial Advisory', zone: 'Trade & Commercial Advisory' },
     ];
     const bankL2Roles = [
-      { role: 'Lead FX Spot Trader · L2', dept: 'FX Treasury Dealing', zone: 'FX Treasury & Bond Dealing Room' },
-      { role: 'Money Markets Dealer · L2', dept: 'FX Treasury Dealing', zone: 'FX Treasury & Bond Dealing Room' },
-      { role: 'Sovereign Bond Strategist · L2', dept: 'Sovereign Fixed Income', zone: 'FX Treasury & Bond Dealing Room' },
-      { role: 'Treasury Liquidity Analyst · L2', dept: 'Sovereign Fixed Income', zone: 'FX Treasury & Bond Dealing Room' },
+      { role: 'Lead FX Spot Trader · L2', dept: 'FX & Yield Horseshoe', zone: 'FX & Sovereign Yield Horseshoe' },
+      { role: 'Money Markets Dealer · L2', dept: 'FX & Yield Horseshoe', zone: 'FX & Sovereign Yield Horseshoe' },
+      { role: 'Sovereign Bond Strategist · L2', dept: 'FX & Yield Horseshoe', zone: 'FX & Sovereign Yield Horseshoe' },
+      { role: 'Treasury Liquidity Analyst · L2', dept: 'FX & Yield Horseshoe', zone: 'FX & Sovereign Yield Horseshoe' },
       { role: 'Treasury Risk Quant · L2', dept: 'Quantitative Hedging', zone: 'Quantitative Hedging Alcove' },
     ];
     const bankL3Roles = [
       { role: 'Private Wealth Director · L3', dept: 'Private Wealth Parlor', zone: 'Private Wealth Parlor' },
       { role: 'Trust & Estate Fiduciary · L3', dept: 'Family Office Advisory', zone: 'Family Office Advisory' },
-      { role: 'Portfolio Strategist · L3', dept: 'Family Office Advisory', zone: 'Family Office Advisory' },
+      { role: 'Diaspora Custody Strategist · L3', dept: 'Family Office Advisory', zone: 'Family Office Advisory' },
     ];
     const bankL4Roles = [
-      { role: 'SWIFT Settlement Officer · L4', dept: 'SWIFT & AML Ops', zone: 'SWIFT & AML Operations Hub' },
-      { role: 'AML Sanctions Analyst · L4', dept: 'SWIFT & AML Ops', zone: 'SWIFT & AML Operations Hub' },
-      { role: 'Internal Audit Director · L4', dept: 'Internal Audit Chamber', zone: 'Audit Committee Chamber' },
-      { role: 'Chief Compliance Officer · L4', dept: 'Internal Audit Chamber', zone: 'Audit Committee Chamber' },
-      { role: 'Operational Risk Lead · L4', dept: 'Regulatory Risk Directorate', zone: 'Regulatory Risk Directorate' },
+      { role: 'SWIFT Settlement Officer · L4', dept: 'Clearinghouse Bridge', zone: 'Clearinghouse Command Bridge' },
+      { role: 'Cyber-Fraud Defense Lead · L4', dept: 'Clearinghouse Bridge', zone: 'Clearinghouse Command Bridge' },
+      { role: 'Internal Audit Director · L4', dept: 'Audit Tribunal Chamber', zone: 'Audit Tribunal Chamber' },
+      { role: 'Chief Compliance Officer · L4', dept: 'Audit Tribunal Chamber', zone: 'Audit Tribunal Chamber' },
+      { role: 'Operational Risk Director · L4', dept: 'Regulatory Risk Directorate', zone: 'Regulatory Risk Directorate' },
     ];
     const bankL5Roles = [
-      { role: 'Board Chairperson · L5', dept: 'Executive Bank Boardroom', zone: 'Executive Bank Boardroom' },
-      { role: 'Chief Risk Officer · L5', dept: 'Executive Bank Boardroom', zone: 'Executive Bank Boardroom' },
-      { role: 'Managing Director · L5', dept: 'Executive Bank Boardroom', zone: 'Executive Bank Boardroom' },
-      { role: 'General Counsel · L5', dept: 'Executive Bank Boardroom', zone: 'Executive Bank Boardroom' },
-      { role: 'Group CEO · Nairobi Trust Bank · L5', dept: 'Governor & CEO Penthouse', zone: 'Governor & CEO Penthouse Suite' },
+      { role: 'Board Chairperson · L5', dept: 'Diplomatic Boardroom', zone: 'Diplomatic Boardroom' },
+      { role: 'Chief Risk Officer · L5', dept: 'Diplomatic Boardroom', zone: 'Diplomatic Boardroom' },
+      { role: 'Managing Director · L5', dept: 'Diplomatic Boardroom', zone: 'Diplomatic Boardroom' },
+      { role: 'General Counsel · L5', dept: 'Diplomatic Boardroom', zone: 'Diplomatic Boardroom' },
+      { role: 'Group CEO · Nairobi Trust Bank · L5', dept: 'Governor & CEO Suite', zone: 'Governor & CEO Penthouse Suite' },
       { role: 'Chief Financial Officer · L5', dept: 'CFO Capital Directorate', zone: 'CFO Capital Directorate' },
     ];
     for (const [bId, handle] of this.buildings) {
@@ -1444,64 +1451,64 @@ export class DistrictSim {
       },
       'Therapeutic Sky-Sanctuary', M, 0.98
     );
-    // Nairobi Trust Bank Level 1..5 clients, CBK liaison & VIP sovereign partner
+    // Nairobi Trust Bank Level 1..5 trade client, CBK liaison, bullion guest & VIP sovereign partner
     const bankUp = DISTRICT_BUILDING_MAP.bank;
     this.spawnActor(
-      'bank', 1, bankUp.cx - 5.8, bankUp.cz + 2.4, 0, 'inspectPanel',
+      'bank', 1, bankUp.cx - 8.4, bankUp.cz + 5.8, -Math.PI / 2, 'inspectPanel',
       nextPersonOpts(true, undefined, { outfit: 'smartCasual' }),
       {
         id: 'bank-l1-client',
         name: generateCharacterName(true, 315),
-        role: 'Private Mortgage Client',
-        department: `${bankUp.name} · L1 Mortgage Atelier`,
+        role: 'Regional Export Trade Client',
+        department: `${bankUp.name} · L1 Trade Corridor`,
         accentColor: bankUp.accent,
         personality: pickPersonality(315),
         topicKey: 'client',
       },
-      'Mortgage Atelier', M, 0.97
+      'East Africa Trade Corridor', M, 0.97
     );
     this.spawnActor(
-      'bank', 2, bankUp.cx + 1.2, bankUp.cz - 0.4, -Math.PI / 2, 'inspectPanel',
+      'bank', 2, bankUp.cx + 2.8, bankUp.cz - 7.0, Math.PI, 'inspectPanel',
       nextPersonOpts(false, 0x1c2b46, { lanyard: true }),
       {
         id: 'bank-l2-liaison',
         name: generateCharacterName(false, 316),
         role: 'Central Bank Liaison Officer · L2',
-        department: `${bankUp.name} · FX Treasury Floor`,
+        department: `${bankUp.name} · FX & Yield Floor`,
         seniority: 'Senior',
         accentColor: bankUp.accent,
         personality: pickPersonality(316),
         topicKey: 'bank',
       },
-      'FX Treasury & Bond Dealing Room', M, 0.98
+      'FX & Sovereign Yield Horseshoe', M, 0.98
     );
     this.spawnActor(
-      'bank', 3, bankUp.cx - 6.2, bankUp.cz - 3.6, Math.PI, 'inspectPanel',
+      'bank', 3, bankUp.cx + 2.6, bankUp.cz - 3.6, Math.PI / 2, 'inspectPanel',
       nextPersonOpts(false, undefined, { coat: true }),
       {
         id: 'bank-l3-client',
         name: generateCharacterName(false, 317),
         role: 'Bullion Safe-Deposit Client',
-        department: `${bankUp.name} · Safe Deposit Gallery`,
+        department: `${bankUp.name} · Bullion Assay Rotunda`,
         accentColor: bankUp.accent,
         personality: pickPersonality(317),
         topicKey: 'client',
       },
-      'Safe Deposit Gallery', M, 0.98
+      'Bullion Assay Rotunda', M, 0.98
     );
     this.spawnActor(
-      'bank', 5, bankUp.cx + 7.4, bankUp.cz - 5.2, Math.PI, 'coffee',
+      'bank', 5, bankUp.cx + 4.2, bankUp.cz + 7.2, Math.PI / 3, 'coffee',
       nextPersonOpts(true, undefined, { outfit: 'smartCasual' }),
       {
         id: 'bank-l5-guest',
         name: generateCharacterName(true, 318),
         role: 'Sovereign Investment Partner · VIP',
-        department: `${bankUp.name} · L5 Penthouse Sky-Bar`,
+        department: `${bankUp.name} · L5 Diplomatic Terrace`,
         accentColor: bankUp.accent,
         personality: pickPersonality(318),
         topicKey: 'client',
       },
-      'Executive Sky-Bar', M, 0.98
+      'Diplomatic Tea Terrace', M, 0.98
     );
   }
 
@@ -2018,43 +2025,43 @@ export class DistrictSim {
     if (bId === 'bank') {
       if (lv === 1) {
         return [
-          { x: spec.cx - 5.8, z: spec.cz + 1.2, face: 0, pose: 'inspectPanel' },
-          { x: spec.cx + 1.6, z: spec.cz - 2.6, face: Math.PI, pose: 'hold' },
-          { x: spec.cx + 6.4, z: spec.cz - 2.8, face: 0, pose: 'coffee' },
+          { x: spec.cx - 8.4, z: spec.cz + 4.0, face: 0, pose: 'inspectPanel' },
+          { x: spec.cx - 1.6, z: spec.cz - 2.2, face: Math.PI, pose: 'hold' },
+          { x: spec.cx + 8.6, z: spec.cz + 2.0, face: -Math.PI / 2, pose: 'standPhone' },
         ];
       }
       if (lv === 2) {
         return [
-          { x: spec.cx - 4.2, z: spec.cz - 0.4, face: -Math.PI / 2, pose: 'inspectPanel' },
-          { x: spec.cx + 0.6, z: spec.cz - 4.4, face: Math.PI, pose: 'readDoc' },
-          { x: spec.cx + 5.2, z: spec.cz - 3.4, face: 0, pose: 'standPhone' },
+          { x: spec.cx + 2.8, z: spec.cz - 7.0, face: Math.PI, pose: 'inspectPanel' },
+          { x: spec.cx + 3.2, z: spec.cz + 3.2, face: Math.PI, pose: 'readDoc' },
+          { x: spec.cx - 6.6, z: spec.cz + 5.8, face: Math.PI / 2, pose: 'standPhone' },
         ];
       }
       if (lv === 3) {
         return [
-          { x: spec.cx - 6.2, z: spec.cz + 0.6, face: Math.PI, pose: 'stand' },
-          { x: spec.cx - 2.6, z: spec.cz + 1.4, face: 0, pose: 'hold' },
-          { x: spec.cx + 5.2, z: spec.cz - 3.6, face: 0, pose: 'readDoc' },
+          { x: spec.cx + 0.6, z: spec.cz - 3.6, face: Math.PI / 2, pose: 'inspectPanel' },
+          { x: spec.cx + 3.6, z: spec.cz + 3.4, face: 0, pose: 'hold' },
+          { x: spec.cx - 5.2, z: spec.cz + 6.2, face: 0, pose: 'readDoc' },
         ];
       }
       if (lv === 4) {
         return [
-          { x: spec.cx - 5.2, z: spec.cz + 2.2, face: Math.PI, pose: 'hold' },
-          { x: spec.cx + 1.4, z: spec.cz + 3.2, face: 0, pose: 'readDoc' },
-          { x: spec.cx + 5.8, z: spec.cz - 3.2, face: 0, pose: 'inspectPanel' },
+          { x: spec.cx + 2.8, z: spec.cz - 7.0, face: Math.PI, pose: 'inspectPanel' },
+          { x: spec.cx + 2.8, z: spec.cz + 0.6, face: Math.PI, pose: 'readDoc' },
+          { x: spec.cx - 2.2, z: spec.cz + 5.4, face: 0, pose: 'standPhone' },
         ];
       }
       if (lv === 5) {
         return [
-          { x: spec.cx + 1.2, z: spec.cz - 3.8, face: -Math.PI / 2, pose: 'stand' },
-          { x: spec.cx - 5.2, z: spec.cz + 2.8, face: 0, pose: 'readDoc' },
-          { x: spec.cx + 5.2, z: spec.cz - 3.8, face: 0, pose: 'coffee' },
+          { x: spec.cx - 2.4, z: spec.cz - 3.8, face: Math.PI / 2, pose: 'stand' },
+          { x: spec.cx + 1.2, z: spec.cz + 3.6, face: 0, pose: 'readDoc' },
+          { x: spec.cx + 3.8, z: spec.cz + 6.4, face: Math.PI / 3, pose: 'coffee' },
         ];
       }
       return [
-        { x: spec.cx - 6.5, z: spec.cz + 4.4, face: 0, pose: 'stand' },
-        { x: spec.cx - 1.2, z: spec.cz + 1.6, face: Math.PI, pose: 'hold' },
-        { x: spec.cx + 3.2, z: spec.cz - 4.4, face: 0, pose: 'standPhone' },
+        { x: spec.cx - 6.8, z: spec.cz + 4.8, face: 0, pose: 'stand' },
+        { x: spec.cx + 3.8, z: spec.cz + 2.0, face: Math.PI, pose: 'hold' },
+        { x: spec.cx + 4.8, z: spec.cz - 6.0, face: 0, pose: 'standPhone' },
       ];
     }
     if (bId === 'crypto') {
@@ -2558,7 +2565,7 @@ export class DistrictSim {
                 : bId === 'realestate'
                   ? 'Rooftop tower crane & green pergola terrace active'
                   : bId === 'bank'
-                    ? 'Sovereign Reserve Sky-Rotunda & Brass Vault Lantern Crown'
+                    ? 'Rift-Limestone Colonnade & Rotating Sky-Astrolabe Crown'
                     : 'HVAC plant & skylight housing',
           },
         ],

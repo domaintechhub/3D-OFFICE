@@ -1,8 +1,35 @@
 import * as THREE from 'three';
+import { getMaxAnisotropy } from './textures';
 
 const CACHE = new Map<string, THREE.CanvasTexture>();
 const EYE_TEX_CACHE = new Map<string, THREE.CanvasTexture>();
 const FACE_TEX_CACHE = new Map<string, THREE.CanvasTexture>();
+let MOTTLE_LIGHT_STAMP: HTMLCanvasElement | null = null;
+let MOTTLE_DARK_STAMP: HTMLCanvasElement | null = null;
+
+function getMottleStamps(): [HTMLCanvasElement, HTMLCanvasElement] {
+  if (MOTTLE_LIGHT_STAMP && MOTTLE_DARK_STAMP) {
+    return [MOTTLE_LIGHT_STAMP, MOTTLE_DARK_STAMP];
+  }
+  const sz = 256;
+  const [lc, lg] = makeCanvas(sz, sz);
+  const [dc, dg] = makeCanvas(sz, sz);
+  const prng = (i: number) => ((i * 9301 + 49297) % 233280) / 233280;
+  lg.fillStyle = 'rgba(255,255,255,0.032)';
+  dg.fillStyle = 'rgba(0,0,0,0.032)';
+  for (let i = 0; i < 480; i++) {
+    const x = prng(i * 2) * sz;
+    const y = prng(i * 2 + 1) * sz;
+    const r = 3.2 + prng(i + 99) * 14;
+    const ctx = i % 2 === 0 ? lg : dg;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  MOTTLE_LIGHT_STAMP = lc;
+  MOTTLE_DARK_STAMP = dc;
+  return [lc, dc];
+}
 
 function makeCanvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
   const cv = document.createElement('canvas');
@@ -30,38 +57,38 @@ function buildNormalCanvasTex(
   const [outCv, outCtx] = makeCanvas(w, h);
   const imgData = outCtx.createImageData(w, h);
   const out = imgData.data;
-
-  const sample = (x: number, y: number): number => {
-    const wx = ((x % w) + w) % w;
-    const wy = ((y % h) + h) % h;
-    return src[(wy * w + wx) * 4] / 255;
-  };
+  const scale = strength * (1 / 255);
+  const wMask = (w & (w - 1)) === 0 ? w - 1 : -1;
+  const hMask = (h & (h - 1)) === 0 ? h - 1 : -1;
 
   for (let y = 0; y < h; y++) {
+    const ym1 = hMask >= 0 ? (y - 1) & hMask : (y - 1 + h) % h;
+    const yp1 = hMask >= 0 ? (y + 1) & hMask : (y + 1) % h;
+    const rowU = ym1 * w;
+    const rowM = y * w;
+    const rowD = yp1 * w;
+
     for (let x = 0; x < w; x++) {
-      const tl = sample(x - 1, y - 1);
-      const t = sample(x, y - 1);
-      const tr = sample(x + 1, y - 1);
-      const l = sample(x - 1, y);
-      const r = sample(x + 1, y);
-      const bl = sample(x - 1, y + 1);
-      const b = sample(x, y + 1);
-      const br = sample(x + 1, y + 1);
+      const xm1 = wMask >= 0 ? (x - 1) & wMask : (x - 1 + w) % w;
+      const xp1 = wMask >= 0 ? (x + 1) & wMask : (x + 1) % w;
 
-      const dx = tr + 2 * r + br - (tl + 2 * l + bl);
-      const dy = bl + 2 * b + br - (tl + 2 * t + tr);
-      let nx = -dx * strength;
-      let ny = -dy * strength;
-      let nz = 1.0;
-      const len = Math.hypot(nx, ny, nz) || 1;
-      nx /= len;
-      ny /= len;
-      nz /= len;
+      const tl = src[(rowU + xm1) << 2];
+      const t = src[(rowU + x) << 2];
+      const tr = src[(rowU + xp1) << 2];
+      const l = src[(rowM + xm1) << 2];
+      const r = src[(rowM + xp1) << 2];
+      const bl = src[(rowD + xm1) << 2];
+      const b = src[(rowD + x) << 2];
+      const br = src[(rowD + xp1) << 2];
 
-      const i = (y * w + x) * 4;
-      out[i] = Math.round((nx * 0.5 + 0.5) * 255);
-      out[i + 1] = Math.round((ny * 0.5 + 0.5) * 255);
-      out[i + 2] = Math.round((nz * 0.5 + 0.5) * 255);
+      const nx = -(tr + 2 * r + br - (tl + 2 * l + bl)) * scale;
+      const ny = -(bl + 2 * b + br - (tl + 2 * t + tr)) * scale;
+      const invLen = 1 / Math.sqrt(nx * nx + ny * ny + 1);
+
+      const i = (rowM + x) << 2;
+      out[i] = ((nx * invLen * 0.5 + 0.5) * 255 + 0.5) | 0;
+      out[i + 1] = ((ny * invLen * 0.5 + 0.5) * 255 + 0.5) | 0;
+      out[i + 2] = ((invLen * 0.5 + 0.5) * 255 + 0.5) | 0;
       out[i + 3] = 255;
     }
   }
@@ -70,7 +97,7 @@ function buildNormalCanvasTex(
   const tex = new THREE.CanvasTexture(outCv);
   tex.colorSpace = THREE.NoColorSpace;
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.anisotropy = 4;
+  tex.anisotropy = getMaxAnisotropy();
   tex.needsUpdate = true;
   CACHE.set(fullKey, tex);
   return tex;
@@ -91,7 +118,7 @@ function makeGreyTex(
   tex.colorSpace = THREE.NoColorSpace;
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(repeat, repeat);
-  tex.anisotropy = 4;
+  tex.anisotropy = getMaxAnisotropy();
   CACHE.set(key, tex);
   return tex;
 }
@@ -112,7 +139,7 @@ function makeColorTex(
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(repeatX, repeatY);
-  tex.anisotropy = 4;
+  tex.anisotropy = getMaxAnisotropy();
   CACHE.set(key, tex);
   return tex;
 }
@@ -144,27 +171,28 @@ export function getHumanMicroMaps(): HumanMicroMaps {
     256,
     256,
     (g, W, H) => {
-      g.fillStyle = '#808080';
-      g.fillRect(0, 0, W, H);
+      const img = g.createImageData(W, H);
+      const d = img.data;
+      let seed = 1979;
+      for (let i = 0; i < d.length; i += 4) {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        const v = (seed >>> 24) % 9 === 0 ? 96 + ((seed >>> 16) % 44) : 128;
+        d[i] = v;
+        d[i + 1] = v;
+        d[i + 2] = v;
+        d[i + 3] = 255;
+      }
+      g.putImageData(img, 0, 0);
       g.strokeStyle = 'rgba(108,108,108,0.22)';
       g.lineWidth = 0.65;
+      g.beginPath();
       for (let i = 0; i < 240; i++) {
         const x = (i * 37) % W;
         const y = (i * 53) % H;
-        g.beginPath();
         g.moveTo(x, y);
         g.lineTo(x + ((i % 5) - 2) * 5, y + ((i % 3) + 1) * 4);
-        g.stroke();
       }
-      for (let i = 0; i < 2800; i++) {
-        const px = (((i * 7919) % 1000) / 1000) * W;
-        const py = (((i * 6271) % 1000) / 1000) * H;
-        const v = 96 + (i % 46);
-        g.fillStyle = `rgb(${v},${v},${v})`;
-        g.beginPath();
-        g.arc(px, py, 0.65 + (i % 3) * 0.32, 0, Math.PI * 2);
-        g.fill();
-      }
+      g.stroke();
     },
     1.18
   );
@@ -175,15 +203,25 @@ export function getHumanMicroMaps(): HumanMicroMaps {
     256,
     256,
     (g, W, H) => {
-      g.fillStyle = '#d4d4d4';
-      g.fillRect(0, 0, W, H);
-      for (let i = 0; i < 3600; i++) {
-        const px = (((i * 4973) % 997) / 997) * W;
-        const py = (((i * 8191) % 997) / 997) * H;
-        const v = 198 + (i % 44);
-        g.fillStyle = `rgb(${v},${v},${v})`;
-        g.fillRect(px, py, 2.2, 2.2);
+      const img = g.createImageData(W, H);
+      const d = img.data;
+      let seed = 4327;
+      for (let y = 0; y < H; y += 2) {
+        for (let x = 0; x < W; x += 2) {
+          seed = (seed * 1664525 + 1013904223) >>> 0;
+          const v = 198 + ((seed >>> 24) % 44);
+          for (let dy = 0; dy < 2; dy++) {
+            for (let dx = 0; dx < 2; dx++) {
+              const idx = ((y + dy) * W + (x + dx)) << 2;
+              d[idx] = v;
+              d[idx + 1] = v;
+              d[idx + 2] = v;
+              d[idx + 3] = 255;
+            }
+          }
+        }
       }
+      g.putImageData(img, 0, 0);
     },
     3
   );
@@ -194,15 +232,23 @@ export function getHumanMicroMaps(): HumanMicroMaps {
     256,
     256,
     (g, W, H) => {
-      g.fillStyle = '#808080';
-      g.fillRect(0, 0, W, H);
-      for (let y = 0; y < H; y += 3) {
-        for (let x = 0; x < W; x += 3) {
-          const diag = (x + y) % 6 < 3 ? 142 : 114;
-          g.fillStyle = `rgb(${diag},${diag},${diag})`;
-          g.fillRect(x, y, 2, 2);
+      const img = g.createImageData(W, H);
+      const d = img.data;
+      for (let y = 0; y < H; y++) {
+        const yMod = y % 3;
+        for (let x = 0; x < W; x++) {
+          const xMod = x % 3;
+          const xBase = x - xMod;
+          const yBase = y - yMod;
+          const v = xMod === 2 || yMod === 2 ? 128 : (xBase + yBase) % 6 < 3 ? 142 : 114;
+          const idx = (y * W + x) << 2;
+          d[idx] = v;
+          d[idx + 1] = v;
+          d[idx + 2] = v;
+          d[idx + 3] = 255;
         }
       }
+      g.putImageData(img, 0, 0);
       for (let i = 0; i < 18; i++) {
         const y = (i / 18) * H;
         g.strokeStyle = i % 2 === 0 ? 'rgba(170,170,170,0.2)' : 'rgba(92,92,92,0.2)';
@@ -222,15 +268,25 @@ export function getHumanMicroMaps(): HumanMicroMaps {
     256,
     256,
     (g, W, H) => {
-      g.fillStyle = '#dadada';
-      g.fillRect(0, 0, W, H);
-      for (let i = 0; i < 2200; i++) {
-        const px = (((i * 3571) % 991) / 991) * W;
-        const py = (((i * 7331) % 991) / 991) * H;
-        const v = 198 + (i % 46);
-        g.fillStyle = `rgb(${v},${v},${v})`;
-        g.fillRect(px, py, 2.5, 2.5);
+      const img = g.createImageData(W, H);
+      const d = img.data;
+      let seed = 5503;
+      for (let y = 0; y < H; y += 2) {
+        for (let x = 0; x < W; x += 2) {
+          seed = (seed * 1664525 + 1013904223) >>> 0;
+          const v = 198 + ((seed >>> 24) % 46);
+          for (let dy = 0; dy < 2; dy++) {
+            for (let dx = 0; dx < 2; dx++) {
+              const idx = ((y + dy) * W + (x + dx)) << 2;
+              d[idx] = v;
+              d[idx + 1] = v;
+              d[idx + 2] = v;
+              d[idx + 3] = 255;
+            }
+          }
+        }
       }
+      g.putImageData(img, 0, 0);
     },
     4
   );
@@ -243,18 +299,18 @@ export function getHumanMicroMaps(): HumanMicroMaps {
     (g, W, H) => {
       g.fillStyle = '#707070';
       g.fillRect(0, 0, W, H);
+      g.strokeStyle = '#bcbcbc';
+      g.lineWidth = 2.2;
+      g.beginPath();
       for (let x = 0; x < W; x += 8) {
         for (let y = 0; y < H; y += 6) {
-          g.strokeStyle = '#bcbcbc';
-          g.lineWidth = 2.2;
-          g.beginPath();
           g.moveTo(x + 1, y);
           g.lineTo(x + 4, y + 5);
           g.moveTo(x + 7, y);
           g.lineTo(x + 4, y + 5);
-          g.stroke();
         }
       }
+      g.stroke();
     },
     2.1
   );
@@ -267,8 +323,12 @@ export function getHumanMicroMaps(): HumanMicroMaps {
     (g, W, H) => {
       g.fillStyle = '#e6e6e6';
       g.fillRect(0, 0, W, H);
-      for (let x = 0; x < W; x += 4) {
-        g.fillStyle = x % 8 === 0 ? '#d8d8d8' : '#eeeeee';
+      g.fillStyle = '#d8d8d8';
+      for (let x = 0; x < W; x += 8) {
+        g.fillRect(x, 0, 2, H);
+      }
+      g.fillStyle = '#eeeeee';
+      for (let x = 4; x < W; x += 8) {
         g.fillRect(x, 0, 2, H);
       }
     },
@@ -281,17 +341,25 @@ export function getHumanMicroMaps(): HumanMicroMaps {
     128,
     128,
     (g, W, H) => {
-      g.fillStyle = '#808080';
-      g.fillRect(0, 0, W, H);
-      for (let i = 0; i < 950; i++) {
-        const px = (((i * 2311) % 977) / 977) * W;
-        const py = (((i * 5107) % 977) / 977) * H;
-        const v = 108 + (i % 48);
-        g.fillStyle = `rgb(${v},${v},${v})`;
-        g.beginPath();
-        g.arc(px, py, 1.35, 0, Math.PI * 2);
-        g.fill();
+      const img = g.createImageData(W, H);
+      const d = img.data;
+      let seed = 2311;
+      for (let y = 0; y < H; y += 2) {
+        for (let x = 0; x < W; x += 2) {
+          seed = (seed * 1664525 + 1013904223) >>> 0;
+          const v = 108 + ((seed >>> 24) % 48);
+          for (let dy = 0; dy < 2; dy++) {
+            for (let dx = 0; dx < 2; dx++) {
+              const idx = ((y + dy) * W + (x + dx)) << 2;
+              d[idx] = v;
+              d[idx + 1] = v;
+              d[idx + 2] = v;
+              d[idx + 3] = 255;
+            }
+          }
+        }
       }
+      g.putImageData(img, 0, 0);
     },
     1.2
   );
@@ -310,10 +378,16 @@ export function getHumanMicroMaps(): HumanMicroMaps {
         g.fillStyle = `rgb(${v},${v},${v})`;
         g.fillRect(x, 0, 1.4, H);
       }
-      for (let i = 0; i < 400; i++) {
+      g.fillStyle = 'rgba(255,255,255,0.04)';
+      for (let i = 0; i < 400; i += 2) {
         const px = (((i * 1933) % 997) / 997) * W;
         const py = (((i * 4447) % 997) / 997) * H;
-        g.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.04)' : 'rgba(18,18,18,0.06)';
+        g.fillRect(px, py, 1.4, 14);
+      }
+      g.fillStyle = 'rgba(18,18,18,0.06)';
+      for (let i = 1; i < 400; i += 2) {
+        const px = (((i * 1933) % 997) / 997) * W;
+        const py = (((i * 4447) % 997) / 997) * H;
         g.fillRect(px, py, 1.4, 14);
       }
     },
@@ -328,14 +402,18 @@ export function getHumanMicroMaps(): HumanMicroMaps {
     (g, W, H) => {
       g.fillStyle = '#707070';
       g.fillRect(0, 0, W, H);
-      for (let i = 0; i < 1800; i++) {
-        const px = (((i * 3911) % 997) / 997) * W;
-        const py = (((i * 7129) % 997) / 997) * H;
-        const r = 2.2 + (i % 4);
-        g.strokeStyle = i % 2 === 0 ? '#d2d2d2' : '#3c3c3c';
-        g.lineWidth = 1.5;
+      g.lineWidth = 1.5;
+      for (let pass = 0; pass < 2; pass++) {
+        g.strokeStyle = pass === 0 ? '#d2d2d2' : '#3c3c3c';
         g.beginPath();
-        g.arc(px, py, r, (i % 6) * 0.8, (i % 6) * 0.8 + Math.PI * 1.35);
+        for (let i = pass; i < 1800; i += 2) {
+          const px = (((i * 3911) % 997) / 997) * W;
+          const py = (((i * 7129) % 997) / 997) * H;
+          const r = 2.2 + (i % 4);
+          const a0 = (i % 6) * 0.8;
+          g.moveTo(px + Math.cos(a0) * r, py + Math.sin(a0) * r);
+          g.arc(px, py, r, a0, a0 + Math.PI * 1.35);
+        }
         g.stroke();
       }
     },
@@ -529,7 +607,7 @@ export function getEyeIrisTexture(irisHex: number): THREE.CanvasTexture {
 
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
+  tex.anisotropy = getMaxAnisotropy();
   EYE_TEX_CACHE.set(key, tex);
   return tex;
 }
@@ -553,6 +631,7 @@ export interface FaceTextureOptions {
  */
 export function getPhotorealFaceTexture(opts: FaceTextureOptions): THREE.CanvasTexture {
   const size = opts.size || 512;
+  const freckleKind = opts.freckleSeed % 3 === 1 ? 1 : opts.freckleSeed % 4 === 2 ? 2 : 0;
   const key = [
     'facev6',
     size,
@@ -561,7 +640,7 @@ export function getPhotorealFaceTexture(opts: FaceTextureOptions): THREE.CanvasT
     opts.fem ? 'f' : 'm',
     opts.beardStyle,
     opts.hasFadeHairline ? 'fd' : 'nf',
-    opts.freckleSeed % 7,
+    freckleKind,
     opts.warmSmile ? 'sm' : 'nt',
   ].join('_');
 
@@ -580,19 +659,14 @@ export function getPhotorealFaceTexture(opts: FaceTextureOptions): THREE.CanvasT
   const highlightCss = shadeHex(opts.skinHex, 0.038, -0.01);
   const hairCss = `#${opts.hairHex.toString(16).padStart(6, '0')}`;
 
-  // 1. Base dermal tone + subtle organic melanin mottling
+  // 1. Base dermal tone + subtle organic melanin mottling (single cached stamp blit instead of 820 arc calls)
   g.fillStyle = baseCss;
   g.fillRect(0, 0, W, H);
+  const [mottleLight, mottleDark] = getMottleStamps();
+  g.drawImage(mottleLight, 0, 0, W, H);
+  g.drawImage(mottleDark, 0, 0, W, H);
 
   const prng = (i: number) => ((i * 9301 + 49297 + opts.freckleSeed * 233) % 233280) / 233280;
-  for (let i = 0; i < 820; i++) {
-    g.globalAlpha = 0.025;
-    g.fillStyle = i % 2 === 0 ? highlightCss : shadowCss;
-    g.beginPath();
-    g.arc(prng(i * 2) * W, prng(i * 2 + 1) * H, (3.2 + prng(i + 99) * 14) * sc, 0, Math.PI * 2);
-    g.fill();
-  }
-  g.globalAlpha = 1;
 
   const addRadial = (cx: number, cy: number, rx: number, ry: number, col: string, alpha: number) => {
     g.save();
@@ -618,32 +692,38 @@ export function getPhotorealFaceTexture(opts: FaceTextureOptions): THREE.CanvasT
   addRadial(W * 0.5, H * 0.725, 16 * sc, 11 * sc, highlightCss, 0.16);
 
   // Subtle forehead expression lines & nasolabial crease cues
+  g.strokeStyle = shadowCss;
+  g.globalAlpha = 0.22;
+  g.lineWidth = 2.4 * sc;
+  g.lineCap = 'round';
+  g.beginPath();
   for (const side of [-1, 1]) {
-    g.strokeStyle = shadowCss;
-    g.globalAlpha = 0.22;
-    g.lineWidth = 2.4 * sc;
-    g.lineCap = 'round';
-    g.beginPath();
     g.moveTo(W * (0.5 + side * 0.032), H * 0.578);
     g.quadraticCurveTo(W * (0.5 + side * 0.054), H * 0.625, W * (0.5 + side * 0.048), H * 0.67);
-    g.stroke();
   }
+  g.stroke();
   g.globalAlpha = 1;
 
   // Individual beauty mark / subtle skin freckles
-  if (opts.freckleSeed % 3 === 1) {
-    addRadial(W * 0.428, H * 0.59, 1.7 * sc, 1.7 * sc, '#24140d', 0.62);
-  } else if (opts.freckleSeed % 4 === 2) {
+  if (freckleKind === 1) {
+    g.fillStyle = '#24140d';
+    g.globalAlpha = 0.55;
+    g.beginPath();
+    g.arc(W * 0.428, H * 0.59, 1.5 * sc, 0, Math.PI * 2);
+    g.fill();
+    g.globalAlpha = 1;
+  } else if (freckleKind === 2) {
+    g.fillStyle = deepShadowCss;
+    g.globalAlpha = 0.24;
+    g.beginPath();
     for (let f = 0; f < 18; f++) {
-      addRadial(
-        W * (0.405 + prng(f + 700) * 0.19),
-        H * (0.52 + prng(f + 800) * 0.06),
-        1.15 * sc,
-        1.05 * sc,
-        deepShadowCss,
-        0.26
-      );
+      const fx = W * (0.405 + prng(f + 700) * 0.19);
+      const fy = H * (0.52 + prng(f + 800) * 0.06);
+      g.moveTo(fx + 1.05 * sc, fy);
+      g.arc(fx, fy, 1.05 * sc, 0, Math.PI * 2);
     }
+    g.fill();
+    g.globalAlpha = 1;
   }
 
   // Natural hairline edge feathering + temple sideburn taper
@@ -678,14 +758,14 @@ export function getPhotorealFaceTexture(opts: FaceTextureOptions): THREE.CanvasT
     g.strokeStyle = hairCss;
     g.globalAlpha = bAlpha * 0.75;
     g.lineWidth = 0.9 * sc;
+    g.beginPath();
     for (let i = 0; i < 240; i++) {
       const bx = W * (0.36 + prng(i + 200) * 0.28);
       const by = H * (0.635 + prng(i + 300) * 0.13);
-      g.beginPath();
       g.moveTo(bx, by);
       g.lineTo(bx + (prng(i) - 0.5) * 2 * sc, by + 3.2 * sc);
-      g.stroke();
     }
+    g.stroke();
     g.globalAlpha = 1;
   }
 
@@ -748,17 +828,17 @@ export function getPhotorealFaceTexture(opts: FaceTextureOptions): THREE.CanvasT
     const by = H * 0.402;
     g.strokeStyle = hairCss;
     g.lineCap = 'round';
+    g.globalAlpha = 0.78;
+    g.lineWidth = (opts.fem ? 1.15 : 1.45) * sc;
+    g.beginPath();
     for (let h = 0; h < 28; h++) {
       const k = h / 27;
       const sx = THREE.MathUtils.lerp(bx - side * 12.8 * sc, bx + side * 13.8 * sc, k);
       const sy = by + 2.2 * sc - Math.sin(k * Math.PI) * (opts.fem ? 4.3 : 2.5) * sc;
-      g.globalAlpha = 0.56 + Math.sin(k * Math.PI) * 0.38;
-      g.lineWidth = (opts.fem ? 1.15 : 1.45) * sc;
-      g.beginPath();
       g.moveTo(sx, sy + 1.4 * sc);
       g.lineTo(sx + side * 2.2 * sc, sy - 2.2 * sc);
-      g.stroke();
     }
+    g.stroke();
   }
   g.globalAlpha = 1;
 
@@ -811,18 +891,18 @@ export function getPhotorealFaceTexture(opts: FaceTextureOptions): THREE.CanvasT
   g.strokeStyle = deepShadowCss;
   g.globalAlpha = 0.09;
   g.lineWidth = 0.7 * sc;
+  g.beginPath();
   for (let l = -4; l <= 4; l++) {
-    g.beginPath();
     g.moveTo(mx + l * 3.1 * sc, my + 2.1 * sc);
     g.lineTo(mx + l * 2.8 * sc, my + 5.4 * sc);
-    g.stroke();
   }
+  g.stroke();
   addRadial(mx, my + 9.2 * sc, 14 * sc, 5 * sc, deepShadowCss, 0.12);
   g.globalAlpha = 1;
 
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
+  tex.anisotropy = getMaxAnisotropy();
   FACE_TEX_CACHE.set(key, tex);
   return tex;
 }

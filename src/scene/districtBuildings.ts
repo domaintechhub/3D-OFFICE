@@ -479,11 +479,12 @@ function buildPerimeterWalls(
       }
     } else {
       // Sculpted cylindrical pilotis corner columns (avoiding boxy square corners)
-      const colMat = style === 'tower' || style === 'blade' ? archMats.stuccoWhite : frameMat;
+      const colMat =
+        spec.id === 'bank' ? wallMat : style === 'tower' || style === 'blade' ? archMats.stuccoWhite : frameMat;
       const colS = cylAt(parent, 0.24, 0.24, hWall, wx - side * 0.15, yMid, frontZ - dirZ * 0.15, colMat, true, true, 16);
       const colB = cylAt(parent, 0.24, 0.24, hWall, wx - side * 0.15, yMid, backZ + dirZ * 0.15, colMat, true, true, 16);
       picks.push(colS, colB);
-      // Mid-flank timber fin or bronze mullion screen
+      // Mid-flank timber fin or champagne-bronze mullion screen
       for (let k = -1; k <= 1; k++) {
         boxAt(
           parent,
@@ -493,7 +494,7 @@ function buildPerimeterWalls(
           wx + side * 0.06,
           yMid,
           spec.cz + k * 0.42,
-          style === 'tower' ? archMats.timberFin : archMats.bronzeMullion,
+          style === 'tower' && spec.id !== 'bank' ? archMats.timberFin : archMats.bronzeMullion,
           false,
           false,
           0.01
@@ -590,6 +591,23 @@ export function buildDistrictBuildings(
     normalScale: new THREE.Vector2(0.45, 0.45),
     color: 0xc9c3b8,
     roughness: 0.84,
+  });
+  const bankLimestoneMat = std({
+    map: mkTileTex(M.textures.concreteTex, 3, 2),
+    normalMap: mkTileTex(M.textures.concreteNormal, 3, 2),
+    normalScale: new THREE.Vector2(0.4, 0.4),
+    color: 0xe3d8c3,
+    roughness: 0.7,
+  });
+  const bankTerrazzoMat = std({
+    map: mkTileTex(M.textures.terrazzoTex, 4, 3),
+    normalMap: mkTileTex(M.textures.terrazzoNormal, 4, 3),
+    normalScale: new THREE.Vector2(0.38, 0.38),
+    roughnessMap: mkTileTex(M.textures.terrazzoRoughness, 4, 3),
+    color: 0xebe2d0,
+    roughness: 0.48,
+    metalness: 0.03,
+    envMapIntensity: 0.34,
   });
   const cryptoWallMat = std({ color: 0x1b232e, roughness: 0.52, metalness: 0.32 });
   const medicalWallMat = std({
@@ -688,24 +706,28 @@ export function buildDistrictBuildings(
         ? terracottaMat
         : spec.id === 'dealership'
           ? frameDarkMat
-          : spec.id === 'bank' || spec.id === 'realestate'
-            ? bankStoneMat
-            : spec.id === 'crypto'
-              ? cryptoWallMat
-              : spec.id === 'travel'
-                ? floorTerrazzo
-                : spec.id === 'tourism'
-                  ? woodCedarMat
-                  : spec.id === 'logistics'
-                    ? logisticsWallMat
-                    : medicalWallMat;
+          : spec.id === 'bank'
+            ? bankLimestoneMat
+            : spec.id === 'realestate'
+              ? bankStoneMat
+              : spec.id === 'crypto'
+                ? cryptoWallMat
+                : spec.id === 'travel'
+                  ? floorTerrazzo
+                  : spec.id === 'tourism'
+                    ? woodCedarMat
+                    : spec.id === 'logistics'
+                      ? logisticsWallMat
+                      : medicalWallMat;
 
     const slabFloorMat =
       spec.id === 'restaurant' || spec.id === 'tourism' || spec.id === 'realestate'
         ? floorWarmOak
         : spec.id === 'crypto' || spec.id === 'logistics'
           ? floorSlate
-          : floorTerrazzo;
+          : spec.id === 'bank'
+            ? bankTerrazzoMat
+            : floorTerrazzo;
 
     const buildingGlass =
       spec.id === 'restaurant' || spec.id === 'tourism' || spec.id === 'realestate' ? warmGlassMat : glassMat;
@@ -805,14 +827,26 @@ export function buildDistrictBuildings(
         lg.add(slab);
         pickMeshes.push(slab);
       } else if (style === 'tower') {
-        // Sweeping rounded-corner wraparound bullnose balcony slab (Reference Image 2)
+        // Sweeping rounded-corner wraparound bullnose balcony slab (Bank opens both West Stairwell + L1 Rotunda Void)
         const towerSlabGeo =
           spec.id === 'crypto' && lv >= 1
             ? getRoundedSlabWithVoidGeo(spec.w + 2.4, spec.d + 2.4, 3.0, 0.34, 4.35, 10.65, -9.65, -2.45, 0.08)
-            : spec.id === 'bank' && lv >= 1
-              ? getRoundedSlabWithVoidGeo(spec.w + 2.4, spec.d + 2.4, 3.0, 0.34, 5.1, 10.6, -1.1, 6.9, 0.08)
-              : getRoundedSlabGeo(spec.w + 2.4, spec.d + 2.4, 3.0, 0.34, 0.08);
-        const slab = new THREE.Mesh(towerSlabGeo, archMats.bullnoseConcrete);
+            : spec.id === 'bank' && lv === 1
+              ? getRoundedSlabWithVoidsGeo(
+                  spec.w + 2.4,
+                  spec.d + 2.4,
+                  3.0,
+                  0.34,
+                  [
+                    [-10.5, -5.0, -6.5, 1.5],
+                    [0.8, 6.8, -1.0, 5.0],
+                  ],
+                  0.08
+                )
+              : spec.id === 'bank' && lv >= 2
+                ? getRoundedSlabWithVoidGeo(spec.w + 2.4, spec.d + 2.4, 3.0, 0.34, -10.5, -5.0, -6.5, 1.5, 0.08)
+                : getRoundedSlabGeo(spec.w + 2.4, spec.d + 2.4, 3.0, 0.34, 0.08);
+        const slab = new THREE.Mesh(towerSlabGeo, spec.id === 'bank' ? bankTerrazzoMat : archMats.bullnoseConcrete);
         slab.position.set(spec.cx, spec.id === 'crypto' ? yFloor - 0.05 : yFloor - 0.03, spec.cz);
         slab.castShadow = true;
         slab.receiveShadow = true;
@@ -1028,9 +1062,21 @@ export function buildDistrictBuildings(
                           ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, 4.35, 10.65, -9.65, -2.45, 0.02)
                           : spec.id === 'medical' && lv < spec.floors - 1
                             ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, 3.2, 8.8, -6.8, -0.6, 0.02)
-                            : spec.id === 'bank' && lv < spec.floors - 1
-                              ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, 5.1, 10.6, -1.1, 6.9, 0.02)
-                              : getRoundedSlabGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, 0.02);
+                            : spec.id === 'bank' && lv === 0
+                              ? getRoundedSlabWithVoidsGeo(
+                                  spec.w - 0.2,
+                                  spec.d - 0.2,
+                                  1.5,
+                                  0.16,
+                                  [
+                                    [-10.5, -5.0, -6.5, 1.5],
+                                    [0.8, 6.8, -1.0, 5.0],
+                                  ],
+                                  0.02
+                                )
+                              : spec.id === 'bank' && lv >= 1 && lv < spec.floors - 1
+                                ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, -10.5, -5.0, -6.5, 1.5, 0.02)
+                                : getRoundedSlabGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, 0.02);
       const cSlab = new THREE.Mesh(cSlabGeo, M.white);
       cSlab.position.set(spec.cx, ceilY, spec.cz);
       cg.add(cSlab);

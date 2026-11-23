@@ -58,6 +58,7 @@ export interface WallTVRef {
   mesh: THREE.Mesh | null;
   data: { build: string[]; proj: Array<[string, number, string]>; news: string[] };
   accent: string;
+  needsInitDraw?: boolean;
 }
 
 export interface ScreenRegistry {
@@ -518,19 +519,24 @@ export function createWallTvMat(reg: ScreenRegistry, d: RoomDef, idx: number): T
     // ignore
   }
 
+  const tvCtx = cv.getContext('2d')!;
+  tvCtx.fillStyle = '#0a0f18';
+  tvCtx.fillRect(0, 0, TV_W, TV_H);
+  tx.needsUpdate = true;
+
   const tv: WallTVRef = {
     d,
     idx,
-    g: cv.getContext('2d')!,
+    g: tvCtx,
     tx,
     mat,
     logo: lc,
     mesh: null,
     data: TVDATA[d.t] || TVDATA.web,
     accent: '#' + d.soft.toString(16).padStart(6, '0'),
+    needsInitDraw: true,
   };
   reg.wallTVs.push(tv);
-  drawWallTV(tv, 0);
   return mat;
 }
 
@@ -1462,8 +1468,13 @@ export function createDeskScreenMat(reg: ScreenRegistry, d: RoomDef, k: number):
     g.restore();
   };
 
+  const ctx = cv.getContext('2d')!;
+  ctx.fillStyle = '#0a0f18';
+  ctx.fillRect(0, 0, WS_W, WS_H);
+  tx.needsUpdate = true;
+
   const s: WorkScreenRef = {
-    g: cv.getContext('2d')!,
+    g: ctx,
     tx,
     mat,
     mesh: null,
@@ -1475,8 +1486,6 @@ export function createDeskScreenMat(reg: ScreenRegistry, d: RoomDef, k: number):
   };
   d._ws[k] = s;
   reg.workScreens.push(s);
-  s.fn(s.g, WS_LOGICAL_W, WS_LOGICAL_H, s.off);
-  tx.needsUpdate = true;
   return mat;
 }
 
@@ -1533,8 +1542,13 @@ export function createExecScreen(reg: ScreenRegistry, key: string, k: number): W
     g.restore();
   };
 
+  const ctx = cv.getContext('2d')!;
+  ctx.fillStyle = '#0a0f18';
+  ctx.fillRect(0, 0, WS_W, WS_H);
+  tx.needsUpdate = true;
+
   const s: WorkScreenRef = {
-    g: cv.getContext('2d')!,
+    g: ctx,
     tx,
     mat,
     mesh: null,
@@ -1554,8 +1568,6 @@ export function createExecScreen(reg: ScreenRegistry, key: string, k: number): W
     fn,
   };
   reg.workScreens.push(s);
-  s.fn(s.g, WS_LOGICAL_W, WS_LOGICAL_H, s.off);
-  tx.needsUpdate = true;
   return s;
 }
 
@@ -1682,9 +1694,9 @@ export function createCustomBoardScreen(
 const _tvFr = new THREE.Frustum();
 const _tvM = new THREE.Matrix4();
 const _wsV = new THREE.Vector3();
-let tvLast = 0;
+let tvLast = -1;
 let tvTick = 0;
-let scrLast = 0;
+let scrLast = -1;
 
 export function updateAllScreens(
   reg: ScreenRegistry,
@@ -1714,12 +1726,13 @@ export function updateAllScreens(
     tvTick++;
     for (let i = 0; i < reg.wallTVs.length; i++) {
       const tv = reg.wallTVs[i];
-      if ((i + tvTick) % 2) continue;
+      if (!tv.needsInitDraw && (i + tvTick) % 2) continue;
       if (tv.mesh) {
         if (!_tvFr.intersectsObject(tv.mesh)) continue;
         tv.mesh.getWorldPosition(_wsV);
         if (_wsV.distanceTo(camera.position) > 65) continue;
       }
+      tv.needsInitDraw = false;
       drawWallTV(tv, t);
     }
   }
