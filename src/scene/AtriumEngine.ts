@@ -23,6 +23,7 @@ import {
   getBuildingRoofView,
   type BuildingId,
 } from './districtData';
+import type { WarmLightAnchor } from './districtBuildings';
 import { createMaterials, type MaterialLibrary } from './materials';
 import { synthesizeProceduralFoliage, type ProceduralFoliageResult } from './organicFoliage';
 import { createScreenRegistry, renderWorkScreenFrame, updateAllScreens, type ScreenRegistry } from './screens';
@@ -107,6 +108,8 @@ export class AtriumEngine {
   private elapsed = 0;
   private hudEmitAccum = 0;
   private cutawayAnimating = false;
+  private cutawaySettledKey = '';
+  private readonly interiorLightPool: THREE.PointLight[] = [];
   private onHudChange: (snapshot: HudSnapshot) => void;
   private onFatalError?: (message: string) => void;
   private resizeObserver: ResizeObserver | null = null;
@@ -144,6 +147,7 @@ export class AtriumEngine {
   private readonly _wHorizon = new THREE.Color();
   private readonly _wFog = new THREE.Color();
   private readonly _lightningCol = new THREE.Color(0xcbdcff);
+  private readonly _lerpTargetCol = new THREE.Color();
   private readonly _camRight = new THREE.Vector3();
   private readonly _segA = new THREE.Vector3();
   private readonly _segB = new THREE.Vector3();
@@ -215,7 +219,7 @@ export class AtriumEngine {
       });
     }
     this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.96;
@@ -364,6 +368,15 @@ export class AtriumEngine {
     this.skyFillLight.position.set(-40, 26, 46);
     this.scene.add(this.skyFillLight);
 
+    // Fixed 4-light interior pool (keeps NUM_POINT_LIGHTS constant at 4 across all shaders)
+    for (let i = 0; i < 4; i++) {
+      const pl = new THREE.PointLight(0xfff1dc, 0, 24, 2);
+      pl.castShadow = false;
+      pl.position.set(0, -100, 0);
+      this.scene.add(pl);
+      this.interiorLightPool.push(pl);
+    }
+
     // Wire window events & begin staged scene initialization tracked by THREE.LoadingManager
     this.thoughtBubbleCanvas = document.createElement('canvas');
     this.thoughtBubbleCanvas.width = 1024;
@@ -505,6 +518,19 @@ export class AtriumEngine {
     this.sim.setWeatherTimeMultiplier(this.weather.getTimeMultiplier());
     this.sim.snapAll();
     this.updateTimeOfDayLighting(this.sim.simMin, initW);
+
+    if (!this.isSoftwareGl) {
+      try {
+        if (typeof this.renderer.compileAsync === 'function') {
+          await this.renderer.compileAsync(this.scene, this.camera);
+        } else {
+          this.renderer.compile(this.scene, this.camera);
+        }
+      } catch {
+        // Fallback silently to lazy compilation if driver rejects compileAsync
+      }
+      if (this.disposed) return;
+    }
 
     this.sceneReady = true;
     this.handleResize();
@@ -702,6 +728,10 @@ export class AtriumEngine {
 
   private updateFloorCutaway(dt: number) {
     const cut = this.getCutawayLevelIndex();
+    const cutKey = `${this.activeBuilding}:${this.activeLevel}:${cut ?? 'none'}`;
+    if (!this.cutawayAnimating && cutKey === this.cutawaySettledKey) {
+      return;
+    }
     let moving = false;
 
     // 1. Animate Hub floors & roof (only active when activeBuilding === 'hub' and cut !== null)
@@ -822,6 +852,7 @@ export class AtriumEngine {
     }
 
     this.cutawayAnimating = moving;
+    this.cutawaySettledKey = moving ? '' : cutKey;
   }
 
   private handleAudioUnlock = () => {
@@ -840,7 +871,7 @@ export class AtriumEngine {
     const h = Math.max(1, this.container.clientHeight);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.setSize(w, h);
   };
 
@@ -1277,10 +1308,10 @@ export class AtriumEngine {
       this.skyFillLight.intensity = 0.12;
     } else if (sunElev < 0.35) {
       const k = sunElev / 0.35;
-      this._sunCol.setHex(0xffa968).lerp(new THREE.Color(0xfff1d6), k);
-      this._zenith.setHex(0x213b64).lerp(new THREE.Color(0x2f63a2), k);
-      this._horizon.setHex(0xe89e74).lerp(new THREE.Color(0xbcd8f4), k);
-      this._fogCol.setHex(0x3a3242).lerp(new THREE.Color(0x7c97b8), k);
+      this._sunCol.setHex(0xffa968).lerp(this._lerpTargetCol.setHex(0xfff1d6), k);
+      this._zenith.setHex(0x213b64).lerp(this._lerpTargetCol.setHex(0x2f63a2), k);
+      this._horizon.setHex(0xe89e74).lerp(this._lerpTargetCol.setHex(0xbcd8f4), k);
+      this._fogCol.setHex(0x3a3242).lerp(this._lerpTargetCol.setHex(0x7c97b8), k);
       this._skyGround.setHex(0x252832);
       this.hemiLight.intensity = 0.4 + k * 0.24;
       this.skyFillLight.intensity = 0.18 + k * 0.1;
@@ -1335,8 +1366,57 @@ export class AtriumEngine {
     // Interior warm lights glow brighter after dusk and under overcast/storm skies
     const weatherGlow = w.skyMix * 0.72;
     const interiorIntensity = (isDay ? 1.2 : 2.3) + weatherGlow;
-    for (const l of this.arch.interiorWarmLights) {
-      l.intensity = interiorIntensity;
+    const anchors = this.arch.interiorWarmLights;
+    const camX = this.camera.position.x;
+    const camY = this.camera.position.y;
+    const camZ = this.camera.position.z;
+    const cutLv = this.getCutawayLevelIndex();
+    let b0: WarmLightAnchor | null = null;
+    let b1: WarmLightAnchor | null = null;
+    let b2: WarmLightAnchor | null = null;
+    let b3: WarmLightAnchor | null = null;
+    let d0 = Infinity;
+    let d1 = Infinity;
+    let d2 = Infinity;
+    let d3 = Infinity;
+    for (let i = 0; i < anchors.length; i++) {
+      const a = anchors[i];
+      const dx = a.x - camX;
+      const dy = a.y - camY;
+      const dz = a.z - camZ;
+      const dSq = dx * dx + dy * dy + dz * dz;
+      const isFocused =
+        a.buildingId === this.activeBuilding && (cutLv === null || a.floor === undefined || a.floor === cutLv);
+      if (dSq > 5625 && !isFocused) continue; // > 75m away unless actively cutaway-focused
+      const score = isFocused ? dSq * 0.42 : dSq;
+      if (score < d0) {
+        d3 = d2; b3 = b2;
+        d2 = d1; b2 = b1;
+        d1 = d0; b1 = b0;
+        d0 = score; b0 = a;
+      } else if (score < d1) {
+        d3 = d2; b3 = b2;
+        d2 = d1; b2 = b1;
+        d1 = score; b1 = a;
+      } else if (score < d2) {
+        d3 = d2; b3 = b2;
+        d2 = score; b2 = a;
+      } else if (score < d3) {
+        d3 = score; b3 = a;
+      }
+    }
+    const chosen = [b0, b1, b2, b3];
+    for (let i = 0; i < this.interiorLightPool.length; i++) {
+      const pl = this.interiorLightPool[i];
+      const a = chosen[i];
+      if (a) {
+        pl.position.set(a.x, a.y, a.z);
+        pl.color.setHex(a.color);
+        pl.distance = a.distance;
+        pl.intensity = interiorIntensity * a.baseScale;
+      } else {
+        pl.intensity = 0;
+      }
     }
     for (const g of this.arch.streetGlows) {
       (g.material as THREE.SpriteMaterial).opacity = isDay ? 0.14 + w.skyMix * 0.24 : 0.48;
@@ -1355,8 +1435,8 @@ export class AtriumEngine {
         this.sim.tourOn ||
         this.sim.isCameraFlying() ||
         this.cutawayAnimating;
-      const minFrameMs = isActive ? 33 : this.sim.simRate === 0 ? 333 : 66;
-      if (this.lastRenderTs > 0 && now - this.lastRenderTs < minFrameMs) {
+      const minFrameMs = isActive ? 0 : this.sim.simRate === 0 ? 180 : 45;
+      if (minFrameMs > 0 && this.lastRenderTs > 0 && now - this.lastRenderTs < minFrameMs) {
         return;
       }
       this.lastRenderTs = now;

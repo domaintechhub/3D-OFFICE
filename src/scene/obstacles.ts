@@ -1093,38 +1093,82 @@ function populateDistrictBuildingGeometry(
       );
     } else if (spec.id === 'dealership') {
       // Center rotating turntable
-      circles.push({ x: spec.cx, z: spec.cz + 0.4, r: 3.3 });
-      // Flanking display vehicles
-      addObb(obbs, spec.cx - 6.0, spec.cz + 2.0, 1.98, 4.5, 0.42);
-      addObb(obbs, spec.cx + 6.0, spec.cz + 2.0, 1.98, 4.1, -0.42);
-      // 2 sales desks
-      addBox(boxes, spec.cx - 5.8, spec.cz - 5.5, 2.34, 1.08);
-      addBox(boxes, spec.cx + 5.8, spec.cz - 5.5, 2.34, 1.08);
+      circles.push({ x: spec.cx, z: spec.cz + 0.4, r: 3.22 });
+      // Flanking display vehicles on floating basalt plinths
+      addObb(obbs, spec.cx - 5.9, spec.cz + 1.6, 2.05, 4.5, 0.4);
+      addObb(obbs, spec.cx + 4.9, spec.cz + 1.0, 2.05, 4.15, -0.35);
+      // 2 sculpted travertine & carbon advisory desks
+      addBox(boxes, spec.cx - 6.0, spec.cz - 5.6, 2.45, 1.12);
+      addBox(boxes, spec.cx + 4.2, spec.cz - 5.6, 2.45, 1.12);
+      // SW Espresso hospitality lounge & barista pedestal
+      circles.push(
+        { x: spec.cx - 7.4, z: spec.cz + 6.3, r: 0.62 },
+        { x: spec.cx - 8.55, z: spec.cz + 6.3, r: 0.56 },
+        { x: spec.cx - 7.4, z: spec.cz + 7.45, r: 0.56 }
+      );
+      addBox(boxes, spec.cx - 8.75, spec.cz + 7.75, 0.85, 0.62);
+      // SE 350 kW EV Ultra-Fast Hyper-Charger totem
+      addObb(obbs, spec.cx + 5.6, spec.cz + 6.6, 1.1, 0.8, -0.35);
+      // East under-stair glass gallery screen & stairwell foot NPC gate
+      addBox(boxes, spec.cx + 7.82, spec.cz - 2.16, 0.14, 13.24);
+      addBox(boxes, spec.cx + 8.77, spec.cz + 4.6, 1.85, 0.24, undefined, true);
     } else if (spec.id === 'bank') {
       // 4 exterior portico columns
       [-3.8, -1.9, 1.9, 3.8].forEach((ox) => {
-        circles.push({ x: spec.doorX + ox, z: spec.doorZ + 1.4, r: 0.42 });
+        circles.push({ x: spec.doorX + ox, z: spec.doorZ + 1.4, r: 0.44 });
       });
-      // 3 ATM kiosks
+      // Monumental interior fluted columns
+      [
+        [-7.8, -0.6],
+        [2.6, -0.6],
+        [2.6, 5.2],
+      ].forEach(([cx, cz]) => circles.push({ x: spec.cx + cx, z: spec.cz + cz, r: 0.36 }));
+      // SW 24/7 Express ATM screen & 3 kiosks
+      addBox(boxes, spec.cx - 3.3, spec.cz + 6.4, 0.22, 2.26);
       [-8.5, -6.5, -4.5].forEach((ox) => {
         addBox(boxes, spec.cx + ox, spec.cz + 6.2, 0.96, 0.94);
       });
-      // Teller counter
-      addBox(boxes, spec.cx - 2.4, spec.cz - 3.6, 9.4, 1.34);
-      // Rear vault assembly
-      addBox(boxes, spec.cx + 6.2, spec.cz - 9.35, 3.65, 0.95);
-      // Customer waiting sofa (rotY = -PI/2)
-      addBox(boxes, spec.cx + 6.4, spec.cz + 3.2, 1.14, 2.88);
+      // Teller counter & flanking velvet queue stanchions
+      addBox(boxes, spec.cx - 2.4, spec.cz - 3.6, 9.48, 1.38);
+      addBox(boxes, spec.cx - 4.2, spec.cz - 1.35, 0.24, 1.68);
+      addBox(boxes, spec.cx - 0.6, spec.cz - 1.35, 0.24, 1.68);
+      // Rear Treasury Vault assembly & flanking biometric iris pedestals
+      addBox(boxes, spec.cx + 6.2, spec.cz - 9.35, 4.36, 1.06);
+      circles.push(
+        { x: spec.cx + 4.35, z: spec.cz - 8.6, r: 0.28 },
+        { x: spec.cx + 8.05, z: spec.cz - 8.6, r: 0.28 }
+      );
+      // Central Waiting Rotunda Lounge (Chesterfield bench + round marble coffee table) & plants
+      addBox(boxes, spec.cx + 1.9, spec.cz + 4.4, 1.04, 2.58);
+      circles.push(
+        { x: spec.cx + 0.3, z: spec.cz + 4.4, r: 0.62 },
+        { x: spec.cx - 9.6, z: spec.cz - 8.4, r: 0.45 },
+        { x: spec.cx - 9.6, z: spec.cz + 1.8, r: 0.45 },
+        { x: spec.cx + 4.3, z: spec.cz + 6.3, r: 0.45 }
+      );
     } else if (spec.id === 'crypto') {
-      // Cold-storage vault pod
-      addBox(boxes, spec.cx, spec.cz - 4.8, 4.45, 3.45);
-      // 4 quant trading pods
+      // Cold-storage MPC vault pod (cx, cz - 5.1)
+      addBox(boxes, spec.cx, spec.cz - 5.1, 4.48, 3.48);
+      // Two biometric check-in kiosks flanking south medallion
+      addBox(boxes, spec.cx - 4.0, spec.cz + 6.4, 0.96, 0.66);
+      addBox(boxes, spec.cx + 4.0, spec.cz + 6.4, 0.96, 0.66);
+      // 4 quant trading & custody pods
       [
-        [spec.cx - 6.6, spec.cz + 1.8],
-        [spec.cx + 6.6, spec.cz + 1.8],
-        [spec.cx - 6.6, spec.cz - 3.6],
-        [spec.cx + 6.6, spec.cz - 3.6],
+        [spec.cx - 6.8, spec.cz + 1.8],
+        [spec.cx + 6.4, spec.cz + 2.6],
+        [spec.cx - 6.8, spec.cz - 3.6],
+        [spec.cx - 6.8, spec.cz + 6.4],
       ].forEach(([px, pz]) => addBox(boxes, px, pz, 2.64, 1.14));
+      // NE Quarter-Turn Stair & 5-story Merkle Genesis pit ground screening + stair mouth NPC gate
+      addBox(boxes, spec.cx + 3.82, spec.cz - 6.02, 0.14, 7.18);
+      addBox(boxes, spec.cx + 6.12, spec.cz - 2.45, 4.6, 0.14);
+      addBox(boxes, spec.cx + 9.5, spec.cz - 2.45, 2.1, 0.24, undefined, true);
+      addBox(boxes, spec.cx + 8.38, spec.cz - 4.85, 0.12, 4.8);
+      addBox(boxes, spec.cx + 6.42, spec.cz - 7.2, 4.0, 0.12);
+      circles.push(
+        { x: spec.cx - 9.6, z: spec.cz - 8.4, r: 0.45 },
+        { x: spec.cx + 9.4, z: spec.cz + 7.8, r: 0.45 }
+      );
     } else if (spec.id === 'travel') {
       // North compass-rose medallion globe plinth
       circles.push({ x: spec.cx, z: spec.cz - 2.2, r: 1.12 });
@@ -1170,17 +1214,32 @@ function populateDistrictBuildingGeometry(
         addBox(boxes, spec.cx + ox, spec.cz + 5.2, 2.58, 1.08);
       });
     } else if (spec.id === 'medical') {
-      // Pharmacy counter & medicine racks
+      // Pharmacy counter, backlit medicine racks, 2-8C vaccine fridge & automated Rx kiosk
       addBox(boxes, spec.cx - 14.5, spec.cz - 2.2, 10.4, 1.3);
       addBox(boxes, spec.cx - 14.5, spec.cz - 7.1, 10.45, 0.56);
+      addBox(boxes, spec.cx - 21.4, spec.cz - 6.85, 1.76, 0.98);
+      addBox(boxes, spec.cx - 6.2, spec.cz - 6.95, 1.7, 0.74);
+      // West Phlebotomy frosted partition & donor recliner pod
+      addBox(boxes, spec.cx - 18.2, spec.cz + 3.6, 0.24, 3.68);
+      addBox(boxes, spec.cx - 21.0, spec.cz + 3.6, 1.54, 1.82);
       // Central triage desk
       addBox(boxes, spec.cx, spec.cz - 1.2, 4.65, 1.14);
-      // 2 diagnostic consult desks
-      addBox(boxes, spec.cx + 10.5, spec.cz - 2.6, 2.44, 1.08);
-      addBox(boxes, spec.cx + 17.5, spec.cz - 2.6, 2.44, 1.08);
-      // 2 waiting armchairs
+      // East consult partition, 2 consult desks, exam plinths & self-check vitals kiosk
+      addBox(boxes, spec.cx + 16.35, spec.cz - 4.4, 0.22, 4.48);
+      addBox(boxes, spec.cx + 13.2, spec.cz - 2.6, 2.44, 1.08);
+      addBox(boxes, spec.cx + 19.5, spec.cz - 2.6, 2.44, 1.08);
+      addBox(boxes, spec.cx + 13.2, spec.cz - 6.45, 1.98, 0.86);
+      addBox(boxes, spec.cx + 19.5, spec.cz - 6.45, 1.98, 0.86);
+      addBox(boxes, spec.cx + 16.4, spec.cz + 4.5, 2.64, 1.64);
+      // 2 waiting armchairs, side tables & corner plants
       addBox(boxes, spec.cx - 6.5, spec.cz + 3.2, 1.18, 1.18);
       addBox(boxes, spec.cx + 6.5, spec.cz + 3.2, 1.18, 1.18);
+      circles.push(
+        { x: spec.cx - 7.65, z: spec.cz + 3.2, r: 0.42 },
+        { x: spec.cx + 7.65, z: spec.cz + 3.2, r: 0.42 },
+        { x: spec.cx + 21.8, z: spec.cz + 5.8, r: 0.48 },
+        { x: spec.cx - 22.0, z: spec.cz + 6.0, r: 0.48 }
+      );
     } else if (spec.id === 'logistics') {
       // Parcel sorting conveyor belt
       addBox(boxes, spec.cx - 4.2, spec.cz + 0.8, 1.65, 9.6);
@@ -2100,6 +2159,336 @@ function populateDistrictBuildingGeometry(
       { x: spec.cx - 1.4, z: spec.cz - 0.4, r: 0.44 },
       { x: spec.cx - 5.4, z: spec.cz + 7.4, r: 0.45 }
     );
+  } else if (spec.id === 'dealership' && lv === 1) {
+    // Central Sky-Oculus Atrium Void safety balustrades
+    addBox(boxes, spec.cx, spec.cz - 2.45, 7.04, 0.14);
+    addBox(boxes, spec.cx, spec.cz + 3.25, 7.04, 0.14);
+    addBox(boxes, spec.cx - 3.45, spec.cz + 0.4, 0.14, 5.84);
+    addBox(boxes, spec.cx + 3.45, spec.cz + 0.4, 0.14, 5.84);
+    // East stair arrival void guardrails & north landing NPC gate
+    addBox(boxes, spec.cx + 7.82, spec.cz + 0.46, 0.14, 8.46);
+    addBox(boxes, spec.cx + 8.76, spec.cz + 4.65, 1.98, 0.14);
+    addBox(boxes, spec.cx + 8.76, spec.cz - 3.72, 1.88, 0.24, undefined, true);
+    // West stair entry (L1->L2) under-stair glass screen & north entry NPC gate
+    addBox(boxes, spec.cx - 7.82, spec.cz + 2.55, 0.14, 12.24);
+    addBox(boxes, spec.cx - 8.76, spec.cz - 3.72, 1.88, 0.24, undefined, true);
+    // Zone 1A North Atelier: Paint Speed-Form Wall, Wheel Pedestals, Trim Table & Client Chair
+    addBox(boxes, spec.cx, spec.cz - 8.45, 6.2, 0.56);
+    circles.push(
+      { x: spec.cx - 5.0, z: spec.cz - 6.0, r: 0.56 },
+      { x: spec.cx + 5.0, z: spec.cz - 6.0, r: 0.56 },
+      { x: spec.cx + 2.05, z: spec.cz - 5.5, r: 0.56 }
+    );
+    addBox(boxes, spec.cx, spec.cz - 5.5, 3.0, 1.28);
+    // Zone 1B South Wing: Motorsport Simulator, EV Engineer Desk & Cutaway Vitrine
+    addBox(boxes, spec.cx - 4.2, spec.cz + 6.1, 2.42, 1.54);
+    addBox(boxes, spec.cx + 0.4, spec.cz + 6.2, 2.35, 1.06);
+    addBox(boxes, spec.cx + 4.8, spec.cz + 6.2, 2.62, 1.44);
+    // East & West Mezzanine Consoles & Olive Planters
+    addBox(boxes, spec.cx + 7.2, spec.cz + 0.4, 0.68, 2.24);
+    addBox(boxes, spec.cx - 7.2, spec.cz + 0.4, 0.68, 2.24);
+    circles.push(
+      { x: spec.cx + 5.8, z: spec.cz - 2.3, r: 0.46 },
+      { x: spec.cx - 5.8, z: spec.cz + 2.8, r: 0.46 }
+    );
+  } else if (spec.id === 'dealership' && lv === 2) {
+    // West stair arrival void guardrails & south landing NPC gate
+    addBox(boxes, spec.cx - 7.82, spec.cz + 0.46, 0.14, 8.46);
+    addBox(boxes, spec.cx - 8.76, spec.cz - 3.72, 1.98, 0.14);
+    addBox(boxes, spec.cx - 8.76, spec.cz + 4.65, 1.88, 0.24, undefined, true);
+    // Zone 2A South VIP Handover Sky-Lounge & Hospitality Bar
+    addBox(boxes, spec.cx - 1.8, spec.cz + 6.8, 2.86, 1.1);
+    addBox(boxes, spec.cx - 1.8, spec.cz + 5.0, 1.62, 0.9);
+    circles.push(
+      { x: spec.cx + 0.65, z: spec.cz + 5.2, r: 0.56 },
+      { x: spec.cx + 4.5, z: spec.cz + 5.44, r: 0.25 },
+      { x: spec.cx + 6.3, z: spec.cz + 5.44, r: 0.25 }
+    );
+    addBox(boxes, spec.cx + 5.4, spec.cz + 6.4, 3.64, 1.1);
+    // Zone 2B North-East Glazed Fleet Financing Boardroom (doorway dx +4.8..+7.0 open)
+    addBox(boxes, spec.cx + 2.0, spec.cz - 4.65, 0.14, 8.12);
+    addBox(boxes, spec.cx + 3.4, spec.cz - 0.6, 2.82, 0.14);
+    addBox(boxes, spec.cx + 8.4, spec.cz - 0.6, 2.82, 0.14);
+    addBox(boxes, spec.cx + 5.9, spec.cz - 4.6, 4.1, 1.54);
+    // Zone 2C North-West Managing Principal Suite & Aero Wind-Tunnel Vitrine
+    addBox(boxes, spec.cx - 3.2, spec.cz - 5.8, 2.78, 1.2);
+    addBox(boxes, spec.cx - 3.2, spec.cz - 8.42, 3.84, 0.58);
+    addBox(boxes, spec.cx - 3.4, spec.cz + 0.2, 2.94, 1.38);
+    // Botanical accents
+    circles.push(
+      { x: spec.cx - 6.4, z: spec.cz + 7.4, r: 0.46 },
+      { x: spec.cx + 8.6, z: spec.cz + 7.4, r: 0.46 }
+    );
+  } else if (spec.id === 'crypto' && lv === 1) {
+    // Stairwell & 5-story Merkle Void guardrails + arrival/entry NPC gates
+    addBox(boxes, spec.cx + 4.35, spec.cz - 4.82, 0.14, 4.76);
+    addBox(boxes, spec.cx + 4.35, spec.cz - 8.4, 0.22, 2.3, undefined, true);
+    addBox(boxes, spec.cx + 6.38, spec.cz - 2.45, 4.08, 0.14);
+    addBox(boxes, spec.cx + 9.5, spec.cz - 2.45, 2.1, 0.24, undefined, true);
+    addBox(boxes, spec.cx + 8.38, spec.cz - 4.85, 0.12, 4.8);
+    addBox(boxes, spec.cx + 6.42, spec.cz - 7.2, 4.0, 0.12);
+    // NW Cryo-Immersion ASIC Tanks
+    addBox(boxes, spec.cx - 7.4, spec.cz - 6.2, 2.6, 1.52);
+    addBox(boxes, spec.cx - 3.0, spec.cz - 6.2, 2.6, 1.52);
+    // Center Self-Custody Museum Vitrines
+    addBox(boxes, spec.cx - 6.0, spec.cz - 0.8, 1.84, 1.24);
+    addBox(boxes, spec.cx - 1.2, spec.cz - 0.8, 1.84, 1.24);
+    // SW Hardware Advisory Pods
+    addBox(boxes, spec.cx - 7.2, spec.cz + 5.6, 2.54, 1.12);
+    addBox(boxes, spec.cx - 2.4, spec.cz + 5.6, 2.54, 1.12);
+    // SE Espresso Bar & Sofa Lounge
+    addBox(boxes, spec.cx + 6.8, spec.cz + 7.2, 3.94, 1.14);
+    addBox(boxes, spec.cx + 4.4, spec.cz + 3.6, 2.42, 0.94);
+    circles.push(
+      { x: spec.cx + 4.4, z: spec.cz + 5.1, r: 0.64 },
+      { x: spec.cx + 9.4, z: spec.cz + 7.8, r: 0.45 },
+      { x: spec.cx - 9.4, z: spec.cz + 7.8, r: 0.45 }
+    );
+  } else if (spec.id === 'crypto' && lv === 2) {
+    // Stairwell & 5-story Merkle Void guardrails + arrival/entry NPC gates
+    addBox(boxes, spec.cx + 4.35, spec.cz - 4.82, 0.14, 4.76);
+    addBox(boxes, spec.cx + 4.35, spec.cz - 8.4, 0.22, 2.3, undefined, true);
+    addBox(boxes, spec.cx + 6.38, spec.cz - 2.45, 4.08, 0.14);
+    addBox(boxes, spec.cx + 9.5, spec.cz - 2.45, 2.1, 0.24, undefined, true);
+    addBox(boxes, spec.cx + 8.38, spec.cz - 4.85, 0.12, 4.8);
+    addBox(boxes, spec.cx + 6.42, spec.cz - 7.2, 4.0, 0.12);
+    // West Dual-Bank OTC Consoles
+    addBox(boxes, spec.cx - 5.6, spec.cz - 3.5, 5.84, 1.16);
+    addBox(boxes, spec.cx - 5.6, spec.cz - 0.8, 2.84, 1.1);
+    // SW Acoustic Smoked-Glass Settlement Call Pods (North portals wide open)
+    [-7.4, -2.2].forEach((bx) => {
+      const px = spec.cx + bx;
+      const pz = spec.cz + 6.6;
+      addBox(boxes, px - 1.54, pz, 0.14, 3.22);
+      addBox(boxes, px + 1.54, pz, 0.14, 3.22);
+      addBox(boxes, px, pz + 1.54, 3.18, 0.16);
+      addBox(boxes, px - 1.15, pz - 1.54, 0.8, 0.14);
+      addBox(boxes, px + 1.15, pz - 1.54, 0.8, 0.14);
+      circles.push({ x: px, z: pz + 0.15, r: 0.58 });
+    });
+    // SE Torus Sculpture Pedestal & Lounge
+    circles.push(
+      { x: spec.cx + 6.4, z: spec.cz + 2.6, r: 0.74 },
+      { x: spec.cx + 9.4, z: spec.cz + 7.8, r: 0.45 }
+    );
+    addBox(boxes, spec.cx + 6.0, spec.cz + 7.2, 2.42, 0.94);
+    addBox(boxes, spec.cx + 6.0, spec.cz + 5.6, 1.8, 0.92);
+  } else if (spec.id === 'crypto' && lv === 3) {
+    // Stairwell & 5-story Merkle Void guardrails + arrival/entry NPC gates
+    addBox(boxes, spec.cx + 4.35, spec.cz - 4.82, 0.14, 4.76);
+    addBox(boxes, spec.cx + 4.35, spec.cz - 8.4, 0.22, 2.3, undefined, true);
+    addBox(boxes, spec.cx + 6.38, spec.cz - 2.45, 4.08, 0.14);
+    addBox(boxes, spec.cx + 9.5, spec.cz - 2.45, 2.1, 0.24, undefined, true);
+    addBox(boxes, spec.cx + 8.38, spec.cz - 4.85, 0.12, 4.8);
+    addBox(boxes, spec.cx + 6.42, spec.cz - 7.2, 4.0, 0.12);
+    // NW Air-Gapped Signing Enclave (open south portal dx -7.5..-5.3)
+    addBox(boxes, spec.cx - 3.0, spec.cz - 6.38, 0.16, 6.32);
+    addBox(boxes, spec.cx - 8.65, spec.cz - 3.2, 2.28, 0.16);
+    addBox(boxes, spec.cx - 4.15, spec.cz - 3.2, 2.28, 0.16);
+    circles.push({ x: spec.cx - 6.4, z: spec.cz - 6.4, r: 1.32 });
+    // SW Theater Giant Screen & 3 Auditor Consoles
+    addBox(boxes, spec.cx - 4.2, spec.cz + 9.15, 7.15, 0.28);
+    [-7.4, -4.2, -1.0].forEach((ax) => addBox(boxes, spec.cx + ax, spec.cz + 4.8, 2.52, 1.1));
+    // SE Research Collaboration Island & Plants
+    addBox(boxes, spec.cx + 6.2, spec.cz + 4.2, 2.84, 1.14);
+    circles.push(
+      { x: spec.cx + 9.2, z: spec.cz + 7.8, r: 0.45 },
+      { x: spec.cx + 1.8, z: spec.cz - 8.0, r: 0.45 }
+    );
+  } else if (spec.id === 'crypto' && lv === 4) {
+    // L4 Penthouse Void Balustrades (SOLID South drop guard + East shaft guard + West arrival NPC gate)
+    addBox(boxes, spec.cx + 4.35, spec.cz - 4.82, 0.14, 4.76);
+    addBox(boxes, spec.cx + 4.35, spec.cz - 8.4, 0.22, 2.3, undefined, true);
+    addBox(boxes, spec.cx + 7.5, spec.cz - 2.45, 6.3, 0.16);
+    addBox(boxes, spec.cx + 8.36, spec.cz - 4.84, 0.14, 4.82);
+    // West Sovereign Governance Boardroom (East portal dz -5.0..-2.6 open)
+    addBox(boxes, spec.cx - 0.6, spec.cz - 7.3, 0.16, 4.52);
+    addBox(boxes, spec.cx - 0.6, spec.cz - 0.68, 0.16, 3.72);
+    addBox(boxes, spec.cx - 5.2, spec.cz + 1.2, 9.18, 0.16);
+    addBox(boxes, spec.cx - 5.4, spec.cz - 3.8, 5.24, 1.84);
+    // SW Founder & CEO Suite
+    addBox(boxes, spec.cx - 5.8, spec.cz + 6.4, 2.84, 1.16);
+    addBox(boxes, spec.cx - 9.5, spec.cz + 6.0, 0.62, 3.44);
+    circles.push(
+      { x: spec.cx - 2.9, z: spec.cz + 5.2, r: 0.54 },
+      { x: spec.cx - 1.5, z: spec.cz + 6.4, r: 0.54 },
+      { x: spec.cx - 2.3, z: spec.cz + 5.9, r: 0.48 }
+    );
+    // SE Sky-Lounge, Bookcase & Espresso Bar
+    addBox(boxes, spec.cx + 6.6, spec.cz + 7.8, 4.34, 1.16);
+    addBox(boxes, spec.cx + 4.4, spec.cz + 3.6, 2.42, 0.94);
+    addBox(boxes, spec.cx + 4.4, spec.cz + 5.0, 1.8, 0.92);
+    addBox(boxes, spec.cx + 9.6, spec.cz + 3.4, 0.72, 3.24);
+    circles.push(
+      { x: spec.cx + 9.4, z: spec.cz + 8.0, r: 0.45 },
+      { x: spec.cx - 9.4, z: spec.cz + 8.4, r: 0.45 }
+    );
+  } else if (spec.id === 'medical' && lv === 1) {
+    // 3T MRI cleanroom partition (south doorway dz +2.3..+4.8 open!) & gowning cabinet
+    addBox(boxes, spec.cx - 11.8, spec.cz - 2.6, 0.22, 9.84);
+    addBox(boxes, spec.cx - 11.8, spec.cz + 6.1, 0.22, 2.44);
+    addBox(boxes, spec.cx - 17.8, spec.cz - 2.2, 2.6, 3.6);
+    addBox(boxes, spec.cx - 23.25, spec.cz - 2.2, 0.7, 3.25);
+    // Radiology control console & waiting lounge sofa + coffee table
+    addBox(boxes, spec.cx - 7.8, spec.cz - 2.2, 2.84, 1.08);
+    addBox(boxes, spec.cx - 6.4, spec.cz + 5.6, 2.4, 0.94);
+    addBox(boxes, spec.cx - 6.4, spec.cz + 3.9, 1.48, 0.88);
+    // East 64-Slice CT scanner, radiologist desk & 4D ultrasound bay
+    addBox(boxes, spec.cx + 19.6, spec.cz - 2.2, 2.3, 3.4);
+    addBox(boxes, spec.cx + 13.0, spec.cz - 3.4, 2.54, 1.08);
+    addBox(boxes, spec.cx + 13.2, spec.cz + 4.4, 1.98, 0.86);
+    addBox(boxes, spec.cx + 11.4, spec.cz + 3.8, 0.64, 0.6);
+    addBox(boxes, spec.cx + 16.4, spec.cz + 4.0, 0.22, 3.64);
+    circles.push(
+      { x: spec.cx - 9.8, z: spec.cz + 5.8, r: 0.45 },
+      { x: spec.cx + 22.0, z: spec.cz + 5.8, r: 0.45 }
+    );
+  } else if (spec.id === 'medical' && lv === 2) {
+    // Dental Bay 1 & 2, privacy partition, north sterilization cabinetry, CAD/CAM desk
+    addBox(boxes, spec.cx - 16.7, spec.cz - 2.0, 0.22, 4.46);
+    addBox(boxes, spec.cx - 19.8, spec.cz - 1.8, 1.68, 2.18);
+    addBox(boxes, spec.cx - 13.6, spec.cz - 1.8, 1.68, 2.18);
+    addBox(boxes, spec.cx - 16.7, spec.cz - 7.1, 11.24, 0.72);
+    addBox(boxes, spec.cx - 13.6, spec.cz + 4.4, 2.44, 1.04);
+    // Ophthalmology slit-lamp pedestal, optometrist desk & eyewear fitting bar
+    addBox(boxes, spec.cx - 6.8, spec.cz - 2.0, 1.5, 1.4);
+    addBox(boxes, spec.cx - 3.2, spec.cz - 3.6, 2.24, 1.04);
+    addBox(boxes, spec.cx - 5.8, spec.cz + 4.8, 4.48, 0.94);
+    // East Longevity IV Infusion pods & biomarker nurse desk
+    [13.0, 17.0, 21.0].forEach((ix) => {
+      addBox(boxes, spec.cx + ix, spec.cz + 3.4, 1.56, 1.88);
+    });
+    addBox(boxes, spec.cx + 17.0, spec.cz - 3.6, 2.64, 1.08);
+    circles.push({ x: spec.cx + 22.0, z: spec.cz - 5.8, r: 0.45 });
+  } else if (spec.id === 'medical' && lv === 3) {
+    // ISO-5 Cleanroom enclosure (south entry dx -20.2..-17.4 open!) & equipment
+    addBox(boxes, spec.cx - 14.8, spec.cz - 2.8, 0.2, 9.24);
+    addBox(boxes, spec.cx - 21.9, spec.cz + 1.8, 3.04, 0.2);
+    addBox(boxes, spec.cx - 16.0, spec.cz + 1.8, 2.44, 0.2);
+    addBox(boxes, spec.cx - 22.4, spec.cz - 4.6, 1.2, 2.3);
+    addBox(boxes, spec.cx - 22.4, spec.cz - 0.8, 1.2, 2.3);
+    addBox(boxes, spec.cx - 18.8, spec.cz - 2.8, 1.62, 2.72);
+    // Geneticist & bioinformatician desks
+    addBox(boxes, spec.cx - 11.8, spec.cz - 2.6, 2.44, 1.04);
+    addBox(boxes, spec.cx - 11.8, spec.cz + 4.2, 2.44, 1.04);
+    // Cryo-Biologics glass vault (south portal dx -6.8..-4.0 open!) & 3 LN2 dewar tanks
+    addBox(boxes, spec.cx - 9.0, spec.cz - 3.2, 0.2, 7.64);
+    addBox(boxes, spec.cx - 1.8, spec.cz - 3.2, 0.2, 7.64);
+    addBox(boxes, spec.cx - 7.9, spec.cz + 0.6, 2.24, 0.2);
+    addBox(boxes, spec.cx - 2.9, spec.cz + 0.6, 2.24, 0.2);
+    [-7.2, -5.4, -3.6].forEach((tx) => {
+      circles.push({ x: spec.cx + tx, z: spec.cz - 3.2, r: 0.56 });
+    });
+    // East Pathology desks, autoclave wall & specimen courier bar
+    addBox(boxes, spec.cx + 14.2, spec.cz - 2.8, 2.54, 1.08);
+    addBox(boxes, spec.cx + 20.0, spec.cz - 2.8, 2.54, 1.08);
+    addBox(boxes, spec.cx + 17.0, spec.cz + 4.6, 6.26, 1.12);
+    addBox(boxes, spec.cx + 23.25, spec.cz - 2.5, 0.7, 5.24);
+    circles.push({ x: spec.cx + 21.8, z: spec.cz + 5.8, r: 0.45 });
+  } else if (spec.id === 'medical' && lv === 4) {
+    // Telehealth Broadcast Pod (south portal dx -18.6..-16.0 open!)
+    addBox(boxes, spec.cx - 20.6, spec.cz - 3.6, 0.2, 7.64);
+    addBox(boxes, spec.cx - 14.0, spec.cz - 3.6, 0.2, 7.64);
+    addBox(boxes, spec.cx - 19.6, spec.cz + 0.2, 2.04, 0.2);
+    addBox(boxes, spec.cx - 15.0, spec.cz + 0.2, 2.04, 0.2);
+    addBox(boxes, spec.cx - 17.2, spec.cz - 3.5, 2.54, 1.04);
+    circles.push({ x: spec.cx - 17.2, z: spec.cz - 2.35, r: 0.24 });
+    // CMO Desk & Private Sofa
+    addBox(boxes, spec.cx - 18.5, spec.cz + 4.6, 2.84, 1.14);
+    addBox(boxes, spec.cx - 12.6, spec.cz + 4.8, 0.94, 2.4);
+    // Clinical Case Review Boardroom (south portal dx -7.4..-4.2 open!) & 4.6m table
+    addBox(boxes, spec.cx - 9.8, spec.cz - 3.0, 0.2, 8.84);
+    addBox(boxes, spec.cx - 1.8, spec.cz - 3.0, 0.2, 8.84);
+    addBox(boxes, spec.cx - 8.6, spec.cz + 1.4, 2.44, 0.2);
+    addBox(boxes, spec.cx - 3.0, spec.cz + 1.4, 2.44, 0.2);
+    addBox(boxes, spec.cx - 5.8, spec.cz - 2.8, 4.68, 1.78);
+    // East Sky-Sanctuary Herbal Bar & Day-Lounges
+    addBox(boxes, spec.cx + 18.8, spec.cz - 3.8, 3.64, 1.08);
+    addBox(boxes, spec.cx + 14.0, spec.cz + 4.8, 2.4, 0.94);
+    addBox(boxes, spec.cx + 19.2, spec.cz + 4.8, 2.4, 0.94);
+    circles.push(
+      { x: spec.cx + 16.6, z: spec.cz + 3.4, r: 0.62 },
+      { x: spec.cx - 22.0, z: spec.cz + 6.0, r: 0.45 },
+      { x: spec.cx + 22.2, z: spec.cz + 5.8, r: 0.45 },
+      { x: spec.cx + 11.2, z: spec.cz + 5.8, r: 0.45 }
+    );
+  } else if (spec.id === 'bank' && lv === 1) {
+    // 2 Private Mortgage & Credit Glass Suites (open South portals dx -7.85 & -3.35)
+    [-10.1, -5.6, -1.1].forEach((mx) => addBox(boxes, spec.cx + mx, spec.cz - 5.5, 0.2, 6.64));
+    [-9.5, -6.2, -5.0, -1.7].forEach((fx) => addBox(boxes, spec.cx + fx, spec.cz - 2.2, 1.18, 0.18));
+    [-7.9, -3.3].forEach((dx) => addBox(boxes, spec.cx + dx, spec.cz - 5.6, 2.34, 1.04));
+    [-8.55, -7.25, -3.95, -2.65].forEach((ax) => circles.push({ x: spec.cx + ax, z: spec.cz - 4.15, r: 0.44 }));
+    // SW Illuminated Property Scale-Model Vitrine & Relationship Manager Desk
+    addBox(boxes, spec.cx - 5.8, spec.cz + 5.2, 3.68, 2.28);
+    addBox(boxes, spec.cx + 0.6, spec.cz + 5.4, 2.44, 1.04);
+    // NE Espresso Bar & Lounge
+    addBox(boxes, spec.cx + 7.2, spec.cz - 8.4, 3.9, 1.08);
+    addBox(boxes, spec.cx + 6.4, spec.cz - 4.8, 2.55, 1.02);
+    circles.push(
+      { x: spec.cx + 9.4, z: spec.cz - 8.2, r: 0.45 },
+      { x: spec.cx - 9.6, z: spec.cz + 8.2, r: 0.45 }
+    );
+  } else if (spec.id === 'bank' && lv === 2) {
+    // Dual Institutional FX & Sovereign Bond Dealing Consoles
+    addBox(boxes, spec.cx - 4.2, spec.cz - 3.6, 7.42, 1.28);
+    addBox(boxes, spec.cx - 4.2, spec.cz + 2.8, 7.42, 1.28);
+    // NE Quantitative Risk Screen & Desk
+    addBox(boxes, spec.cx + 2.0, spec.cz - 6.6, 0.18, 5.44);
+    addBox(boxes, spec.cx + 5.2, spec.cz - 6.6, 2.54, 1.08);
+    circles.push(
+      { x: spec.cx + 9.2, z: spec.cz - 8.2, r: 0.45 },
+      { x: spec.cx - 9.4, z: spec.cz + 8.0, r: 0.45 }
+    );
+  } else if (spec.id === 'bank' && lv === 3) {
+    // NW Safe Deposit Sanctuary Enclosure (open South doorway dx -7.4..-5.0)
+    [-10.2, -2.2].forEach((wx) => addBox(boxes, spec.cx + wx, spec.cz - 5.5, 0.22, 7.44));
+    [-8.8, -3.6].forEach((fx) => addBox(boxes, spec.cx + fx, spec.cz - 1.8, 2.84, 0.22));
+    addBox(boxes, spec.cx - 6.2, spec.cz - 8.95, 6.84, 0.54);
+    addBox(boxes, spec.cx - 6.2, spec.cz - 5.4, 1.92, 1.18);
+    // SW Private Wealth Parlor
+    addBox(boxes, spec.cx - 9.95, spec.cz + 5.2, 0.62, 3.84);
+    addBox(boxes, spec.cx - 6.8, spec.cz + 6.4, 2.55, 1.02);
+    addBox(boxes, spec.cx - 2.6, spec.cz + 4.6, 2.44, 1.04);
+    // NE Family Office Fiduciary Pods
+    addBox(boxes, spec.cx + 3.2, spec.cz - 6.6, 2.34, 1.04);
+    addBox(boxes, spec.cx + 7.2, spec.cz - 6.6, 2.34, 1.04);
+    circles.push(
+      { x: spec.cx + 9.2, z: spec.cz - 8.4, r: 0.45 },
+      { x: spec.cx - 9.2, z: spec.cz + 8.2, r: 0.45 }
+    );
+  } else if (spec.id === 'bank' && lv === 4) {
+    // NW SWIFT & AML Ops Enclave (open South portal dx -6.4..-4.0)
+    [-9.8, -0.6].forEach((wx) => addBox(boxes, spec.cx + wx, spec.cz - 4.0, 0.2, 9.24));
+    [-8.1, -2.3].forEach((fx) => addBox(boxes, spec.cx + fx, spec.cz + 0.6, 3.44, 0.2));
+    [-7.4, -3.0].forEach((sx) => addBox(boxes, spec.cx + sx, spec.cz - 4.2, 2.44, 1.04));
+    // SW Audit Committee Table & Archival Compliance Cabinets
+    addBox(boxes, spec.cx - 4.6, spec.cz + 5.4, 5.24, 1.84);
+    addBox(boxes, spec.cx - 10.1, spec.cz + 5.4, 0.7, 3.84);
+    // NE Operational Risk Desk
+    addBox(boxes, spec.cx + 5.8, spec.cz - 6.4, 2.54, 1.08);
+    circles.push(
+      { x: spec.cx + 9.2, z: spec.cz - 8.2, r: 0.45 },
+      { x: spec.cx + 2.6, z: spec.cz + 8.0, r: 0.45 }
+    );
+  } else if (spec.id === 'bank' && lv === 5) {
+    // West Executive Bank Boardroom (open East doorway dz -5.0..-2.6)
+    [-8.8, 1.2].forEach((wz) => addBox(boxes, spec.cx - 5.4, spec.cz + wz, 9.24, 0.22));
+    [-6.9, -0.7].forEach((ez) => addBox(boxes, spec.cx - 0.8, spec.cz + ez, 0.22, 3.84));
+    addBox(boxes, spec.cx - 5.4, spec.cz - 3.8, 5.66, 2.06);
+    // SW Governor / CEO Suite
+    addBox(boxes, spec.cx - 9.95, spec.cz + 6.0, 0.62, 4.04);
+    addBox(boxes, spec.cx - 6.2, spec.cz + 6.2, 2.84, 1.16);
+    circles.push(
+      { x: spec.cx - 2.8, z: spec.cz + 5.8, r: 0.56 },
+      { x: spec.cx - 3.6, z: spec.cz + 5.8, r: 0.46 }
+    );
+    // NE CFO Desk & Sky-Bar
+    addBox(boxes, spec.cx + 2.8, spec.cz - 6.6, 2.44, 1.04);
+    addBox(boxes, spec.cx + 7.4, spec.cz - 7.6, 3.9, 1.04);
+    circles.push(
+      { x: spec.cx + 9.4, z: spec.cz - 5.2, r: 0.45 },
+      { x: spec.cx + 3.2, z: spec.cz + 7.4, r: 0.45 }
+    );
   } else {
     // Upper floors: desks, shelf unit & 2 corner plants
     const deskXs = spec.w >= 30 ? [-10, 0, 10] : [-4.8, 4.8];
@@ -2220,6 +2609,35 @@ function populateDistrictBuildingGeometry(
       addBox(boxes, spec.cx - 8.77, spec.cz + 2.85, 1.5, 0.14);
       addBox(boxes, spec.cx - 8.0, spec.cz + 6.05, 0.12, 1.2);
     }
+  }
+
+  // VitalCare Medical & Pharmacy continuous 5-Story C-Wrap Biophilic Stairwell & Bamboo Lightwell Colliders (0..4)
+  if (spec.id === 'medical') {
+    // North, East, South atrium void balustrades (dx +3.20..+8.80, dz -6.80..-0.60)
+    addBox(boxes, spec.cx + 6.0, spec.cz - 6.8, 5.68, 0.14);
+    addBox(boxes, spec.cx + 8.8, spec.cz - 3.7, 0.14, 6.28);
+    addBox(boxes, spec.cx + 6.0, spec.cz - 0.6, 5.68, 0.14);
+    // Inner 5-Story Living Bamboo & Moss Lightwell Core (solid on all 5 floors)
+    addBox(boxes, spec.cx + 6.0, spec.cz - 3.7, 2.34, 2.94);
+    // West Center Moss Guardrail (dz -5.15..-2.25)
+    addBox(boxes, spec.cx + 3.2, spec.cz - 3.7, 0.14, 2.94);
+    // West SW Ascent Threshold (dx +3.20, dz -2.25..-0.60): stairwellGate on lv < 4, solid on L4
+    addBox(boxes, spec.cx + 3.2, spec.cz - 1.425, 0.22, 1.65, undefined, lv < spec.floors - 1);
+    // West NW Arrival Threshold (dx +3.20, dz -6.80..-5.15): solid under-stair screen on G, stairwellGate on L1..L4
+    addBox(boxes, spec.cx + 3.2, spec.cz - 5.975, 0.22, 1.65, undefined, lv >= 1);
+  }
+
+  // Nairobi Trust Bank continuous 6-Story Reserve Stairwell & Bullion Lightwell Spine Colliders (0..5)
+  if (spec.id === 'bank') {
+    // West shaft balustrade (dx +5.10) & South overhang balustrade (dz +6.90)
+    addBox(boxes, spec.cx + 5.1, spec.cz + 2.9, 0.16, 8.08);
+    addBox(boxes, spec.cx + 7.85, spec.cz + 6.9, 5.56, 0.16);
+    // Center 6-story Sovereign Gold-Ledger Lightwell Spine separating West (up) & East (arrival) flights
+    addBox(boxes, spec.cx + 7.85, spec.cz + 1.78, 0.18, 5.78);
+    // North West-Lane Ascent Mouth (dz -1.10, dx +5.10..+7.85): stairwellGate on G..L4, solid safety glass on L5
+    addBox(boxes, spec.cx + 6.48, spec.cz - 1.1, 2.66, 0.22, undefined, lv < spec.floors - 1);
+    // North East-Lane Arrival Mouth (dz -1.10, dx +7.85..+10.60): solid under-stair divider on G, stairwellGate on L1..L5
+    addBox(boxes, spec.cx + 9.22, spec.cz - 1.1, 2.68, 0.22, undefined, lv >= 1);
   }
 }
 

@@ -95,7 +95,7 @@ export const DISTRICT_BUILDINGS: DistrictBuildingSpec[] = [
     doorX: 57,
     doorZ: 7.0,
     doorSide: 'south',
-    description: 'Glass automotive pavilion with rotating hero turntable, test-drive forecourt road and financing lounge.',
+    description: 'TerraCraft-curated 3-level automotive pavilion: obsidian terrazzo turntable under a Sky-Oculus void, cantilevered spine stairs, bespoke paint & powertrain atelier, simulator rig and VIP Sky-Lounge.',
     overviewCam: { p: [57, 12.5, 34], t: [57, 3.8, 1] },
   },
   {
@@ -116,7 +116,7 @@ export const DISTRICT_BUILDINGS: DistrictBuildingSpec[] = [
     doorX: -90,
     doorZ: 7.0,
     doorSide: 'south',
-    description: 'Granite portico bank hall with 24/7 ATM vestibule, drive-in forecourt bays, steel vault and FX treasury.',
+    description: 'Six-level TerraCraft reserve HQ with fluted Roman travertine portico, Nero-Gold marble banking hall, geared time-lock bullion vault, continuous brass-and-marble Reserve Stairwell, FX treasury dealing room, 24K safe-deposit gallery, SWIFT ops & executive sky-rotunda.',
     overviewCam: { p: [-90, 15.5, 35], t: [-90, 7.2, -2] },
   },
   {
@@ -137,7 +137,7 @@ export const DISTRICT_BUILDINGS: DistrictBuildingSpec[] = [
     doorX: 90,
     doorZ: 7.0,
     doorSide: 'south',
-    description: 'Live market ticker facade, quant trading pods, visitor forecourt road, cold-storage vault and validator nodes.',
+    description: 'Five-level TerraCraft exchange atrium with Quarter-Turn Gallery Staircase, 5-story Merkle Genesis pillar, MPC cold vault, immersion ASIC gallery, OTC liquidity hall, ZK audit theater & sovereign penthouse.',
     overviewCam: { p: [90, 14.5, 35], t: [90, 6.2, -2] },
   },
   {
@@ -200,7 +200,7 @@ export const DISTRICT_BUILDINGS: DistrictBuildingSpec[] = [
     doorX: 0,
     doorZ: -20.0,
     doorSide: 'south',
-    description: 'Illuminated pharmacy dispensary, patient drop-off ring road, diagnostic imaging labs and 24-hour wellness care.',
+    description: '24-hour biophilic clinical sanctuary with seafoam-terrazzo apothecary, C-wrap bamboo sky-well, 3T MRI & CT bays, dental & longevity suites, ISO-5 genomics cleanroom & sky sanctuary.',
     overviewCam: { p: [36, 17.5, -2.5], t: [0, 7.5, -26] },
   },
   {
@@ -288,10 +288,10 @@ export const DISTRICT_WORK_THOUGHTS: Record<string, string[]> = {
     'Great natural light inside the bistro—perfect spot for a working lunch.',
   ],
   dealership: [
-    'Preparing the hybrid SUV on the turntable for a 2:00 PM executive test drive.',
-    'Comparing lease-to-own financing terms and 5-year battery warranty coverage.',
-    'Polishing the crimson showroom flagship and verifying tire pressure telemetry.',
-    'Walking a fleet buyer through EV charging efficiency across Nairobi.',
+    'Preparing the crimson Apex GT beneath the Level 1 Sky-Oculus for a 2:00 PM executive handover.',
+    'Matching saddle-tan stitch swatches with forged split-spoke wheels in the Level 1 Bespoke Atelier.',
+    'Reviewing 800V dual-motor battery skate telemetry and track-mode simulator lap splits.',
+    'Welcoming a fleet buyer in the Level 2 VIP Sky-Lounge beside the wind-tunnel GT speedform.',
   ],
   bank: [
     'Clearing RTGS commercial settlements and balancing branch teller cash drawers.',
@@ -300,10 +300,10 @@ export const DISTRICT_WORK_THOUGHTS: Record<string, string[]> = {
     'Helping a corporate client structure cross-border trade letters of credit.',
   ],
   crypto: [
-    'Monitoring BTC/USDT orderbook depth and cold-storage multi-sig quorum.',
-    'Validator node consensus latency is steady at 14ms with zero missed blocks.',
-    'Auditing smart-contract treasury sweeps before London session volatility.',
-    'Comparing spot liquidity spreads across East African stablecoin rails.',
+    'Monitoring BTC/USDT orderbook depth and cold-storage 5/7 MPC quorum beside the Merkle Genesis core.',
+    'Inspecting dielectric coolant flow across the Level 1 immersion-cooled ASIC tanks holding 34.2°C.',
+    'Routing institutional OTC block liquidity along East African stablecoin and FX corridors on Level 2.',
+    'Verifying zero-knowledge Merkle proof-of-reserves attestations inside the Level 3 audit theater.',
   ],
   travel: [
     'Confirming seat upgrades on the evening NBO → LHR Dreamliner departure.',
@@ -318,10 +318,10 @@ export const DISTRICT_WORK_THOUGHTS: Record<string, string[]> = {
     'Briefing international guests on Mt. Kenya highland trail weather.',
   ],
   medical: [
-    'Verifying cold-chain vaccine storage temperatures across pharmacy rack B.',
-    'Reviewing CBC blood panel results and preparing patient consultation notes.',
-    'Dispensing prescriptions cleanly at window one with zero queue backlog.',
-    'Calibrating diagnostic vitals telemetry for the afternoon wellness checkups.',
+    'Verifying 2–8°C vaccine cold-chain racks across the 24-hour ground apothecary dispensary.',
+    'Reviewing 3T MRI & 64-slice CT angiography reconstructions on Level 1 Diagnostic Imaging.',
+    'Preparing cellular IV infusion biomarkers inside the Level 2 Longevity Conservatory.',
+    'Confirming -196.4°C liquid-nitrogen cryo-biobank integrity in the Level 3 Genomics Lab.',
   ],
   logistics: [
     'Two express cargo vans just backed into Dock B—scanning inbound Mombasa freight.',

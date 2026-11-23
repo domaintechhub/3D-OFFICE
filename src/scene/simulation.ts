@@ -557,6 +557,7 @@ export class AtriumSimulation {
   private walkBuildingId: BuildingId = 'hub';
   private walkFloor = 0;
   private walkPos = new THREE.Vector3(0, 1.65, 22);
+  private walkEyeY = 1.65;
   private walkYaw = 0;
   private walkPitch = 0;
   private walkKeys: Record<string, boolean> = {};
@@ -2899,7 +2900,7 @@ export class AtriumSimulation {
   }
 
   private groundElevationAt(lv: number, x: number, z: number, buildingId: BuildingId = 'hub'): number {
-    if (buildingId === 'hub' && lv >= 0 && lv < FLOORS && x >= 20.14 && x <= 24.36 && z >= 1.05 && z <= 7.85) {
+    if ((buildingId === 'hub' || lv === 0) && lv >= 0 && lv < FLOORS && x >= 20.14 && x <= 24.36 && z >= 1.05 && z <= 7.85) {
       const y0 = LV[lv];
       const halfRise = (lv === 0 ? 5.6 : 4.2) * 0.5;
       const flightZStart = 7.75;
@@ -3027,6 +3028,109 @@ export class AtriumSimulation {
         return y0 + t * halfRise;
       }
       const t = Math.max(0, Math.min(1, (zHalf - z) / (zHalf - zStart)));
+      return y0 + halfRise + t * halfRise + 0.02;
+    }
+    const dealSpec = DISTRICT_BUILDING_MAP.dealership;
+    if (
+      lv === 0 &&
+      x >= dealSpec.cx + 7.86 &&
+      x <= dealSpec.cx + 9.68 &&
+      z >= dealSpec.cz - 3.72 &&
+      z <= dealSpec.cz + 4.65
+    ) {
+      const y0 = dealSpec.groundY + 0.12;
+      const zStart = dealSpec.cz + 4.6;
+      const zTop = dealSpec.cz - 3.6;
+      const t = Math.max(0, Math.min(1, (zStart - z) / (zStart - zTop)));
+      return y0 + t * dealSpec.floorH;
+    }
+    if (
+      lv === 1 &&
+      x >= dealSpec.cx - 9.68 &&
+      x <= dealSpec.cx - 7.86 &&
+      z >= dealSpec.cz - 3.72 &&
+      z <= dealSpec.cz + 4.65
+    ) {
+      const y1 = dealSpec.groundY + dealSpec.floorH + 0.12;
+      const zStart = dealSpec.cz - 3.6;
+      const zTop = dealSpec.cz + 4.6;
+      const t = Math.max(0, Math.min(1, (z - zStart) / (zTop - zStart)));
+      return y1 + t * dealSpec.floorH;
+    }
+    const cryptoSpec = DISTRICT_BUILDING_MAP.crypto;
+    if (
+      (buildingId === 'crypto' || lv === 0) &&
+      lv >= 0 &&
+      lv < cryptoSpec.floors - 1 &&
+      x >= cryptoSpec.cx + 4.35 &&
+      x <= cryptoSpec.cx + 10.65 &&
+      z >= cryptoSpec.cz - 9.65 &&
+      z <= cryptoSpec.cz - 2.45
+    ) {
+      const y0 = cryptoSpec.groundY + lv * cryptoSpec.floorH + 0.12;
+      const halfRise = cryptoSpec.floorH * 0.5;
+      if (x >= cryptoSpec.cx + 8.45) {
+        if (z <= cryptoSpec.cz - 7.25) {
+          return y0 + halfRise + 0.02;
+        }
+        const t = Math.max(0, Math.min(1, (cryptoSpec.cz - 2.45 - z) / 4.8));
+        return y0 + t * halfRise;
+      }
+      if (z <= cryptoSpec.cz - 7.2) {
+        const t = Math.max(0, Math.min(1, (cryptoSpec.cx + 8.45 - x) / 4.1));
+        return y0 + halfRise + t * halfRise + 0.02;
+      }
+    }
+    const medSpec = DISTRICT_BUILDING_MAP.medical;
+    if (
+      (buildingId === 'medical' || lv === 0) &&
+      lv >= 0 &&
+      lv < medSpec.floors - 1 &&
+      x >= medSpec.cx + 3.2 &&
+      x <= medSpec.cx + 8.8 &&
+      z >= medSpec.cz - 6.8 &&
+      z <= medSpec.cz - 0.6
+    ) {
+      const y0 = medSpec.groundY + lv * medSpec.floorH + 0.12;
+      const fRise = medSpec.floorH / 3;
+      // Flight 1 (South Run West -> East: dx +3.20 -> +7.15) + SE Landing (dx +7.15..+8.80)
+      if (z >= medSpec.cz - 2.25) {
+        const t1 = Math.max(0, Math.min(1, (x - (medSpec.cx + 3.2)) / 3.95));
+        return y0 + t1 * fRise;
+      }
+      // Flight 2 (East Run South -> North: dz -2.25 -> -5.15)
+      if (x >= medSpec.cx + 7.15 && z > medSpec.cz - 5.15) {
+        const t2 = Math.max(0, Math.min(1, (medSpec.cz - 2.25 - z) / 2.9));
+        return y0 + fRise + t2 * fRise;
+      }
+      // NE Landing + Flight 3 (North Run East -> West: dx +7.15 -> +3.20)
+      if (z <= medSpec.cz - 5.15) {
+        const t3 = Math.max(0, Math.min(1, (medSpec.cx + 7.15 - x) / 3.95));
+        return y0 + fRise * 2 + t3 * fRise + 0.02;
+      }
+    }
+    const bankSpec = DISTRICT_BUILDING_MAP.bank;
+    if (
+      (buildingId === 'bank' || lv === 0) &&
+      lv >= 0 &&
+      lv < bankSpec.floors - 1 &&
+      x >= bankSpec.cx + 5.1 &&
+      x <= bankSpec.cx + 10.6 &&
+      z >= bankSpec.cz - 1.1 &&
+      z <= bankSpec.cz + 6.9
+    ) {
+      const y0 = bankSpec.groundY + lv * bankSpec.floorH + 0.12;
+      const halfRise = bankSpec.floorH * 0.5;
+      const zStart = bankSpec.cz - 1.1;
+      const zTurn = bankSpec.cz + 4.65;
+      if (z >= zTurn) {
+        return y0 + halfRise + 0.02;
+      }
+      if (x <= bankSpec.cx + 7.85) {
+        const t = Math.max(0, Math.min(1, (z - zStart) / (zTurn - zStart)));
+        return y0 + t * halfRise;
+      }
+      const t = Math.max(0, Math.min(1, (zTurn - z) / (zTurn - zStart)));
       return y0 + halfRise + t * halfRise + 0.02;
     }
     if (lv !== 0) {
@@ -6248,6 +6352,7 @@ export class AtriumSimulation {
     this.walkBuildingId = nearby;
     const groundY = this.groundElevationAt(0, exitPos.x, exitPos.z, nearby);
     this.walkPos.set(exitPos.x, groundY + 1.65, exitPos.z);
+    this.walkEyeY = this.walkPos.y;
 
     // Orient camera toward nearby building entrance door
     const spec = DISTRICT_BUILDING_MAP[nearby];
@@ -6295,6 +6400,7 @@ export class AtriumSimulation {
     }
     this.walkPitch = 0;
     this.walkStep = 0;
+    this.walkEyeY = this.walkPos.y;
   }
 
   public exitWalk(camera?: THREE.Camera, controls?: OrbitControls) {
@@ -6328,6 +6434,19 @@ export class AtriumSimulation {
       this.walkPos.z = spec.cz + spec.d * 0.25;
       this.walkPos.y = spec.groundY + this.walkFloor * spec.floorH + 0.12 + 1.65;
     }
+    this.walkEyeY = this.walkPos.y;
+  }
+
+  private resolveBuildingAtGround(x: number, z: number): BuildingId {
+    if (Math.abs(x) <= 30.2 && z >= -0.2 && z <= 11.4) return 'hub';
+    for (let i = 0; i < DISTRICT_BUILDINGS.length; i++) {
+      const b = DISTRICT_BUILDINGS[i];
+      if (b.id === 'hub') continue;
+      if (Math.abs(x - b.cx) <= b.w * 0.5 + 0.6 && Math.abs(z - b.cz) <= b.d * 0.5 + 0.6) {
+        return b.id;
+      }
+    }
+    return 'hub';
   }
 
   public setTouchJoystick(nx: number, ny: number) {
@@ -6399,10 +6518,11 @@ export class AtriumSimulation {
       this.walkDrag = false;
       this.driveDrag = false;
     };
+    let skipNextLockMouse = false;
     const onMouseMove = (e: MouseEvent) => {
       if (this.driveOn && this.driveDrag) {
-        const dx = e.clientX - this.driveLX;
-        const dy = e.clientY - this.driveLY;
+        const dx = Math.max(-120, Math.min(120, e.clientX - this.driveLX));
+        const dy = Math.max(-120, Math.min(120, e.clientY - this.driveLY));
         this.driveLX = e.clientX;
         this.driveLY = e.clientY;
         this.driveOrbitYawOffset -= dx * 0.0055;
@@ -6411,11 +6531,17 @@ export class AtriumSimulation {
       }
       if (!this.walkOn) return;
       if (document.pointerLockElement === dom) {
-        this.walkYaw -= e.movementX * 0.0024;
-        this.walkPitch = Math.max(-1.15, Math.min(1.15, this.walkPitch - e.movementY * 0.0024));
+        if (skipNextLockMouse) {
+          skipNextLockMouse = false;
+          return;
+        }
+        const mx = Math.max(-85, Math.min(85, e.movementX || 0));
+        const my = Math.max(-85, Math.min(85, e.movementY || 0));
+        this.walkYaw -= mx * 0.0024;
+        this.walkPitch = Math.max(-1.15, Math.min(1.15, this.walkPitch - my * 0.0024));
       } else if (this.walkDrag) {
-        const dx = e.clientX - this.walkLX;
-        const dy = e.clientY - this.walkLY;
+        const dx = Math.max(-120, Math.min(120, e.clientX - this.walkLX));
+        const dy = Math.max(-120, Math.min(120, e.clientY - this.walkLY));
         this.walkLX = e.clientX;
         this.walkLY = e.clientY;
         this.walkYaw -= dx * 0.004;
@@ -6423,7 +6549,11 @@ export class AtriumSimulation {
       }
     };
     const onLockChange = () => {
-      this.walkLocked = document.pointerLockElement === dom;
+      const locked = document.pointerLockElement === dom;
+      if (locked && !this.walkLocked) {
+        skipNextLockMouse = true;
+      }
+      this.walkLocked = locked;
     };
 
     window.addEventListener('keydown', onKeyDown);
@@ -6646,6 +6776,90 @@ export class AtriumSimulation {
       }
     }
 
+    // Seamless G <-> L1 (East Wing) and L1 <-> L2 (West Wing) cantilevered spine stair transitions inside Apex Motors
+    const dealSpecWalk = DISTRICT_BUILDING_MAP.dealership;
+    if (
+      (this.walkBuildingId === 'dealership' || this.walkFloor === 0) &&
+      this.walkPos.x >= dealSpecWalk.cx + 7.86 &&
+      this.walkPos.x <= dealSpecWalk.cx + 9.68
+    ) {
+      const eastBridgeZ = dealSpecWalk.cz - 3.6;
+      if (prevWalkZ >= eastBridgeZ && this.walkPos.z < eastBridgeZ && this.walkFloor === 0) {
+        this.walkFloor = 1;
+        this.walkBuildingId = 'dealership';
+      } else if (prevWalkZ < eastBridgeZ && this.walkPos.z >= eastBridgeZ && this.walkFloor === 1) {
+        this.walkFloor = 0;
+        this.walkBuildingId = 'dealership';
+      }
+    }
+    if (
+      this.walkBuildingId === 'dealership' &&
+      this.walkPos.x >= dealSpecWalk.cx - 9.68 &&
+      this.walkPos.x <= dealSpecWalk.cx - 7.86
+    ) {
+      const westBridgeZ = dealSpecWalk.cz + 4.6;
+      if (prevWalkZ <= westBridgeZ && this.walkPos.z > westBridgeZ && this.walkFloor === 1) {
+        this.walkFloor = 2;
+      } else if (prevWalkZ > westBridgeZ && this.walkPos.z <= westBridgeZ && this.walkFloor === 2) {
+        this.walkFloor = 1;
+      }
+    }
+
+    // Seamless G <-> L4 Quarter-Turn Gallery Staircase transitions inside BitVault Crypto Exchange
+    const cryptoSpecWalk = DISTRICT_BUILDING_MAP.crypto;
+    if (
+      (this.walkBuildingId === 'crypto' || this.walkFloor === 0) &&
+      this.walkPos.z >= cryptoSpecWalk.cz - 9.65 &&
+      this.walkPos.z <= cryptoSpecWalk.cz - 7.2
+    ) {
+      const bridgeX = cryptoSpecWalk.cx + 4.35;
+      if (prevWalkX >= bridgeX && this.walkPos.x < bridgeX && this.walkFloor < cryptoSpecWalk.floors - 1) {
+        this.walkFloor++;
+        this.walkBuildingId = 'crypto';
+      } else if (prevWalkX < bridgeX && this.walkPos.x >= bridgeX && this.walkFloor > 0) {
+        this.walkFloor--;
+        this.walkBuildingId = 'crypto';
+      }
+    }
+
+    // Seamless G <-> L4 C-Wrap Biophilic Atrium Staircase transitions inside VitalCare Medical & Pharmacy
+    const medSpecWalk = DISTRICT_BUILDING_MAP.medical;
+    if (
+      (this.walkBuildingId === 'medical' || this.walkFloor === 0) &&
+      this.walkPos.z >= medSpecWalk.cz - 6.8 &&
+      this.walkPos.z <= medSpecWalk.cz - 5.15
+    ) {
+      const bridgeX = medSpecWalk.cx + 3.2;
+      if (prevWalkX >= bridgeX && this.walkPos.x < bridgeX && this.walkFloor < medSpecWalk.floors - 1) {
+        this.walkFloor++;
+        this.walkBuildingId = 'medical';
+      } else if (prevWalkX < bridgeX && this.walkPos.x >= bridgeX && this.walkFloor > 0) {
+        this.walkFloor--;
+        this.walkBuildingId = 'medical';
+      }
+    }
+
+    // Seamless G <-> L5 Reserve Stairwell transitions inside Nairobi Trust Bank
+    const bankSpecWalk = DISTRICT_BUILDING_MAP.bank;
+    if (
+      (this.walkBuildingId === 'bank' || this.walkFloor === 0) &&
+      this.walkPos.x >= bankSpecWalk.cx + 7.85 &&
+      this.walkPos.x <= bankSpecWalk.cx + 10.6
+    ) {
+      const bridgeZ = bankSpecWalk.cz - 1.1;
+      if (prevWalkZ >= bridgeZ && this.walkPos.z < bridgeZ && this.walkFloor < bankSpecWalk.floors - 1) {
+        this.walkFloor++;
+        this.walkBuildingId = 'bank';
+      } else if (prevWalkZ < bridgeZ && this.walkPos.z >= bridgeZ && this.walkFloor > 0) {
+        this.walkFloor--;
+        this.walkBuildingId = 'bank';
+      }
+    }
+
+    if (this.walkFloor === 0) {
+      this.walkBuildingId = this.resolveBuildingAtGround(this.walkPos.x, this.walkPos.z);
+    }
+
     // Collide against active standing/walking staff, district NPCs & guide on current floor
     if (this.peopleGroup.visible) {
       const floorY = this.groundElevationAt(this.walkFloor, this.walkPos.x, this.walkPos.z, this.walkBuildingId);
@@ -6670,8 +6884,14 @@ export class AtriumSimulation {
     }
 
     const baseY = this.groundElevationAt(this.walkFloor, this.walkPos.x, this.walkPos.z, this.walkBuildingId) + 1.65;
+    if (Math.abs(baseY - this.walkEyeY) < 1.8) {
+      this.walkEyeY = THREE.MathUtils.damp(this.walkEyeY, baseY, 26, dt);
+    } else {
+      this.walkEyeY = baseY;
+    }
+    this.walkPos.y = this.walkEyeY;
     const bob = mag > 0.05 ? Math.sin(this.walkStep) * 0.042 : 0;
-    camera.position.set(this.walkPos.x, baseY + bob, this.walkPos.z);
+    camera.position.set(this.walkPos.x, this.walkEyeY + bob, this.walkPos.z);
     camera.rotation.order = 'YXZ';
     camera.rotation.y = this.walkYaw;
     camera.rotation.x = this.walkPitch;

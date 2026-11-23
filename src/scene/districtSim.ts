@@ -388,7 +388,7 @@ export class DistrictSim {
     // 2. Apex Motors Showroom (Dealership)
     const dealer = DISTRICT_BUILDING_MAP.dealership;
     this.spawnActor(
-      'dealership', 0, dealer.cx - 5.8, dealer.cz - 6.35, 0, 'type',
+      'dealership', 0, dealer.cx - 6.0, dealer.cz - 6.5, 0, 'type',
       nextPersonOpts(false, 0x1e2430, { outfit: 'suit', blazer: true, tie: 0x991b1b }),
       {
         id: 'deal-advisor-1',
@@ -403,7 +403,7 @@ export class DistrictSim {
       'Showroom Sales Gallery', M
     );
     this.spawnActor(
-      'dealership', 0, dealer.cx + 5.8, dealer.cz - 6.35, 0, 'phone',
+      'dealership', 0, dealer.cx + 4.2, dealer.cz - 6.5, 0, 'phone',
       nextPersonOpts(true, 0x262936, { outfit: 'suit', blazer: true }),
       {
         id: 'deal-advisor-2',
@@ -484,10 +484,10 @@ export class DistrictSim {
     // 4. BitVault Crypto Exchange
     const crypto = DISTRICT_BUILDING_MAP.crypto;
     [
-      [crypto.cx - 6.6, crypto.cz + 2.72, Math.PI, 'type', false, 'Quant Spot Trader'],
-      [crypto.cx + 6.6, crypto.cz + 2.72, Math.PI, 'monitorLook', true, 'Quant Spot Trader'],
-      [crypto.cx - 6.6, crypto.cz - 4.52, 0, 'leanScreen', false, 'MPC Custody Auditor'],
-      [crypto.cx + 6.6, crypto.cz - 4.52, 0, 'phone', true, 'Protocol Liquidity Lead'],
+      [crypto.cx - 6.8, crypto.cz + 2.75, Math.PI, 'type', false, 'Quant Spot Trader'],
+      [crypto.cx + 6.4, crypto.cz + 3.55, Math.PI, 'monitorLook', true, 'Institutional Desk Lead'],
+      [crypto.cx - 6.8, crypto.cz - 4.55, 0, 'leanScreen', false, 'MPC Custody Auditor'],
+      [crypto.cx - 6.8, crypto.cz + 7.35, Math.PI, 'phone', true, 'Exchange Concierge & KYC'],
     ].forEach(([px, pz, pf, pp, fem, role], i) => {
       this.spawnActor(
         'crypto', 0, px as number, pz as number, pf as number, pp as string,
@@ -506,7 +506,7 @@ export class DistrictSim {
       );
     });
     this.spawnActor(
-      'crypto', 0, crypto.cx, crypto.cz - 2.1, Math.PI, 'inspectPanel',
+      'crypto', 0, crypto.cx, crypto.cz - 2.3, Math.PI, 'inspectPanel',
       nextPersonOpts(false, 0x18202c, { lanyard: true }),
       {
         id: 'crypto-vault-eng',
@@ -643,7 +643,7 @@ export class DistrictSim {
       '24h Pharmacy & Patient Intake', M
     );
     this.spawnActor(
-      'medical', 0, med.cx + 10.5, med.cz - 3.48, 0, 'type',
+      'medical', 0, med.cx + 13.2, med.cz - 3.48, 0, 'type',
       nextPersonOpts(false, 0xf8fafc, { coat: true, outfit: 'suit', glasses: true }),
       {
         id: 'med-doctor',
@@ -658,7 +658,7 @@ export class DistrictSim {
       'Outpatient & Diagnostic Suites', M
     );
     this.spawnActor(
-      'medical', 0, med.cx + 17.5, med.cz - 3.48, 0, 'monitorLook',
+      'medical', 0, med.cx + 19.5, med.cz - 3.48, 0, 'monitorLook',
       nextPersonOpts(true, 0xe2f5f2, { coat: true, outfit: 'shirtTrousers' }),
       {
         id: 'med-lab',
@@ -940,6 +940,94 @@ export class DistrictSim {
       { role: 'Head of Events & Culinary Ops · L3', dept: 'Head of Events Office', zone: 'Head of Events Office' },
       { role: 'VIP Private Dining Concierge · L3', dept: 'Sky-Grill Concierge', zone: 'Sky-Grill Concierge' },
     ];
+    const dealershipL1Roles = [
+      { role: 'Bespoke Trim & Paint Specialist · L1', dept: 'Atelier Commissioning Studio', zone: 'Atelier Commissioning Studio' },
+      { role: 'EV Powertrain & Telemetry Engineer · L1', dept: 'EV Engineering Lab', zone: 'EV Engineering Lab' },
+    ];
+    const dealershipL2Roles = [
+      { role: 'Director of EV Fleet · L2', dept: 'Fleet Financing Boardroom', zone: 'Fleet Financing Boardroom' },
+      { role: 'Institutional Finance Lead · L2', dept: 'Fleet Financing Boardroom', zone: 'Fleet Financing Boardroom' },
+      { role: 'Regional Leasing Counsel · L2', dept: 'Fleet Financing Boardroom', zone: 'Fleet Financing Boardroom' },
+      { role: 'EV Infrastructure Partner · L2', dept: 'Fleet Financing Boardroom', zone: 'Fleet Financing Boardroom' },
+      { role: 'Managing Principal · L2', dept: 'Principal Executive Suite', zone: 'Principal Executive Suite' },
+    ];
+    const cryptoL1Roles = [
+      { role: 'Hardware Security Architect · L1', dept: 'Immersion Hardware Lab', zone: 'Hardware Security Gallery' },
+      { role: 'Self-Custody Engineer · L1', dept: 'Immersion Hardware Lab', zone: 'Hardware Security Gallery' },
+    ];
+    const cryptoL2Roles = [
+      { role: 'Head of Institutional OTC · L2', dept: 'Institutional OTC Desk', zone: 'Institutional OTC Desk' },
+      { role: 'FX Liquidity Strategist · L2', dept: 'Institutional OTC Desk', zone: 'Institutional OTC Desk' },
+      { role: 'Cross-Border Treasury Structurer · L2', dept: 'Institutional OTC Desk', zone: 'Institutional OTC Desk' },
+    ];
+    const cryptoL3Roles = [
+      { role: 'Zero-Knowledge Cryptographer · L3', dept: 'ZK Proof Audit Lab', zone: 'ZK Audit Ops Theater' },
+      { role: 'Proof-of-Reserves Lead · L3', dept: 'ZK Proof Audit Lab', zone: 'ZK Audit Ops Theater' },
+      { role: 'Validator Consensus SRE · L3', dept: 'ZK Proof Audit Lab', zone: 'ZK Audit Ops Theater' },
+    ];
+    const cryptoL4Roles = [
+      { role: 'Protocol Governance Chair · L4', dept: 'Governance Boardroom', zone: 'Governance Boardroom' },
+      { role: 'Chief Risk & Treasury Officer · L4', dept: 'Governance Boardroom', zone: 'Governance Boardroom' },
+      { role: 'Managing Director · L4', dept: 'Governance Boardroom', zone: 'Governance Boardroom' },
+      { role: 'General Counsel & Compliance · L4', dept: 'Governance Boardroom', zone: 'Governance Boardroom' },
+      { role: 'Founder & Chief Executive · L4', dept: 'Sovereign Founder Suite', zone: 'Sovereign Founder Suite' },
+    ];
+    const medL1Roles = [
+      { role: 'Lead MRI Technologist · L1', dept: '3T MRI Control Bay', zone: 'Diagnostic Imaging Suite' },
+      { role: 'Diagnostic Radiologist · L1', dept: 'CT & Ultrasound Reporting', zone: 'Diagnostic Imaging Suite' },
+    ];
+    const medL2Roles = [
+      { role: 'Cosmetic Dental Surgeon · L2', dept: 'Digital Dental Studio', zone: 'Dental & Ophthalmology' },
+      { role: 'Lead Optometrist · L2', dept: 'Ophthalmology & Retinal Lab', zone: 'Dental & Ophthalmology' },
+      { role: 'Longevity Nurse Specialist · L2', dept: 'Cellular IV & Recovery Lounge', zone: 'Longevity IV Conservatory' },
+    ];
+    const medL3Roles = [
+      { role: 'Clinical Geneticist · L3', dept: 'Genomics Sequencing Lab', zone: 'Genomics & Cleanroom' },
+      { role: 'Bioinformatics Lead · L3', dept: 'Genomics Analytics Bench', zone: 'Genomics & Cleanroom' },
+      { role: 'Chief Pathologist · L3', dept: 'Clinical Pathology & QA Lab', zone: 'Pathology & Biobank' },
+      { role: 'QA Biologics Auditor · L3', dept: 'Clinical Pathology & QA Lab', zone: 'Pathology & Biobank' },
+    ];
+    const medL4Roles = [
+      { role: 'Telehealth Medical Anchor · L4', dept: 'Telehealth Broadcast Studio', zone: 'Medical Directorate' },
+      { role: 'Chief Medical Director · L4', dept: 'Medical Directorate Suite', zone: 'Medical Directorate' },
+      { role: 'Clinical Governance Chair · L4', dept: 'Clinical Case Review Boardroom', zone: 'Case Review Boardroom' },
+      { role: 'Head of Surgical Review · L4', dept: 'Clinical Case Review Boardroom', zone: 'Case Review Boardroom' },
+      { role: 'Chief Pharmacy Officer · L4', dept: 'Clinical Case Review Boardroom', zone: 'Case Review Boardroom' },
+      { role: 'Bioethics & Patient Safety · L4', dept: 'Clinical Case Review Boardroom', zone: 'Case Review Boardroom' },
+      { role: 'Recovery & Nutrition Lead · L4', dept: 'Botanical Sky-Sanctuary', zone: 'Therapeutic Sky-Sanctuary' },
+    ];
+    const bankL1Roles = [
+      { role: 'Mortgage Structuring Advisor · L1', dept: 'Mortgage Atelier', zone: 'Mortgage Atelier' },
+      { role: 'SME Credit Officer · L1', dept: 'SME Credit Suite', zone: 'SME Credit Suite' },
+      { role: 'Retail Relationship Manager · L1', dept: 'Retail Credit & Advisory', zone: 'Retail Credit & Advisory' },
+    ];
+    const bankL2Roles = [
+      { role: 'Lead FX Spot Trader · L2', dept: 'FX Treasury Dealing', zone: 'FX Treasury & Bond Dealing Room' },
+      { role: 'Money Markets Dealer · L2', dept: 'FX Treasury Dealing', zone: 'FX Treasury & Bond Dealing Room' },
+      { role: 'Sovereign Bond Strategist · L2', dept: 'Sovereign Fixed Income', zone: 'FX Treasury & Bond Dealing Room' },
+      { role: 'Treasury Liquidity Analyst · L2', dept: 'Sovereign Fixed Income', zone: 'FX Treasury & Bond Dealing Room' },
+      { role: 'Treasury Risk Quant · L2', dept: 'Quantitative Hedging', zone: 'Quantitative Hedging Alcove' },
+    ];
+    const bankL3Roles = [
+      { role: 'Private Wealth Director · L3', dept: 'Private Wealth Parlor', zone: 'Private Wealth Parlor' },
+      { role: 'Trust & Estate Fiduciary · L3', dept: 'Family Office Advisory', zone: 'Family Office Advisory' },
+      { role: 'Portfolio Strategist · L3', dept: 'Family Office Advisory', zone: 'Family Office Advisory' },
+    ];
+    const bankL4Roles = [
+      { role: 'SWIFT Settlement Officer · L4', dept: 'SWIFT & AML Ops', zone: 'SWIFT & AML Operations Hub' },
+      { role: 'AML Sanctions Analyst · L4', dept: 'SWIFT & AML Ops', zone: 'SWIFT & AML Operations Hub' },
+      { role: 'Internal Audit Director · L4', dept: 'Internal Audit Chamber', zone: 'Audit Committee Chamber' },
+      { role: 'Chief Compliance Officer · L4', dept: 'Internal Audit Chamber', zone: 'Audit Committee Chamber' },
+      { role: 'Operational Risk Lead · L4', dept: 'Regulatory Risk Directorate', zone: 'Regulatory Risk Directorate' },
+    ];
+    const bankL5Roles = [
+      { role: 'Board Chairperson · L5', dept: 'Executive Bank Boardroom', zone: 'Executive Bank Boardroom' },
+      { role: 'Chief Risk Officer · L5', dept: 'Executive Bank Boardroom', zone: 'Executive Bank Boardroom' },
+      { role: 'Managing Director · L5', dept: 'Executive Bank Boardroom', zone: 'Executive Bank Boardroom' },
+      { role: 'General Counsel · L5', dept: 'Executive Bank Boardroom', zone: 'Executive Bank Boardroom' },
+      { role: 'Group CEO · Nairobi Trust Bank · L5', dept: 'Governor & CEO Penthouse', zone: 'Governor & CEO Penthouse Suite' },
+      { role: 'Chief Financial Officer · L5', dept: 'CFO Capital Directorate', zone: 'CFO Capital Directorate' },
+    ];
     for (const [bId, handle] of this.buildings) {
       const spec = handle.spec;
       for (let lv = 1; lv < spec.floors; lv++) {
@@ -981,7 +1069,37 @@ export class DistrictSim {
                                           ? restaurantL2Roles[ci % restaurantL2Roles.length]
                                           : bId === 'restaurant' && lv === 3
                                             ? restaurantL3Roles[ci % restaurantL3Roles.length]
-                                            : null;
+                                            : bId === 'dealership' && lv === 1
+                                              ? dealershipL1Roles[ci % dealershipL1Roles.length]
+                                              : bId === 'dealership' && lv === 2
+                                                ? dealershipL2Roles[ci % dealershipL2Roles.length]
+                                                : bId === 'crypto' && lv === 1
+                                                  ? cryptoL1Roles[ci % cryptoL1Roles.length]
+                                                  : bId === 'crypto' && lv === 2
+                                                    ? cryptoL2Roles[ci % cryptoL2Roles.length]
+                                                    : bId === 'crypto' && lv === 3
+                                                      ? cryptoL3Roles[ci % cryptoL3Roles.length]
+                                                      : bId === 'crypto' && lv === 4
+                                                        ? cryptoL4Roles[ci % cryptoL4Roles.length]
+                                                        : bId === 'medical' && lv === 1
+                                                          ? medL1Roles[ci % medL1Roles.length]
+                                                          : bId === 'medical' && lv === 2
+                                                            ? medL2Roles[ci % medL2Roles.length]
+                                                            : bId === 'medical' && lv === 3
+                                                              ? medL3Roles[ci % medL3Roles.length]
+                                                              : bId === 'medical' && lv === 4
+                                                                ? medL4Roles[ci % medL4Roles.length]
+                                                                : bId === 'bank' && lv === 1
+                                                                  ? bankL1Roles[ci % bankL1Roles.length]
+                                                                  : bId === 'bank' && lv === 2
+                                                                    ? bankL2Roles[ci % bankL2Roles.length]
+                                                                    : bId === 'bank' && lv === 3
+                                                                      ? bankL3Roles[ci % bankL3Roles.length]
+                                                                      : bId === 'bank' && lv === 4
+                                                                        ? bankL4Roles[ci % bankL4Roles.length]
+                                                                        : bId === 'bank' && lv === 5
+                                                                          ? bankL5Roles[ci % bankL5Roles.length]
+                                                                          : null;
           this.spawnActor(
             bId, lv, ch.restX, ch.restZ, ch.restRot, upperPoses[ci % upperPoses.length],
             nextPersonOpts(
@@ -994,8 +1112,16 @@ export class DistrictSim {
                     ? 0x1e3f66
                     : bId === 'restaurant'
                       ? 0x3b2219
-                      : undefined,
-              { lanyard: true }
+                      : bId === 'dealership'
+                        ? 0x1c2028
+                        : bId === 'crypto'
+                          ? 0x132620
+                          : bId === 'medical'
+                            ? 0xe8f7f4
+                            : bId === 'bank'
+                              ? 0x1c2b46
+                              : undefined,
+              { lanyard: true, coat: bId === 'medical' && lv <= 3 }
             ),
             {
               id: `${bId}-u-${lv}-${ci}`,
@@ -1181,6 +1307,201 @@ export class DistrictSim {
         topicKey: 'restaurant',
       },
       'Private Dining Boardroom', M, 0.98
+    );
+    // Apex Motors Level 1 Bespoke Atelier Client inspecting the Motorsport Telemetry Simulator
+    const dealerUp = DISTRICT_BUILDING_MAP.dealership;
+    this.spawnActor(
+      'dealership', 1, dealerUp.cx - 4.2, dealerUp.cz + 4.7, 0, 'inspectPanel',
+      nextPersonOpts(false, undefined, { coat: true }),
+      {
+        id: 'deal-l1-visitor',
+        name: generateCharacterName(false, 297),
+        role: 'Bespoke GT Commissioning Client',
+        department: `${dealerUp.name} · L1 Motorsport Atelier`,
+        accentColor: dealerUp.accent,
+        personality: pickPersonality(297),
+        topicKey: 'client',
+      },
+      'Motorsport Telemetry & Atelier', M, 0.98
+    );
+    // Apex Motors Level 2 VIP Owner admiring the Aerodynamic Wind-Tunnel GT Sculpture
+    this.spawnActor(
+      'dealership', 2, dealerUp.cx - 3.4, dealerUp.cz + 1.5, 0, 'inspectPanel',
+      nextPersonOpts(true, undefined, { outfit: 'smartCasual' }),
+      {
+        id: 'deal-l2-visitor',
+        name: generateCharacterName(true, 298),
+        role: 'VIP Owner · Handover Guest',
+        department: `${dealerUp.name} · L2 VIP Sky-Lounge`,
+        accentColor: dealerUp.accent,
+        personality: pickPersonality(298),
+        topicKey: 'client',
+      },
+      'VIP Owner Handover Sky-Lounge', M, 0.98
+    );
+    // BitVault Level 1 Immersion Mining Guest & Level 3 External Audit Partner & Level 4 Institutional LP Guest
+    const cryptoUp = DISTRICT_BUILDING_MAP.crypto;
+    this.spawnActor(
+      'crypto', 1, cryptoUp.cx - 5.2, cryptoUp.cz - 4.2, Math.PI, 'inspectPanel',
+      nextPersonOpts(false, undefined, { coat: true }),
+      {
+        id: 'crypto-l1-visitor',
+        name: generateCharacterName(false, 299),
+        role: 'Institutional Custody Client',
+        department: `${cryptoUp.name} · L1 Immersion Lab`,
+        accentColor: cryptoUp.accent,
+        personality: pickPersonality(299),
+        topicKey: 'client',
+      },
+      'Immersion ASIC Gallery', M, 0.98
+    );
+    this.spawnActor(
+      'crypto', 3, cryptoUp.cx - 6.4, cryptoUp.cz - 4.4, Math.PI, 'readDoc',
+      nextPersonOpts(true, 0x132620, { lanyard: true }),
+      {
+        id: 'crypto-l3-auditor',
+        name: generateCharacterName(true, 300),
+        role: 'External Merkle Reserves Auditor · L3',
+        department: `${cryptoUp.name} · Key Ceremony Enclave`,
+        seniority: 'Senior',
+        accentColor: cryptoUp.accent,
+        personality: pickPersonality(300),
+        topicKey: 'crypto',
+      },
+      'Key Ceremony Enclave', M, 0.98
+    );
+    this.spawnActor(
+      'crypto', 4, cryptoUp.cx + 2.4, cryptoUp.cz + 2.8, 0.4, 'coffee',
+      nextPersonOpts(false, undefined, { outfit: 'smartCasual' }),
+      {
+        id: 'crypto-l4-guest',
+        name: generateCharacterName(false, 310),
+        role: 'Sovereign Fund Allocator · VIP',
+        department: `${cryptoUp.name} · L4 Penthouse Lounge`,
+        accentColor: cryptoUp.accent,
+        personality: pickPersonality(310),
+        topicKey: 'client',
+      },
+      'Penthouse Sky-Lounge', M, 0.98
+    );
+    // VitalCare Medical & Pharmacy Level 1..4 standing clinical specialists & wellness guests
+    const medUp = DISTRICT_BUILDING_MAP.medical;
+    this.spawnActor(
+      'medical', 1, medUp.cx - 15.2, medUp.cz - 2.2, -Math.PI / 2, 'inspectPanel',
+      nextPersonOpts(true, 0xe8f7f4, { coat: true, lanyard: true }),
+      {
+        id: 'med-l1-mri-phys',
+        name: generateCharacterName(true, 311),
+        role: 'MRI Medical Physicist · L1',
+        department: `${medUp.name} · 3T MRI Cleanroom`,
+        seniority: 'Senior',
+        accentColor: medUp.accent,
+        personality: pickPersonality(311),
+        topicKey: 'medical',
+      },
+      'Diagnostic Imaging Suite', M, 0.98
+    );
+    this.spawnActor(
+      'medical', 2, medUp.cx - 5.8, medUp.cz + 3.2, 0, 'hold',
+      nextPersonOpts(false, undefined, { outfit: 'smartCasual' }),
+      {
+        id: 'med-l2-guest',
+        name: generateCharacterName(false, 312),
+        role: 'Longevity & Vision Client',
+        department: `${medUp.name} · L2 Ophthalmology Bar`,
+        accentColor: medUp.accent,
+        personality: pickPersonality(312),
+        topicKey: 'client',
+      },
+      'Dental & Ophthalmology', M, 0.98
+    );
+    this.spawnActor(
+      'medical', 3, medUp.cx - 5.4, medUp.cz - 1.2, Math.PI, 'inspectPanel',
+      nextPersonOpts(false, 0xe8f7f4, { coat: true, lanyard: true }),
+      {
+        id: 'med-l3-cryo',
+        name: generateCharacterName(false, 313),
+        role: 'Cryo-Biobank Engineer · L3',
+        department: `${medUp.name} · LN2 Cryo-Vault`,
+        seniority: 'Senior',
+        accentColor: medUp.accent,
+        personality: pickPersonality(313),
+        topicKey: 'medical',
+      },
+      'Genomics & Cleanroom', M, 0.98
+    );
+    this.spawnActor(
+      'medical', 4, medUp.cx + 16.6, medUp.cz + 1.2, Math.PI, 'coffee',
+      nextPersonOpts(true, undefined, { outfit: 'smartCasual' }),
+      {
+        id: 'med-l4-guest',
+        name: generateCharacterName(true, 314),
+        role: 'Wellness Recovery Guest',
+        department: `${medUp.name} · L4 Sky-Sanctuary`,
+        accentColor: medUp.accent,
+        personality: pickPersonality(314),
+        topicKey: 'client',
+      },
+      'Therapeutic Sky-Sanctuary', M, 0.98
+    );
+    // Nairobi Trust Bank Level 1..5 clients, CBK liaison & VIP sovereign partner
+    const bankUp = DISTRICT_BUILDING_MAP.bank;
+    this.spawnActor(
+      'bank', 1, bankUp.cx - 5.8, bankUp.cz + 2.4, 0, 'inspectPanel',
+      nextPersonOpts(true, undefined, { outfit: 'smartCasual' }),
+      {
+        id: 'bank-l1-client',
+        name: generateCharacterName(true, 315),
+        role: 'Private Mortgage Client',
+        department: `${bankUp.name} · L1 Mortgage Atelier`,
+        accentColor: bankUp.accent,
+        personality: pickPersonality(315),
+        topicKey: 'client',
+      },
+      'Mortgage Atelier', M, 0.97
+    );
+    this.spawnActor(
+      'bank', 2, bankUp.cx + 1.2, bankUp.cz - 0.4, -Math.PI / 2, 'inspectPanel',
+      nextPersonOpts(false, 0x1c2b46, { lanyard: true }),
+      {
+        id: 'bank-l2-liaison',
+        name: generateCharacterName(false, 316),
+        role: 'Central Bank Liaison Officer · L2',
+        department: `${bankUp.name} · FX Treasury Floor`,
+        seniority: 'Senior',
+        accentColor: bankUp.accent,
+        personality: pickPersonality(316),
+        topicKey: 'bank',
+      },
+      'FX Treasury & Bond Dealing Room', M, 0.98
+    );
+    this.spawnActor(
+      'bank', 3, bankUp.cx - 6.2, bankUp.cz - 3.6, Math.PI, 'inspectPanel',
+      nextPersonOpts(false, undefined, { coat: true }),
+      {
+        id: 'bank-l3-client',
+        name: generateCharacterName(false, 317),
+        role: 'Bullion Safe-Deposit Client',
+        department: `${bankUp.name} · Safe Deposit Gallery`,
+        accentColor: bankUp.accent,
+        personality: pickPersonality(317),
+        topicKey: 'client',
+      },
+      'Safe Deposit Gallery', M, 0.98
+    );
+    this.spawnActor(
+      'bank', 5, bankUp.cx + 7.4, bankUp.cz - 5.2, Math.PI, 'coffee',
+      nextPersonOpts(true, undefined, { outfit: 'smartCasual' }),
+      {
+        id: 'bank-l5-guest',
+        name: generateCharacterName(true, 318),
+        role: 'Sovereign Investment Partner · VIP',
+        department: `${bankUp.name} · L5 Penthouse Sky-Bar`,
+        accentColor: bankUp.accent,
+        personality: pickPersonality(318),
+        topicKey: 'client',
+      },
+      'Executive Sky-Bar', M, 0.98
     );
   }
 
@@ -1621,6 +1942,56 @@ export class DistrictSim {
         { x: spec.cx - 2.2, z: spec.cz - 4.4, face: 0, pose: 'coffee' },
       ];
     }
+    if (bId === 'dealership' && lv === 1) {
+      return [
+        { x: spec.cx - 2.6, z: spec.cz - 3.6, face: 0, pose: 'inspectPanel' },
+        { x: spec.cx + 2.8, z: spec.cz - 6.8, face: Math.PI, pose: 'readDoc' },
+        { x: spec.cx - 4.4, z: spec.cz + 4.5, face: 0, pose: 'hold' },
+        { x: spec.cx + 4.8, z: spec.cz + 4.6, face: 0, pose: 'inspectPanel' },
+        { x: spec.cx - 4.8, z: spec.cz - 0.6, face: Math.PI / 2, pose: 'standPhone' },
+      ];
+    }
+    if (bId === 'dealership' && lv === 2) {
+      return [
+        { x: spec.cx - 3.4, z: spec.cz + 2.2, face: Math.PI, pose: 'inspectPanel' },
+        { x: spec.cx + 1.2, z: spec.cz + 3.2, face: 0, pose: 'talk' },
+        { x: spec.cx + 5.4, z: spec.cz + 4.4, face: 0, pose: 'coffee' },
+        { x: spec.cx + 5.9, z: spec.cz - 2.0, face: Math.PI, pose: 'readDoc' },
+        { x: spec.cx - 5.6, z: spec.cz - 3.2, face: 0.4, pose: 'standPhone' },
+      ];
+    }
+    if (bId === 'crypto' && lv === 1) {
+      return [
+        { x: spec.cx - 5.2, z: spec.cz - 4.0, face: Math.PI, pose: 'inspectPanel' },
+        { x: spec.cx + 1.8, z: spec.cz - 4.0, face: Math.PI / 2, pose: 'stand' },
+        { x: spec.cx + 1.8, z: spec.cz + 2.6, face: 0, pose: 'coffee' },
+        { x: spec.cx - 4.8, z: spec.cz + 2.6, face: 0, pose: 'readDoc' },
+      ];
+    }
+    if (bId === 'crypto' && lv === 2) {
+      return [
+        { x: spec.cx - 5.6, z: spec.cz - 6.8, face: Math.PI, pose: 'inspectPanel' },
+        { x: spec.cx + 1.8, z: spec.cz - 3.6, face: Math.PI / 2, pose: 'standPhone' },
+        { x: spec.cx + 2.6, z: spec.cz + 2.8, face: Math.PI / 2, pose: 'talk' },
+        { x: spec.cx - 4.8, z: spec.cz + 2.8, face: 0, pose: 'readDoc' },
+      ];
+    }
+    if (bId === 'crypto' && lv === 3) {
+      return [
+        { x: spec.cx + 1.6, z: spec.cz - 4.2, face: Math.PI / 2, pose: 'stand' },
+        { x: spec.cx - 4.2, z: spec.cz + 0.8, face: 0, pose: 'inspectPanel' },
+        { x: spec.cx + 2.8, z: spec.cz + 4.2, face: Math.PI / 2, pose: 'readDoc' },
+        { x: spec.cx - 6.4, z: spec.cz - 4.2, face: Math.PI, pose: 'hold' },
+      ];
+    }
+    if (bId === 'crypto' && lv === 4) {
+      return [
+        { x: spec.cx + 1.6, z: spec.cz - 4.2, face: Math.PI / 2, pose: 'stand' },
+        { x: spec.cx + 1.6, z: spec.cz + 2.2, face: 0, pose: 'coffee' },
+        { x: spec.cx + 7.2, z: spec.cz + 2.2, face: Math.PI / 2, pose: 'talk' },
+        { x: spec.cx - 2.6, z: spec.cz + 3.6, face: 0, pose: 'standPhone' },
+      ];
+    }
     if (lv > 0) {
       return [
         { x: spec.cx - spec.w * 0.25, z: spec.cz + spec.d * 0.22, face: 0, pose: 'stand' },
@@ -1638,23 +2009,60 @@ export class DistrictSim {
     }
     if (bId === 'dealership') {
       return [
-        { x: spec.cx - 3.8, z: spec.cz + 0.4, face: Math.PI / 2, pose: 'hold' },
-        { x: spec.cx + 3.8, z: spec.cz + 0.4, face: -Math.PI / 2, pose: 'stand' },
-        { x: spec.cx, z: spec.cz + 6.4, face: Math.PI, pose: 'readDoc' },
+        { x: spec.cx - 3.6, z: spec.cz + 3.8, face: 0.7, pose: 'hold' },
+        { x: spec.cx + 3.0, z: spec.cz + 4.6, face: -0.6, pose: 'inspectPanel' },
+        { x: spec.cx, z: spec.cz - 4.4, face: Math.PI, pose: 'readDoc' },
+        { x: spec.cx + 4.4, z: spec.cz + 6.6, face: -Math.PI / 2, pose: 'standPhone' },
       ];
     }
     if (bId === 'bank') {
+      if (lv === 1) {
+        return [
+          { x: spec.cx - 5.8, z: spec.cz + 1.2, face: 0, pose: 'inspectPanel' },
+          { x: spec.cx + 1.6, z: spec.cz - 2.6, face: Math.PI, pose: 'hold' },
+          { x: spec.cx + 6.4, z: spec.cz - 2.8, face: 0, pose: 'coffee' },
+        ];
+      }
+      if (lv === 2) {
+        return [
+          { x: spec.cx - 4.2, z: spec.cz - 0.4, face: -Math.PI / 2, pose: 'inspectPanel' },
+          { x: spec.cx + 0.6, z: spec.cz - 4.4, face: Math.PI, pose: 'readDoc' },
+          { x: spec.cx + 5.2, z: spec.cz - 3.4, face: 0, pose: 'standPhone' },
+        ];
+      }
+      if (lv === 3) {
+        return [
+          { x: spec.cx - 6.2, z: spec.cz + 0.6, face: Math.PI, pose: 'stand' },
+          { x: spec.cx - 2.6, z: spec.cz + 1.4, face: 0, pose: 'hold' },
+          { x: spec.cx + 5.2, z: spec.cz - 3.6, face: 0, pose: 'readDoc' },
+        ];
+      }
+      if (lv === 4) {
+        return [
+          { x: spec.cx - 5.2, z: spec.cz + 2.2, face: Math.PI, pose: 'hold' },
+          { x: spec.cx + 1.4, z: spec.cz + 3.2, face: 0, pose: 'readDoc' },
+          { x: spec.cx + 5.8, z: spec.cz - 3.2, face: 0, pose: 'inspectPanel' },
+        ];
+      }
+      if (lv === 5) {
+        return [
+          { x: spec.cx + 1.2, z: spec.cz - 3.8, face: -Math.PI / 2, pose: 'stand' },
+          { x: spec.cx - 5.2, z: spec.cz + 2.8, face: 0, pose: 'readDoc' },
+          { x: spec.cx + 5.2, z: spec.cz - 3.8, face: 0, pose: 'coffee' },
+        ];
+      }
       return [
         { x: spec.cx - 6.5, z: spec.cz + 4.4, face: 0, pose: 'stand' },
-        { x: spec.cx + 2.5, z: spec.cz + 2.2, face: Math.PI, pose: 'hold' },
-        { x: spec.cx + 4.2, z: spec.cz + 3.2, face: Math.PI / 2, pose: 'standPhone' },
+        { x: spec.cx - 1.2, z: spec.cz + 1.6, face: Math.PI, pose: 'hold' },
+        { x: spec.cx + 3.2, z: spec.cz - 4.4, face: 0, pose: 'standPhone' },
       ];
     }
     if (bId === 'crypto') {
       return [
-        { x: spec.cx, z: spec.cz + 4.2, face: Math.PI, pose: 'hold' },
-        { x: spec.cx - 3.4, z: spec.cz - 4.8, face: Math.PI / 2, pose: 'inspectPanel' },
-        { x: spec.cx + 3.4, z: spec.cz - 4.8, face: -Math.PI / 2, pose: 'readDoc' },
+        { x: spec.cx, z: spec.cz + 3.8, face: Math.PI, pose: 'hold' },
+        { x: spec.cx - 3.6, z: spec.cz - 5.0, face: Math.PI / 2, pose: 'inspectPanel' },
+        { x: spec.cx + 3.0, z: spec.cz - 0.6, face: -Math.PI / 2, pose: 'readDoc' },
+        { x: spec.cx + 8.6, z: spec.cz - 0.6, face: Math.PI, pose: 'standPhone' },
       ];
     }
     if (bId === 'travel') {
@@ -1689,10 +2097,38 @@ export class DistrictSim {
       ];
     }
     // medical
+    if (lv === 1) {
+      return [
+        { x: medX(spec, -15.2), z: spec.cz + 3.2, face: 0, pose: 'inspectPanel' },
+        { x: medX(spec, -6.4), z: spec.cz + 1.8, face: Math.PI, pose: 'hold' },
+        { x: medX(spec, 16.4), z: spec.cz - 2.0, face: 0, pose: 'readDoc' },
+      ];
+    }
+    if (lv === 2) {
+      return [
+        { x: medX(spec, -16.8), z: spec.cz + 1.8, face: Math.PI, pose: 'stand' },
+        { x: medX(spec, -5.8), z: spec.cz + 2.4, face: 0, pose: 'hold' },
+        { x: medX(spec, 17.0), z: spec.cz + 0.4, face: 0, pose: 'readDoc' },
+      ];
+    }
+    if (lv === 3) {
+      return [
+        { x: medX(spec, -18.8), z: spec.cz + 3.6, face: Math.PI, pose: 'inspectPanel' },
+        { x: medX(spec, -5.4), z: spec.cz + 2.2, face: Math.PI, pose: 'hold' },
+        { x: medX(spec, 16.8), z: spec.cz + 1.4, face: 0, pose: 'readDoc' },
+      ];
+    }
+    if (lv === 4) {
+      return [
+        { x: medX(spec, -15.4), z: spec.cz + 2.4, face: Math.PI, pose: 'hold' },
+        { x: medX(spec, -5.8), z: spec.cz + 3.4, face: Math.PI, pose: 'stand' },
+        { x: medX(spec, 16.4), z: spec.cz + 0.4, face: 0, pose: 'coffee' },
+      ];
+    }
     return [
       { x: medX(spec, -10.5), z: spec.cz + 1.4, face: Math.PI, pose: 'hold' },
       { x: medX(spec, -2.5), z: spec.cz + 2.8, face: Math.PI, pose: 'stand' },
-      { x: medX(spec, 6.0), z: spec.cz - 2.2, face: 0, pose: 'readDoc' },
+      { x: medX(spec, 16.4), z: spec.cz + 1.2, face: 0, pose: 'readDoc' },
     ];
   }
 
@@ -2121,7 +2557,9 @@ export class DistrictSim {
                 ? 'Rotating 24h Medical Cross Beacon active'
                 : bId === 'realestate'
                   ? 'Rooftop tower crane & green pergola terrace active'
-                  : 'HVAC plant & skylight housing',
+                  : bId === 'bank'
+                    ? 'Sovereign Reserve Sky-Rotunda & Brass Vault Lantern Crown'
+                    : 'HVAC plant & skylight housing',
           },
         ],
       };

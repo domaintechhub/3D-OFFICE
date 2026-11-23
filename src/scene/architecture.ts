@@ -32,6 +32,7 @@ import {
   type WorkScreenRef,
 } from './constants';
 import type { MaterialLibrary } from './materials';
+import type { WarmLightAnchor } from './districtBuildings';
 import {
   armchair,
   boxAt,
@@ -152,7 +153,7 @@ export interface ArchitectureHandles {
   sculptureCore: THREE.Mesh;
   sculptureHalo: THREE.Sprite;
   streetGlows: THREE.Sprite[];
-  interiorWarmLights: THREE.PointLight[];
+  interiorWarmLights: WarmLightAnchor[];
   roofFans: THREE.Group[];
   districtBuildings: Map<BuildingId, DistrictBuildingHandle>;
   trafficLights: TrafficLightSystem;
@@ -256,7 +257,7 @@ export function buildSceneArchitecture(
   const monitorPicks: MonitorPickTarget[] = [];
   const cabs: Record<number, LiftCabState> = {};
   const officeChairs: OfficeChairHandle[] = [];
-  const interiorWarmLights: THREE.PointLight[] = [];
+  const interiorWarmLights: WarmLightAnchor[] = [];
   const streetGlows: THREE.Sprite[] = [];
   const roofFans: THREE.Group[] = [];
 
@@ -692,7 +693,6 @@ export function buildSceneArchitecture(
       color: 0xdbeafe,
       roughness: 0.38,
       metalness: 0.02,
-      transmission: 0.42,
       transparent: true,
       opacity: 0.68,
     });
@@ -1515,19 +1515,11 @@ export function buildSceneArchitecture(
     for (let k = 0; k < 4; k++) plant(rec, p[0], 0.5, 6.5 + k * 0.75, 0.55, p[1] + k, M);
   });
 
-  const warmL = new THREE.PointLight(0xffb469, 1.6, 20, 2);
-  warmL.position.set(-5.2, 3.4, 3.2);
-  rec.add(warmL);
-  interiorWarmLights.push(warmL);
-
-  const warmR = new THREE.PointLight(0xffb469, 1.6, 20, 2);
-  warmR.position.set(5.2, 3.4, 3.2);
-  rec.add(warmR);
-  interiorWarmLights.push(warmR);
-
-  const violetL = new THREE.PointLight(0x64b5ff, 1.15, 11, 2);
-  violetL.position.set(0, 3.1, 1.7);
-  rec.add(violetL);
+  interiorWarmLights.push(
+    { x: -5.2, y: 3.4, z: 3.2, color: 0xffb469, distance: 20, baseScale: 1.33, floor: 0, buildingId: 'hub' },
+    { x: 5.2, y: 3.4, z: 3.2, color: 0xffb469, distance: 20, baseScale: 1.33, floor: 0, buildingId: 'hub' },
+    { x: 0, y: 3.1, z: 1.7, color: 0x64b5ff, distance: 11, baseScale: 0.96, floor: 0, buildingId: 'hub' }
+  );
 
   const cove = new THREE.Mesh(
     new THREE.CircleGeometry(3.2, 48),

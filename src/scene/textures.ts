@@ -677,14 +677,19 @@ export function buildCoreTextures() {
   });
 
   const carpetTex = makeCanvasTex('carpet', 256, 256, (g, W, H) => {
-    g.fillStyle = '#6c6a64';
-    g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 11000; i++) {
-      const v = Math.random() < 0.5 ? 84 + ((Math.random() * 38) | 0) : 118 + ((Math.random() * 52) | 0);
-      g.fillStyle = `rgba(${v},${v - 2},${v - 6},0.5)`;
-      g.fillRect(Math.random() * W, Math.random() * H, 1.6, 1.6);
+    const img = g.createImageData(W, H);
+    const d = img.data;
+    let seed = 4219;
+    for (let i = 0; i < d.length; i += 4) {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      const v = 90 + ((seed >>> 24) % 48);
+      d[i] = v;
+      d[i + 1] = v - 2;
+      d[i + 2] = v - 6;
+      d[i + 3] = 255;
     }
-    g.strokeStyle = 'rgba(42,40,38,0.12)';
+    g.putImageData(img, 0, 0);
+    g.strokeStyle = 'rgba(42,40,38,0.14)';
     g.lineWidth = 1;
     for (let i = 0; i < W; i += 64) {
       g.beginPath();
@@ -933,12 +938,12 @@ export function buildCoreTextures() {
   tileRoughness.wrapS = tileRoughness.wrapT = THREE.RepeatWrapping;
   tileRoughness.repeat.set(6, 3);
 
-  // Exterior interlocking charcoal/slate cobblestone pavers (albedo + normal + roughness, 512x512)
-  const paveTex = makeCanvasTex('pave_cobble', 512, 512, (g, W, H) => {
-    g.fillStyle = '#33363b'; // recessed stone joint mortar
+  // Exterior interlocking charcoal/slate cobblestone pavers (fast tileable 256x256)
+  const paveTex = makeCanvasTex('pave_cobble', 256, 256, (g, W, H) => {
+    g.fillStyle = '#33363b';
     g.fillRect(0, 0, W, H);
-    const rows = 8;
-    const cols = 4;
+    const rows = 6;
+    const cols = 3;
     const rh = H / rows;
     const cw = W / cols;
     const tones = ['#575c63', '#60666e', '#4f545b', '#676d75', '#545860', '#5d6169'];
@@ -952,32 +957,23 @@ export function buildCoreTextures() {
       for (let c = -1; c <= cols; c++) {
         const bx = c * cw + xOff;
         const by = r * rh;
-        const baseCol = tones[Math.floor(nextR() * tones.length)];
-        g.fillStyle = baseCol;
-        rr(g, bx + 2.5, by + 2.5, cw - 5, rh - 5, 4);
+        g.fillStyle = tones[Math.floor(nextR() * tones.length)];
+        rr(g, bx + 2, by + 2, cw - 4, rh - 4, 3);
         g.fill();
-        // Top highlight chamfer & bottom shadow edge
         g.fillStyle = 'rgba(255,255,255,0.08)';
-        g.fillRect(bx + 4, by + 3, cw - 8, 2.5);
+        g.fillRect(bx + 3, by + 2.5, cw - 6, 2);
         g.fillStyle = 'rgba(12,14,18,0.18)';
-        g.fillRect(bx + 4, by + rh - 5.5, cw - 8, 2.5);
-        // Subtle mineral speckles per cobble
-        for (let k = 0; k < 28; k++) {
-          const sx = bx + 4 + nextR() * (cw - 8);
-          const sy = by + 4 + nextR() * (rh - 8);
-          g.fillStyle = nextR() < 0.5 ? 'rgba(220,224,230,0.07)' : 'rgba(22,24,28,0.10)';
-          g.fillRect(sx, sy, 1.5 + nextR() * 2.5, 1.5 + nextR() * 2.5);
-        }
+        g.fillRect(bx + 3, by + rh - 4.5, cw - 6, 2);
       }
     }
   });
   paveTex.wrapS = paveTex.wrapT = THREE.RepeatWrapping;
 
-  const paveNormal = heightCanvasToNormalTex('pave_cobble', 512, 512, (g, W, H) => {
+  const paveNormal = heightCanvasToNormalTex('pave_cobble', 256, 256, (g, W, H) => {
     g.fillStyle = '#262626';
     g.fillRect(0, 0, W, H);
-    const rows = 8;
-    const cols = 4;
+    const rows = 6;
+    const cols = 3;
     const rh = H / rows;
     const cw = W / cols;
     let seed = 23;
@@ -992,22 +988,17 @@ export function buildCoreTextures() {
         const by = r * rh;
         const base = 172 + Math.floor(nextR() * 34);
         g.fillStyle = `rgb(${base},${base},${base})`;
-        rr(g, bx + 3, by + 3, cw - 6, rh - 6, 4);
+        rr(g, bx + 2, by + 2, cw - 4, rh - 4, 3);
         g.fill();
-        for (let k = 0; k < 32; k++) {
-          const v = 135 + Math.floor(nextR() * 70);
-          g.fillStyle = `rgb(${v},${v},${v})`;
-          g.fillRect(bx + 5 + nextR() * (cw - 10), by + 5 + nextR() * (rh - 10), 2 + nextR() * 3, 2 + nextR() * 3);
-        }
       }
     }
-  }, 2.6);
+  }, 2.4);
 
-  const paveRoughness = makeCanvasTex('pave_cobble_rough', 512, 512, (g, W, H) => {
+  const paveRoughness = makeCanvasTex('pave_cobble_rough', 256, 256, (g, W, H) => {
     g.fillStyle = '#ececec';
     g.fillRect(0, 0, W, H);
-    const rows = 8;
-    const cols = 4;
+    const rows = 6;
+    const cols = 3;
     const rh = H / rows;
     const cw = W / cols;
     let seed = 41;
@@ -1022,19 +1013,19 @@ export function buildCoreTextures() {
         const by = r * rh;
         const rv = 152 + Math.floor(nextR() * 44);
         g.fillStyle = `rgb(${rv},${rv},${rv})`;
-        rr(g, bx + 2.5, by + 2.5, cw - 5, rh - 5, 4);
+        rr(g, bx + 2, by + 2, cw - 4, rh - 4, 3);
         g.fill();
       }
     }
   }, false);
   paveRoughness.wrapS = paveRoughness.wrapT = THREE.RepeatWrapping;
 
-  // Warm terracotta / clay herringbone promenade border brick (Reference Image 2)
-  const brickPaverTex = makeCanvasTex('brick_paver', 512, 512, (g, W, H) => {
+  // Warm terracotta / clay herringbone promenade border brick (fast tileable 256x256)
+  const brickPaverTex = makeCanvasTex('brick_paver', 256, 256, (g, W, H) => {
     g.fillStyle = '#6c5a4f';
     g.fillRect(0, 0, W, H);
-    const rows = 10;
-    const cols = 5;
+    const rows = 8;
+    const cols = 4;
     const rh = H / rows;
     const cw = W / cols;
     const tones = ['#a4634c', '#b37159', '#945640', '#ab6a53', '#8c4f3b', '#ba7961'];
@@ -1049,20 +1040,18 @@ export function buildCoreTextures() {
         const bx = c * cw + xOff;
         const by = r * rh;
         g.fillStyle = tones[Math.floor(nextR() * tones.length)];
-        rr(g, bx + 2, by + 2, cw - 4, rh - 4, 2.5);
+        rr(g, bx + 1.5, by + 1.5, cw - 3, rh - 3, 2);
         g.fill();
-        g.fillStyle = 'rgba(255,232,216,0.09)';
-        g.fillRect(bx + 3, by + 2.5, cw - 6, 2);
       }
     }
   });
   brickPaverTex.wrapS = brickPaverTex.wrapT = THREE.RepeatWrapping;
 
-  const brickPaverNormal = heightCanvasToNormalTex('brick_paver', 512, 512, (g, W, H) => {
+  const brickPaverNormal = heightCanvasToNormalTex('brick_paver', 256, 256, (g, W, H) => {
     g.fillStyle = '#303030';
     g.fillRect(0, 0, W, H);
-    const rows = 10;
-    const cols = 5;
+    const rows = 8;
+    const cols = 4;
     const rh = H / rows;
     const cw = W / cols;
     for (let r = 0; r < rows; r++) {
@@ -1072,87 +1061,91 @@ export function buildCoreTextures() {
         const by = r * rh;
         const v = 178 + (((r * 7 + c * 13) & 3) * 10);
         g.fillStyle = `rgb(${v},${v},${v})`;
-        rr(g, bx + 2.5, by + 2.5, cw - 5, rh - 5, 2.5);
+        rr(g, bx + 2, by + 2, cw - 4, rh - 4, 2);
         g.fill();
       }
     }
-  }, 2.3);
+  }, 2.2);
 
-  // Asphalt mineral aggregate (darker wet-look granite bitumen matching Reference Image 2)
-  const asphaltTex = makeCanvasTex('asphalt_v2', 512, 512, (g, W, H) => {
-    g.fillStyle = '#2b2f35';
-    g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 60; i++) {
-      const v = 34 + ((Math.random() * 24) | 0);
-      g.fillStyle = `rgba(${v},${v + 2},${v + 5},0.18)`;
-      circ(g, Math.random() * W, Math.random() * H, 14 + Math.random() * 44);
+  // Asphalt mineral aggregate via fast direct ImageData synthesis (100x faster than 16,000 fillRect calls)
+  const asphaltTex = makeCanvasTex('asphalt_v2', 256, 256, (g, W, H) => {
+    const img = g.createImageData(W, H);
+    const d = img.data;
+    let seed = 8817;
+    for (let i = 0; i < d.length; i += 4) {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      const v = 36 + ((seed >>> 24) % 44);
+      d[i] = v;
+      d[i + 1] = v + 2;
+      d[i + 2] = v + 5;
+      d[i + 3] = 255;
     }
-    for (let i = 0; i < 16000; i++) {
-      const v = 34 + ((Math.random() * 58) | 0);
-      g.fillStyle = `rgb(${v},${v + 2},${v + 5})`;
-      g.fillRect(Math.random() * W, Math.random() * H, 1.3 + Math.random() * 1.8, 1.3 + Math.random() * 1.8);
-    }
+    g.putImageData(img, 0, 0);
   });
   asphaltTex.wrapS = asphaltTex.wrapT = THREE.RepeatWrapping;
   asphaltTex.repeat.set(20, 5);
 
-  const asphaltNormal = heightCanvasToNormalTex('asphalt_v2', 512, 512, (g, W, H) => {
-    g.fillStyle = '#808080';
-    g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 16000; i++) {
-      const v = 70 + ((Math.random() * 120) | 0);
-      g.fillStyle = `rgb(${v},${v},${v})`;
-      g.fillRect(Math.random() * W, Math.random() * H, 2, 2);
+  const asphaltNormal = heightCanvasToNormalTex('asphalt_v2', 256, 256, (g, W, H) => {
+    const img = g.createImageData(W, H);
+    const d = img.data;
+    let seed = 3191;
+    for (let i = 0; i < d.length; i += 4) {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      const v = 80 + ((seed >>> 24) % 96);
+      d[i] = v;
+      d[i + 1] = v;
+      d[i + 2] = v;
+      d[i + 3] = 255;
     }
-  }, 2.4);
+    g.putImageData(img, 0, 0);
+  }, 2.1);
   asphaltNormal.repeat.set(20, 5);
 
-  const asphaltRoughness = makeCanvasTex('asphalt_rough_v2', 512, 512, (g, W, H) => {
+  const asphaltRoughness = makeCanvasTex('asphalt_rough_v2', 256, 256, (g, W, H) => {
     g.fillStyle = '#c8c8c8';
     g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 4200; i++) {
+    for (let i = 0; i < 650; i++) {
       const v = 138 + ((Math.random() * 98) | 0);
       g.fillStyle = `rgb(${v},${v},${v})`;
-      circ(g, Math.random() * W, Math.random() * H, 2 + Math.random() * 10);
+      circ(g, Math.random() * W, Math.random() * H, 2 + Math.random() * 8);
     }
   }, false);
   asphaltRoughness.wrapS = asphaltRoughness.wrapT = THREE.RepeatWrapping;
   asphaltRoughness.repeat.set(20, 5);
 
-  // Natural organic sunlit grass turf (replaces flat neon green soil with realistic savannah meadow turf)
-  const lawnTex = makeCanvasTex('natural_lawn', 512, 512, (g, W, H) => {
+  // Natural organic sunlit grass turf (fast crisp 256x256 blades)
+  const lawnTex = makeCanvasTex('natural_lawn', 256, 256, (g, W, H) => {
     g.fillStyle = '#486632';
     g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 70; i++) {
-      const rg = g.createRadialGradient(Math.random() * W, Math.random() * H, 2, Math.random() * W, Math.random() * H, 36 + Math.random() * 54);
-      const warm = i % 3 === 0;
-      rg.addColorStop(0, warm ? 'rgba(116,136,64,0.28)' : 'rgba(54,82,38,0.28)');
+    for (let i = 0; i < 36; i++) {
+      const x = Math.random() * W;
+      const y = Math.random() * H;
+      const rg = g.createRadialGradient(x, y, 2, x, y, 24 + Math.random() * 34);
+      rg.addColorStop(0, i % 3 === 0 ? 'rgba(116,136,64,0.28)' : 'rgba(54,82,38,0.28)');
       rg.addColorStop(1, 'rgba(72,102,50,0)');
       g.fillStyle = rg;
       g.fillRect(0, 0, W, H);
     }
     const bladeCols = ['#3c5928', '#527337', '#6a8742', '#7d924b', '#334c22', '#8fa059'];
-    for (let i = 0; i < 18000; i++) {
-      g.strokeStyle = bladeCols[(Math.random() * bladeCols.length) | 0];
-      g.globalAlpha = 0.45 + Math.random() * 0.45;
-      g.lineWidth = 1 + Math.random() * 1.1;
+    for (let i = 0; i < 2400; i++) {
+      g.strokeStyle = bladeCols[i % bladeCols.length];
+      g.globalAlpha = 0.55;
+      g.lineWidth = 1.2;
       const x = Math.random() * W;
       const y = Math.random() * H;
-      const lean = (Math.random() - 0.5) * 4;
-      const bh = 3 + Math.random() * 6;
       g.beginPath();
       g.moveTo(x, y);
-      g.lineTo(x + lean, y - bh);
+      g.lineTo(x + (Math.random() - 0.5) * 3.5, y - (3 + Math.random() * 5));
       g.stroke();
     }
     g.globalAlpha = 1;
   });
   lawnTex.wrapS = lawnTex.wrapT = THREE.RepeatWrapping;
 
-  const grassNormal = heightCanvasToNormalTex('grass_v2', 512, 512, (g, W, H) => {
+  const grassNormal = heightCanvasToNormalTex('grass_v2', 256, 256, (g, W, H) => {
     g.fillStyle = '#7c7c7c';
     g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 14000; i++) {
+    for (let i = 0; i < 2000; i++) {
       const v = 56 + ((Math.random() * 145) | 0);
       g.strokeStyle = `rgb(${v},${v},${v})`;
       g.lineWidth = 1.4;
@@ -1160,40 +1153,26 @@ export function buildCoreTextures() {
       const y = Math.random() * H;
       g.beginPath();
       g.moveTo(x, y);
-      g.lineTo(x + (Math.random() - 0.5) * 3, y - (3 + Math.random() * 5));
+      g.lineTo(x + (Math.random() - 0.5) * 3, y - (3 + Math.random() * 4));
       g.stroke();
     }
-  }, 2.4);
+  }, 2.1);
   grassNormal.repeat.set(24, 24);
 
-  // Honed architectural Terrazzo floor (District Bank / Medical / Travel / Dealership)
-  const terrazzoTex = makeCanvasTex('terrazzo_floor', 512, 512, (g, W, H) => {
+  // Honed architectural Terrazzo floor (fast 256x256 without save/restore churn)
+  const terrazzoTex = makeCanvasTex('terrazzo_floor', 256, 256, (g, W, H) => {
     g.fillStyle = '#dad7cf';
     g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 28; i++) {
-      const rg = g.createRadialGradient(Math.random() * W, Math.random() * H, 4, Math.random() * W, Math.random() * H, 40 + Math.random() * 60);
-      rg.addColorStop(0, 'rgba(196,190,178,0.18)');
-      rg.addColorStop(1, 'rgba(218,215,207,0)');
-      g.fillStyle = rg;
-      g.fillRect(0, 0, W, H);
-    }
     const chips = ['#767a80', '#b5afa2', '#9b8d7a', '#ebe8e0', '#5b6068', '#c6b497'];
-    for (let i = 0; i < 2400; i++) {
-      g.fillStyle = chips[(Math.random() * chips.length) | 0];
+    for (let i = 0; i < 640; i++) {
+      g.fillStyle = chips[i % chips.length];
       const cx = Math.random() * W;
       const cy = Math.random() * H;
-      const rx = 1.2 + Math.random() * 3.8;
-      const ry = 1.0 + Math.random() * 2.8;
-      g.save();
-      g.translate(cx, cy);
-      g.rotate(Math.random() * Math.PI);
-      g.fillRect(-rx * 0.5, -ry * 0.5, rx, ry);
-      g.restore();
+      g.fillRect(cx, cy, 1.5 + Math.random() * 3.2, 1.2 + Math.random() * 2.8);
     }
-    // Thin honed brass/stone control joints every 256px
     g.strokeStyle = 'rgba(128,118,100,0.32)';
-    g.lineWidth = 2;
-    for (let i = 0; i < W; i += 256) {
+    g.lineWidth = 1.5;
+    for (let i = 0; i < W; i += 128) {
       g.beginPath();
       g.moveTo(i, 0);
       g.lineTo(i, H);
@@ -1206,12 +1185,12 @@ export function buildCoreTextures() {
   });
   terrazzoTex.wrapS = terrazzoTex.wrapT = THREE.RepeatWrapping;
 
-  const terrazzoNormal = heightCanvasToNormalTex('terrazzo_floor', 512, 512, (g, W, H) => {
+  const terrazzoNormal = heightCanvasToNormalTex('terrazzo_floor', 256, 256, (g, W, H) => {
     g.fillStyle = '#929292';
     g.fillRect(0, 0, W, H);
     g.strokeStyle = '#383838';
-    g.lineWidth = 3;
-    for (let i = 0; i < W; i += 256) {
+    g.lineWidth = 2;
+    for (let i = 0; i < W; i += 128) {
       g.beginPath();
       g.moveTo(i, 0);
       g.lineTo(i, H);
@@ -1223,17 +1202,17 @@ export function buildCoreTextures() {
     }
   }, 1.5);
 
-  const terrazzoRoughness = makeCanvasTex('terrazzo_rough', 512, 512, (g, W, H) => {
+  const terrazzoRoughness = makeCanvasTex('terrazzo_rough', 256, 256, (g, W, H) => {
     g.fillStyle = '#5c5c5c';
     g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 30; i++) {
       const v = 74 + ((Math.random() * 36) | 0);
       g.fillStyle = `rgba(${v},${v},${v},0.35)`;
-      circ(g, Math.random() * W, Math.random() * H, 12 + Math.random() * 34);
+      circ(g, Math.random() * W, Math.random() * H, 10 + Math.random() * 26);
     }
     g.strokeStyle = '#c8c8c8';
-    g.lineWidth = 3;
-    for (let i = 0; i < W; i += 256) {
+    g.lineWidth = 2;
+    for (let i = 0; i < W; i += 128) {
       g.beginPath();
       g.moveTo(i, 0);
       g.lineTo(i, H);

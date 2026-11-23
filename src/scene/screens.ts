@@ -1702,7 +1702,7 @@ export function updateAllScreens(
       if (b.mesh) {
         if (!_tvFr.intersectsObject(b.mesh)) continue;
         b.mesh.getWorldPosition(_wsV);
-        if (_wsV.distanceTo(camera.position) > 135) continue;
+        if (_wsV.distanceTo(camera.position) > 95) continue;
       }
       b.fn(b.g, b.w, b.h, t);
       b.tx.needsUpdate = true;
@@ -1715,7 +1715,11 @@ export function updateAllScreens(
     for (let i = 0; i < reg.wallTVs.length; i++) {
       const tv = reg.wallTVs[i];
       if ((i + tvTick) % 2) continue;
-      if (tv.mesh && !_tvFr.intersectsObject(tv.mesh)) continue;
+      if (tv.mesh) {
+        if (!_tvFr.intersectsObject(tv.mesh)) continue;
+        tv.mesh.getWorldPosition(_wsV);
+        if (_wsV.distanceTo(camera.position) > 65) continue;
+      }
       drawWallTV(tv, t);
     }
   }

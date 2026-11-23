@@ -35,11 +35,26 @@ import {
 import { createCustomBoardScreen, createExecScreen, type ScreenRegistry } from './screens';
 import { getMaxAnisotropy, makeCanvasTex, rr } from './textures';
 import { getWorkstationProfile } from './workstations';
+import { buildApexDealershipWholeBuilding } from './dealershipInterior';
+import { buildBitVaultWholeBuilding } from './cryptoInterior';
+import { buildVitalCareWholeBuilding } from './medicalInterior';
+import { buildNairobiTrustBankWholeBuilding } from './bankInterior';
 
 export interface DistrictChairHandle extends OfficeChairHandle {
   buildingId: BuildingId;
   groundY: number;
   floorH: number;
+}
+
+export interface WarmLightAnchor {
+  x: number;
+  y: number;
+  z: number;
+  color: number;
+  distance: number;
+  baseScale: number;
+  floor?: number;
+  buildingId?: BuildingId;
 }
 
 export interface DistrictBuildingHandle {
@@ -52,7 +67,7 @@ export interface DistrictBuildingHandle {
   monitors: MonitorPickTarget[];
   pickMeshes: THREE.Object3D[];
   rotatingProps: Array<{ obj: THREE.Object3D; speed: number; axis: 'x' | 'y' | 'z' }>;
-  warmLights: THREE.PointLight[];
+  warmLights: WarmLightAnchor[];
 }
 
 const SLAB_THICK = 0.24;
@@ -180,24 +195,6 @@ function makeDeskAt(
   [-w * 0.44, w * 0.44].forEach((lx) => {
     boxAt(parent, 0.06, 0.72, d * 0.82, x + lx, y + 0.36, z, M.metal, false, true, 0.008);
   });
-}
-
-function makeAtmKiosk(
-  parent: THREE.Object3D,
-  x: number,
-  y: number,
-  z: number,
-  rotY: number,
-  M: MaterialLibrary
-) {
-  const g = new THREE.Group();
-  g.position.set(x, y, z);
-  g.rotation.y = rotY;
-  boxAt(g, 0.92, 1.95, 0.76, 0, 0.975, 0, M.dark, true, true, 0.04);
-  boxAt(g, 0.78, 0.26, 0.04, 0, 1.72, 0.38, new THREE.MeshBasicMaterial({ color: 0x2563eb }), false, false);
-  boxAt(g, 0.56, 0.42, 0.03, 0, 1.32, 0.385, new THREE.MeshBasicMaterial({ color: 0x38bdf8 }), false, false);
-  boxAt(g, 0.62, 0.08, 0.26, 0, 0.96, 0.42, M.metal, false, false, 0.01);
-  parent.add(g);
 }
 
 type DistrictArchStyle = 'tower' | 'blade' | 'stone_pergola' | 'shed_seam';
@@ -676,7 +673,7 @@ export function buildDistrictBuildings(
     const monitors: MonitorPickTarget[] = [];
     const pickMeshes: THREE.Object3D[] = [];
     const rotatingProps: DistrictBuildingHandle['rotatingProps'] = [];
-    const warmLights: THREE.PointLight[] = [];
+    const warmLights: WarmLightAnchor[] = [];
 
     const accentMat = new THREE.MeshStandardMaterial({
       color: spec.accentHex,
@@ -809,11 +806,14 @@ export function buildDistrictBuildings(
         pickMeshes.push(slab);
       } else if (style === 'tower') {
         // Sweeping rounded-corner wraparound bullnose balcony slab (Reference Image 2)
-        const slab = new THREE.Mesh(
-          getRoundedSlabGeo(spec.w + 2.4, spec.d + 2.4, 3.0, 0.34, 0.08),
-          archMats.bullnoseConcrete
-        );
-        slab.position.set(spec.cx, yFloor - 0.03, spec.cz);
+        const towerSlabGeo =
+          spec.id === 'crypto' && lv >= 1
+            ? getRoundedSlabWithVoidGeo(spec.w + 2.4, spec.d + 2.4, 3.0, 0.34, 4.35, 10.65, -9.65, -2.45, 0.08)
+            : spec.id === 'bank' && lv >= 1
+              ? getRoundedSlabWithVoidGeo(spec.w + 2.4, spec.d + 2.4, 3.0, 0.34, 5.1, 10.6, -1.1, 6.9, 0.08)
+              : getRoundedSlabGeo(spec.w + 2.4, spec.d + 2.4, 3.0, 0.34, 0.08);
+        const slab = new THREE.Mesh(towerSlabGeo, archMats.bullnoseConcrete);
+        slab.position.set(spec.cx, spec.id === 'crypto' ? yFloor - 0.05 : yFloor - 0.03, spec.cz);
         slab.castShadow = true;
         slab.receiveShadow = true;
         lg.add(slab);
@@ -858,12 +858,15 @@ export function buildDistrictBuildings(
         });
       } else if (style === 'blade') {
         // Cantilevered sculptural white rounded floor plate projecting toward doorSide + cedar soffit (Reference Image 3)
+        // Note: blade slab sits at spec.cz + dirZ * 0.42; medical dirZ = +1 -> local void Z = worldZOff - 0.42
         const bladeSlabGeo =
           spec.id === 'travel' && lv >= 1
             ? getRoundedSlabWithVoidGeo(spec.w + 1.8, spec.d + 2.0, 2.1, 0.3, 10.25, 13.25, 0.37, 4.17, 0.07)
-            : getRoundedSlabGeo(spec.w + 1.8, spec.d + 2.0, 2.1, 0.3, 0.07);
+            : spec.id === 'medical' && lv >= 1
+              ? getRoundedSlabWithVoidGeo(spec.w + 1.8, spec.d + 2.0, 2.1, 0.3, 3.2, 8.8, -7.22, -1.02, 0.07)
+              : getRoundedSlabGeo(spec.w + 1.8, spec.d + 2.0, 2.1, 0.3, 0.07);
         const slab = new THREE.Mesh(bladeSlabGeo, archMats.stuccoWhite);
-        slab.position.set(spec.cx, yFloor - 0.02, spec.cz + dirZ * 0.42);
+        slab.position.set(spec.cx, spec.id === 'medical' ? yFloor - 0.03 : yFloor - 0.02, spec.cz + dirZ * 0.42);
         slab.castShadow = true;
         slab.receiveShadow = true;
         lg.add(slab);
@@ -953,9 +956,23 @@ export function buildDistrictBuildings(
         const seamSlabGeo =
           spec.id === 'logistics' && lv >= 1
             ? getRoundedSlabWithVoidGeo(spec.w + 1.0, spec.d + 1.0, 1.4, 0.28, -14.32, -11.28, 4.15, 7.95, 0.05)
-            : getRoundedSlabGeo(spec.w + 1.0, spec.d + 1.0, 1.4, 0.28, 0.05);
+            : spec.id === 'dealership' && lv === 1
+              ? getRoundedSlabWithVoidsGeo(
+                  spec.w + 1.0,
+                  spec.d + 1.0,
+                  1.4,
+                  0.28,
+                  [
+                    [-3.45, 3.45, -2.45, 3.25],
+                    [7.84, 9.68, -3.72, 4.65],
+                  ],
+                  0.05
+                )
+              : spec.id === 'dealership' && lv === 2
+                ? getRoundedSlabWithVoidGeo(spec.w + 1.0, spec.d + 1.0, 1.4, 0.28, -9.68, -7.84, -3.72, 4.65, 0.05)
+                : getRoundedSlabGeo(spec.w + 1.0, spec.d + 1.0, 1.4, 0.28, 0.05);
         const slab = new THREE.Mesh(seamSlabGeo, slabFloorMat);
-        slab.position.set(spec.cx, yFloor, spec.cz);
+        slab.position.set(spec.cx, spec.id === 'dealership' ? yFloor - 0.02 : yFloor, spec.cz);
         slab.castShadow = true;
         slab.receiveShadow = true;
         lg.add(slab);
@@ -983,23 +1000,45 @@ export function buildDistrictBuildings(
               ],
               0.02
             )
-          : (spec.id === 'realestate' && lv >= 1 && lv < spec.floors - 1)
-            ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, -12.25, -9.25, -0.05, 3.75, 0.02)
-            : spec.id === 'travel' && lv < spec.floors - 1
-              ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, 10.25, 13.25, -0.05, 3.75, 0.02)
-              : spec.id === 'tourism' && lv < spec.floors - 1
-                ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, 11.22, 14.28, 4.15, 7.95, 0.02)
-                : spec.id === 'logistics' && lv < spec.floors - 1
-                  ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, -14.32, -11.28, 4.15, 7.95, 0.02)
-                  : spec.id === 'restaurant' && lv < spec.floors - 1
-                    ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, -9.52, -6.48, 2.85, 6.65, 0.02)
-                    : getRoundedSlabGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, 0.02);
+          : spec.id === 'dealership' && lv === 0
+            ? getRoundedSlabWithVoidsGeo(
+                spec.w - 0.2,
+                spec.d - 0.2,
+                1.5,
+                0.16,
+                [
+                  [-3.45, 3.45, -2.45, 3.25],
+                  [7.84, 9.68, -3.72, 4.65],
+                ],
+                0.02
+              )
+            : spec.id === 'dealership' && lv === 1
+              ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, -9.68, -7.84, -3.72, 4.65, 0.02)
+              : (spec.id === 'realestate' && lv >= 1 && lv < spec.floors - 1)
+                ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, -12.25, -9.25, -0.05, 3.75, 0.02)
+                : spec.id === 'travel' && lv < spec.floors - 1
+                  ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, 10.25, 13.25, -0.05, 3.75, 0.02)
+                  : spec.id === 'tourism' && lv < spec.floors - 1
+                    ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, 11.22, 14.28, 4.15, 7.95, 0.02)
+                    : spec.id === 'logistics' && lv < spec.floors - 1
+                      ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, -14.32, -11.28, 4.15, 7.95, 0.02)
+                      : spec.id === 'restaurant' && lv < spec.floors - 1
+                        ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, -9.52, -6.48, 2.85, 6.65, 0.02)
+                        : spec.id === 'crypto' && lv < spec.floors - 1
+                          ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, 4.35, 10.65, -9.65, -2.45, 0.02)
+                          : spec.id === 'medical' && lv < spec.floors - 1
+                            ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, 3.2, 8.8, -6.8, -0.6, 0.02)
+                            : spec.id === 'bank' && lv < spec.floors - 1
+                              ? getRoundedSlabWithVoidGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, 5.1, 10.6, -1.1, 6.9, 0.02)
+                              : getRoundedSlabGeo(spec.w - 0.2, spec.d - 0.2, 1.5, 0.16, 0.02);
       const cSlab = new THREE.Mesh(cSlabGeo, M.white);
       cSlab.position.set(spec.cx, ceilY, spec.cz);
       cg.add(cSlab);
       pickMeshes.push(cSlab);
       const lxSpan = Math.max(4, spec.w - 8);
-      if (spec.id === 'realestate' && lv === 0) {
+      if (spec.id === 'dealership' || spec.id === 'crypto' || spec.id === 'medical' || spec.id === 'bank') {
+        // Custom Apex, BitVault, VitalCare & Nairobi Trust Bank architectural ceilings are built by their whole-building interior modules
+      } else if (spec.id === 'realestate' && lv === 0) {
         ceilingLinearLight(cg, spec.cx, ceilY - 0.08, spec.cz + spec.d * 0.22, lxSpan, 0.26, M);
         ceilingLinearLight(cg, spec.cx + 5.8, ceilY - 0.08, spec.cz - spec.d * 0.22, 10.5, 0.26, M);
       } else {
@@ -1012,22 +1051,35 @@ export function buildDistrictBuildings(
 
       // Floor 0 interior props per niche, OR upper floor office/lounge setups
       if (lv === 0) {
-        const light = new THREE.PointLight(
-          spec.id === 'restaurant' ? 0xffd2a0 : spec.id === 'medical' ? 0xdffaf4 : 0xfff3de,
-          1.2,
-          spec.w + 8
-        );
-        light.position.set(spec.cx, floorSurfaceY + 3.1, spec.cz);
-        lg.add(light);
-        warmLights.push(light);
+        warmLights.push({
+          x: spec.cx,
+          y: floorSurfaceY + 3.1,
+          z: spec.cz,
+          color:
+            spec.id === 'restaurant'
+              ? 0xffd2a0
+              : spec.id === 'medical'
+                ? 0xdffaf4
+                : spec.id === 'crypto'
+                  ? 0xe6fff5
+                  : 0xfff3de,
+          distance: spec.w + 8,
+          baseScale: 1.0,
+          floor: 0,
+          buildingId: spec.id,
+        });
       } else if (
         (spec.id === 'realestate' && lv >= 1 && lv <= 4) ||
         (spec.id === 'travel' && lv >= 1 && lv <= 3) ||
         (spec.id === 'tourism' && lv >= 1 && lv <= 3) ||
         (spec.id === 'logistics' && lv >= 1 && lv <= 3) ||
-        (spec.id === 'restaurant' && lv >= 1 && lv <= 3)
+        (spec.id === 'restaurant' && lv >= 1 && lv <= 3) ||
+        (spec.id === 'dealership' && lv >= 1 && lv <= 2) ||
+        (spec.id === 'crypto' && lv >= 1 && lv <= 4) ||
+        (spec.id === 'medical' && lv >= 1 && lv <= 4) ||
+        (spec.id === 'bank' && lv >= 1 && lv <= 5)
       ) {
-        // Real Estate L1-L4, Skyline Travel L1-L3, Kenya Safari & Tourism L1-L3, SwiftPort Logistics L1-L3, and Savanna Bistro L1-L3 are custom-built below
+        // Custom-built upper floors below
       } else {
         // Upper floors populated cleanly with glass partition accents, desks, chairs, shelves & live monitors
         const deskXs = spec.w >= 30 ? [-10, 0, 10] : [-4.8, 4.8];
@@ -1423,10 +1475,16 @@ export function buildDistrictBuildings(
       const rg1 = levelGroups[1];
       if (rg1) {
         const rfy1 = spec.groundY + spec.floorH + SLAB_THICK * 0.5;
-        const r1Light = new THREE.PointLight(0xffdfb8, 1.24, 24);
-        r1Light.position.set(spec.cx, rfy1 + 3.05, spec.cz);
-        rg1.add(r1Light);
-        warmLights.push(r1Light);
+        warmLights.push({
+          x: spec.cx,
+          y: rfy1 + 3.05,
+          z: spec.cz,
+          color: 0xffdfb8,
+          distance: 24,
+          baseScale: 1.03,
+          floor: 1,
+          buildingId: spec.id,
+        });
 
         addUpperBistroFloor(rg1, rfy1);
         addBistroCeilingRig(levelCeilings[1], spec.groundY + 2 * spec.floorH - 0.12, [spec.cz - 4.0, spec.cz + 3.6], [spec.cx - 4.0, spec.cx + 4.8]);
@@ -1496,10 +1554,16 @@ export function buildDistrictBuildings(
       const rg2 = levelGroups[2];
       if (rg2) {
         const rfy2 = spec.groundY + 2 * spec.floorH + SLAB_THICK * 0.5;
-        const r2Light = new THREE.PointLight(0xffe4c2, 1.26, 24);
-        r2Light.position.set(spec.cx, rfy2 + 3.05, spec.cz);
-        rg2.add(r2Light);
-        warmLights.push(r2Light);
+        warmLights.push({
+          x: spec.cx,
+          y: rfy2 + 3.05,
+          z: spec.cz,
+          color: 0xffe4c2,
+          distance: 24,
+          baseScale: 1.05,
+          floor: 2,
+          buildingId: spec.id,
+        });
 
         addUpperBistroFloor(rg2, rfy2);
         addBistroCeilingRig(levelCeilings[2], spec.groundY + 3 * spec.floorH - 0.12, [spec.cz - 4.0, spec.cz + 3.6], [spec.cx - 6.0, spec.cx + 5.2]);
@@ -1563,10 +1627,16 @@ export function buildDistrictBuildings(
       const rg3 = levelGroups[3];
       if (rg3) {
         const rfy3 = spec.groundY + 3 * spec.floorH + SLAB_THICK * 0.5;
-        const r3Light = new THREE.PointLight(0xffe7cb, 1.3, 25);
-        r3Light.position.set(spec.cx, rfy3 + 3.1, spec.cz);
-        rg3.add(r3Light);
-        warmLights.push(r3Light);
+        warmLights.push({
+          x: spec.cx,
+          y: rfy3 + 3.1,
+          z: spec.cz,
+          color: 0xffe7cb,
+          distance: 25,
+          baseScale: 1.08,
+          floor: 3,
+          buildingId: spec.id,
+        });
 
         addUpperBistroFloor(rg3, rfy3);
         addBistroCeilingRig(levelCeilings[3], spec.groundY + 4 * spec.floorH - 0.12, [spec.cz - 4.0, spec.cz + 3.6], [spec.cx - 4.8, spec.cx + 5.8]);
@@ -1794,290 +1864,60 @@ export function buildDistrictBuildings(
         }
       }
     } else if (spec.id === 'dealership') {
-      // Cantilevered forecourt showroom canopy with cedar soffit (Reference Image 1)
-      const foreCanopy = new THREE.Mesh(
-        getRoundedSlabGeo(12.8, 3.4, 0.65, 0.34, 0.05),
-        archMats.stuccoWhite
-      );
-      foreCanopy.position.set(spec.doorX, spec.groundY + spec.floorH - 0.18, spec.doorZ + 1.75);
-      foreCanopy.castShadow = true;
-      g0.add(foreCanopy);
-      const foreSoffit = new THREE.Mesh(
-        getRoundedSlabGeo(12.2, 2.9, 0.5, 0.07, 0.015),
-        archMats.timberSoffit
-      );
-      foreSoffit.position.set(spec.doorX, spec.groundY + spec.floorH - 0.34, spec.doorZ + 1.75);
-      g0.add(foreSoffit);
-      [-5.2, 5.2].forEach((px) => {
-        cylAt(g0, 0.16, 0.18, spec.floorH - 0.3, spec.doorX + px, spec.groundY + (spec.floorH - 0.3) * 0.5, spec.doorZ + 2.9, archMats.bronzeMullion, true, true, 14);
+      buildApexDealershipWholeBuilding({
+        spec,
+        levelGroups,
+        levelCeilings,
+        M,
+        archMats,
+        frameDarkMat,
+        accentMat,
+        glassMat,
+        screenReg,
+        registerChair,
+        registerMonitor,
+        pickMeshes,
+        rotatingProps,
+        warmLights,
+        monitors,
       });
-      buildTropicalPalm(g0, spec.cx - spec.w * 0.45, spec.groundY, spec.doorZ + 2.5, 3.9, 515, M, archMats);
-
-      // Apex Motors Showroom: Rotating center car turntable + 2 flanking display vehicles + sales desks
-      const turnGrp = new THREE.Group();
-      turnGrp.position.set(spec.cx, fy, spec.cz + 0.4);
-      g0.add(turnGrp);
-      cylAt(turnGrp, 3.15, 3.25, 0.16, 0, 0.08, 0, M.dark, true, true, 32);
-      cylAt(turnGrp, 3.2, 3.2, 0.03, 0, 0.165, 0, accentMat, false, false, 32);
-      const heroCar = makeCar(0x9e1b24, 'suv', { showroom: true, plateText: 'APEX GT' });
-      heroCar.position.set(0, 0.17, 0);
-      turnGrp.add(heroCar);
-      rotatingProps.push({ obj: turnGrp, speed: 0.28, axis: 'y' });
-
-      const carLeft = makeCar(0x1f3d6e, 'sedan', { showroom: true, plateText: 'APEX EV' });
-      carLeft.position.set(spec.cx - 6.0, fy, spec.cz + 2.0);
-      carLeft.rotation.y = 0.42;
-      g0.add(carLeft);
-
-      const carRight = makeCar(0xcfd6de, 'hatch', { showroom: true, plateText: 'APEX E4' });
-      carRight.position.set(spec.cx + 6.0, fy, spec.cz + 2.0);
-      carRight.rotation.y = -0.42;
-      g0.add(carRight);
-
-      // 2 Sales & Leasing Desks at rear corners
-      [spec.cx - 5.8, spec.cx + 5.8].forEach((dx, i) => {
-        const dz = spec.cz - 5.5;
-        makeDeskAt(g0, dx, fy, dz, 2.3, 1.05, M);
-        registerChair(0, dx, fy, dz - 0.85, 0, i === 0 ? 1 : -1);
-        registerMonitor(
-          0,
-          i,
-          [dx, fy + 0.77, dz + 0.15],
-          Math.PI,
-          dx,
-          dz - 0.85,
-          i === 0 ? 'EV Fleet Advisor' : 'Finance & Lease Manager',
-          'Showroom Sales Gallery'
-        );
-      });
-
-      // Live Showroom Fleet Spec Board
-      const carBoard = createCustomBoardScreen(screenReg, 640, 220, (g, w, h, t) => {
-        g.fillStyle = '#0e1118';
-        g.fillRect(0, 0, w, h);
-        g.fillStyle = '#ef4444';
-        g.fillRect(0, 0, w, 34);
-        g.fillStyle = '#ffffff';
-        g.font = '800 18px "Plus Jakarta Sans", sans-serif';
-        g.textAlign = 'left';
-        g.textBaseline = 'middle';
-        g.fillText('APEX MOTORS · 2026 SHOWROOM FLEET & EV TELEMETRY', 16, 17);
-        const models = [
-          ['Apex GT Crimson SUV', 'AWD Hybrid · 540 km', 'KES 8.4M'],
-          ['Apex Executive Sedan', 'Dual Motor EV · 610 km', 'KES 6.2M'],
-          ['Apex Urban EV Hatch', 'Fast Charge 24m', 'KES 4.8M'],
-        ];
-        models.forEach((m, i) => {
-          const y = 56 + i * 52;
-          g.fillStyle = i === Math.floor(t / 3.5) % 3 ? 'rgba(239,68,68,0.22)' : 'rgba(255,255,255,0.06)';
-          rr(g, 16, y, w - 32, 42, 6);
-          g.fill();
-          g.fillStyle = '#f8fafc';
-          g.font = '700 16px sans-serif';
-          g.fillText(m[0], 28, y + 21);
-          g.fillStyle = '#94a3b8';
-          g.font = '500 14px sans-serif';
-          g.fillText(m[1], 270, y + 21);
-          g.fillStyle = '#fca5a5';
-          g.textAlign = 'right';
-          g.font = '700 16px monospace';
-          g.fillText(m[2], w - 28, y + 21);
-          g.textAlign = 'left';
-        });
-      });
-      boxAt(g0, 5.8, 2.2, 0.14, spec.cx, fy + 2.3, spec.cz - 8.7, frameDarkMat, false, false);
-      const cbMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 1.95), carBoard.mat);
-      cbMesh.position.set(spec.cx, fy + 2.3, spec.cz - 8.62);
-      g0.add(cbMesh);
-      carBoard.setMesh(cbMesh);
     } else if (spec.id === 'bank') {
-      // Sculpted rounded bullnose portico canopy over existing portico piers (preserving obstacles.ts column positions)
-      [-3.8, -1.9, 1.9, 3.8].forEach((ox) => {
-        cylAt(g0, 0.32, 0.36, spec.floorH - 0.12, spec.doorX + ox, spec.groundY + spec.floorH * 0.5, spec.doorZ + 1.4, archMats.stuccoWhite, true, true, 18);
+      buildNairobiTrustBankWholeBuilding({
+        spec,
+        levelGroups,
+        levelCeilings,
+        roofShellGroup,
+        M,
+        archMats,
+        frameDarkMat,
+        accentMat,
+        glassMat,
+        screenReg,
+        registerChair,
+        registerMonitor,
+        pickMeshes,
+        rotatingProps,
+        warmLights,
+        monitors,
       });
-      const bankPortico = new THREE.Mesh(
-        getRoundedSlabGeo(9.8, 2.8, 0.9, 0.36, 0.07),
-        archMats.bullnoseConcrete
-      );
-      bankPortico.position.set(spec.doorX, spec.groundY + spec.floorH - 0.06, spec.doorZ + 1.0);
-      bankPortico.castShadow = true;
-      g0.add(bankPortico);
-      const bankSoffit = new THREE.Mesh(
-        getRoundedSlabGeo(9.2, 2.4, 0.75, 0.06, 0.015),
-        archMats.timberSoffit
-      );
-      bankSoffit.position.set(spec.doorX, spec.groundY + spec.floorH - 0.24, spec.doorZ + 1.0);
-      g0.add(bankSoffit);
-
-      // 3 ATM Vestibule kiosks on front-west interior
-      [-8.5, -6.5, -4.5].forEach((ox) => {
-        makeAtmKiosk(g0, spec.cx + ox, fy, spec.cz + 6.2, Math.PI, M);
-      });
-
-      // Bi-level Teller Hall Counter: customer transaction ledge (1.14m) + rear staff work desk (0.78m)
-      boxAt(g0, 9.2, 1.1, 0.54, spec.cx - 2.4, fy + 0.55, spec.cz - 3.24, bankStoneMat, true, true, 0.03);
-      boxAt(g0, 9.4, 0.08, 0.64, spec.cx - 2.4, fy + 1.14, spec.cz - 3.24, M.walnut, false, true, 0.02);
-      boxAt(g0, 8.8, 0.72, 0.05, spec.cx - 2.4, fy + 1.54, spec.cz - 2.98, glassMat, false, false);
-      boxAt(g0, 9.2, 0.06, 0.94, spec.cx - 2.4, fy + 0.75, spec.cz - 3.98, M.walnut, true, true, 0.015);
-      [-6.8, -2.4, 2.0].forEach((lx) => {
-        boxAt(g0, 0.14, 0.72, 0.78, spec.cx + lx, fy + 0.36, spec.cz - 3.92, bankStoneMat, true, true, 0.01);
-      });
-      [-4.6, -0.2].forEach((ox, i) => {
-        registerChair(0, spec.cx + ox, fy, spec.cz - 4.75, 0, i === 0 ? 1 : -1);
-        registerMonitor(
-          0,
-          i,
-          [spec.cx + ox, fy + 0.78, spec.cz - 4.02],
-          Math.PI,
-          spec.cx + ox,
-          spec.cz - 4.75,
-          `Branch Teller ${i + 1}`,
-          'Retail Banking & RTGS Hall'
-        );
-      });
-
-      // Heavy circular brushed-steel Bank Vault Door mounted inside on rear wall
-      const vx = spec.cx + 6.2;
-      const vz = spec.cz - 9.5;
-      boxAt(g0, 3.6, 3.2, 0.55, vx, fy + 1.6, vz, frameDarkMat, true, true, 0.05);
-      const vaultDoor = cylAt(g0, 1.28, 1.28, 0.34, vx, fy + 1.55, vz + 0.32, M.chrome, true, false, 28);
-      vaultDoor.rotation.x = Math.PI / 2;
-      const wheelRing = cylAt(g0, 0.44, 0.44, 0.14, vx, fy + 1.55, vz + 0.52, M.brass, false, false, 18);
-      wheelRing.rotation.x = Math.PI / 2;
-      for (let s = 0; s < 3; s++) {
-        const spoke = boxAt(g0, 0.84, 0.06, 0.06, vx, fy + 1.55, vz + 0.56, M.brass, false, false);
-        spoke.rotation.z = (s * Math.PI) / 3;
-      }
-
-      // Customer waiting sofas & FX Treasury Board
-      sofaWide(g0, spec.cx + 6.4, fy, spec.cz + 3.2, -Math.PI / 2, M.leatherMat, M);
-      const fxBoard = createCustomBoardScreen(screenReg, 640, 220, (g, w, h, t) => {
-        g.fillStyle = '#08101c';
-        g.fillRect(0, 0, w, h);
-        g.fillStyle = '#3b82f6';
-        g.fillRect(0, 0, w, 34);
-        g.fillStyle = '#ffffff';
-        g.font = '800 18px sans-serif';
-        g.textAlign = 'left';
-        g.textBaseline = 'middle';
-        g.fillText('NAIROBI TRUST BANK · LIVE INTERBANK FX & QUEUE', 16, 17);
-        const rows = [
-          ['USD / KES', '128.40', '129.85', '+0.12%'],
-          ['EUR / KES', '139.10', '141.05', '+0.24%'],
-          ['GBP / KES', '163.20', '165.40', '-0.08%'],
-        ];
-        rows.forEach((r, i) => {
-          const y = 58 + i * 50;
-          g.fillStyle = 'rgba(59,130,246,0.12)';
-          rr(g, 16, y, w - 32, 42, 6);
-          g.fill();
-          g.fillStyle = '#f8fafc';
-          g.font = '700 17px monospace';
-          g.fillText(r[0], 28, y + 21);
-          g.fillStyle = '#93c5fd';
-          g.fillText(`BUY ${r[1]}`, 200, y + 21);
-          g.fillStyle = '#86efac';
-          g.fillText(`SELL ${r[2]}`, 380, y + 21);
-          g.fillStyle = r[3].startsWith('+') ? '#4ade80' : '#fca5a5';
-          g.fillText(r[3], w - 95, y + 21);
-        });
-        void t;
-      });
-      boxAt(g0, 5.8, 2.2, 0.14, spec.cx - 3.6, fy + 2.35, spec.cz - 9.7, frameDarkMat, false, false);
-      const fxMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 1.95), fxBoard.mat);
-      fxMesh.position.set(spec.cx - 3.6, fy + 2.35, spec.cz - 9.62);
-      g0.add(fxMesh);
-      fxBoard.setMesh(fxMesh);
     } else if (spec.id === 'crypto') {
-      // BitVault Crypto Exchange: Exterior scrolling ticker + cold-storage vault pod + quant trading pods
-      const ticker = createCustomBoardScreen(screenReg, 960, 128, (g, w, h, t) => {
-        g.fillStyle = '#060a10';
-        g.fillRect(0, 0, w, h);
-        g.fillStyle = '#10b981';
-        g.fillRect(0, 0, w, 4);
-        g.fillRect(0, h - 4, w, 4);
-        const text =
-          'BTC/USDT $94,280 ▲ +3.4%   ·   ETH/USDT $3,415 ▲ +2.2%   ·   SOL/USDT $198.40 ▲ +5.6%   ·   USDT/KES 129.45   ·   COLD VAULT 5/7 MPC SEALED   ·   ';
-        g.font = '800 38px "IBM Plex Mono", monospace';
-        g.textBaseline = 'middle';
-        const offset = (t * 70) % 1400;
-        g.fillStyle = '#6ee7b7';
-        g.fillText(text + text, 20 - offset, h / 2);
+      buildBitVaultWholeBuilding({
+        spec,
+        levelGroups,
+        levelCeilings,
+        M,
+        archMats,
+        frameDarkMat,
+        accentMat,
+        glassMat,
+        screenReg,
+        registerChair,
+        registerMonitor,
+        pickMeshes,
+        rotatingProps,
+        warmLights,
+        monitors,
       });
-      boxAt(g0, 16.4, 1.24, 0.22, spec.cx, spec.groundY + spec.floorH * 2 + 0.12, spec.cz + spec.d * 0.5 + 1.28, frameDarkMat, true, false, 0.04);
-      [-5.8, 5.8].forEach((bx) => {
-        boxAt(g0, 0.22, 0.26, 0.65, spec.cx + bx, spec.groundY + spec.floorH * 2 + 0.04, spec.cz + spec.d * 0.5 + 0.98, archMats.bronzeMullion, true, false);
-      });
-      const tkMesh = new THREE.Mesh(new THREE.PlaneGeometry(16.0, 1.06), ticker.mat);
-      tkMesh.position.set(spec.cx, spec.groundY + spec.floorH * 2 + 0.12, spec.cz + spec.d * 0.5 + 1.4);
-      g0.add(tkMesh);
-      ticker.setMesh(tkMesh);
-
-      // Central Cold-Storage Hardware Vault Pod
-      boxAt(g0, 4.2, 2.9, 3.2, spec.cx, fy + 1.45, spec.cz - 4.8, glassMat, false, false);
-      boxAt(g0, 4.4, 0.16, 3.4, spec.cx, fy + 2.95, spec.cz - 4.8, frameDarkMat, true, false);
-      [-1.0, 0, 1.0].forEach((ox) => {
-        boxAt(g0, 0.68, 2.2, 0.72, spec.cx + ox, fy + 1.1, spec.cz - 4.8, M.dark, true, false, 0.02);
-        boxAt(g0, 0.44, 0.08, 0.04, spec.cx + ox, fy + 1.85, spec.cz - 4.42, accentMat, false, false);
-        boxAt(g0, 0.44, 0.08, 0.04, spec.cx + ox, fy + 1.45, spec.cz - 4.42, accentMat, false, false);
-      });
-
-      // 4 Quant Trading Pods with monitors & chairs
-      const pods: Array<[number, number, number]> = [
-        [spec.cx - 6.6, spec.cz + 1.8, 0],
-        [spec.cx + 6.6, spec.cz + 1.8, 0],
-        [spec.cx - 6.6, spec.cz - 3.6, Math.PI],
-        [spec.cx + 6.6, spec.cz - 3.6, Math.PI],
-      ];
-      pods.forEach(([px, pz, rot], i) => {
-        makeDeskAt(g0, px, fy, pz, 2.6, 1.1, M);
-        const czSeat = rot === 0 ? pz + 0.92 : pz - 0.92;
-        const monZ = rot === 0 ? pz - 0.2 : pz + 0.2;
-        const faceSeat = rot === 0 ? Math.PI : 0;
-        registerChair(0, px, fy, czSeat, faceSeat, i % 2 ? 1 : -1);
-        registerMonitor(
-          0,
-          i,
-          [px, fy + 0.77, monZ],
-          rot,
-          px,
-          czSeat,
-          i < 2 ? 'Quant Spot Trader' : 'MPC Custody Auditor',
-          'BitVault Trading Floor'
-        );
-      });
-
-      // Giant Spot Orderbook Screen on back wall
-      const obBoard = createCustomBoardScreen(screenReg, 640, 220, (g, w, h, t) => {
-        g.fillStyle = '#070b12';
-        g.fillRect(0, 0, w, h);
-        g.fillStyle = '#10b981';
-        g.fillRect(0, 0, w, 34);
-        g.fillStyle = '#070b12';
-        g.font = '800 18px sans-serif';
-        g.textAlign = 'left';
-        g.textBaseline = 'middle';
-        g.fillText('BITVAULT EXCHANGE · ORDERBOOK DEPTH & VALIDATOR NODES', 16, 17);
-        for (let i = 0; i < 6; i++) {
-          const bidW = 90 + Math.abs(Math.sin(t + i)) * 150;
-          const askW = 80 + Math.abs(Math.cos(t * 1.1 + i)) * 145;
-          const y = 50 + i * 26;
-          g.fillStyle = 'rgba(16,185,129,0.28)';
-          g.fillRect(280 - bidW, y, bidW, 20);
-          g.fillStyle = 'rgba(239,68,68,0.28)';
-          g.fillRect(360, y, askW, 20);
-          g.fillStyle = '#6ee7b7';
-          g.font = '600 13px monospace';
-          g.fillText(`$${(94280 - i * 15).toLocaleString()}`, 26, y + 10);
-          g.fillStyle = '#fca5a5';
-          g.fillText(`$${(94295 + i * 15).toLocaleString()}`, w - 120, y + 10);
-        }
-      });
-      boxAt(g0, 6.2, 2.3, 0.14, spec.cx, fy + 2.3, spec.cz - 9.7, frameDarkMat, false, false);
-      const obMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.9, 2.05), obBoard.mat);
-      obMesh.position.set(spec.cx, fy + 2.3, spec.cz - 9.62);
-      g0.add(obMesh);
-      obBoard.setMesh(obMesh);
     } else if (spec.id === 'travel') {
       // =========================================================================
       // SKYLINE TRAVEL & AVIATION: Bespoke Whole-Building Aviation Atelier (G -> L3)
@@ -2577,10 +2417,16 @@ export function buildDistrictBuildings(
       const tg1 = levelGroups[1];
       if (tg1) {
         const tfy1 = spec.groundY + spec.floorH + SLAB_THICK * 0.5;
-        const t1Fill = new THREE.PointLight(0xf4f8ff, 1.18, 25);
-        t1Fill.position.set(spec.cx, tfy1 + 3.1, spec.cz);
-        tg1.add(t1Fill);
-        warmLights.push(t1Fill);
+        warmLights.push({
+          x: spec.cx,
+          y: tfy1 + 3.1,
+          z: spec.cz,
+          color: 0xf4f8ff,
+          distance: 25,
+          baseScale: 0.98,
+          floor: 1,
+          buildingId: spec.id,
+        });
 
         // Non-overlapping flooring clearing East stair void (+10.25..+13.25 x -0.05..+3.75)
         boxAt(tg1, 27.0, 0.018, 8.45, spec.cx, tfy1 + 0.009, spec.cz - 4.375, travelPearlTerrazzo, false, true);
@@ -2671,10 +2517,16 @@ export function buildDistrictBuildings(
       const tg2 = levelGroups[2];
       if (tg2) {
         const tfy2 = spec.groundY + 2 * spec.floorH + SLAB_THICK * 0.5;
-        const t2Fill = new THREE.PointLight(0xf6f9ff, 1.22, 25);
-        t2Fill.position.set(spec.cx, tfy2 + 3.1, spec.cz);
-        tg2.add(t2Fill);
-        warmLights.push(t2Fill);
+        warmLights.push({
+          x: spec.cx,
+          y: tfy2 + 3.1,
+          z: spec.cz,
+          color: 0xf6f9ff,
+          distance: 25,
+          baseScale: 1.02,
+          floor: 2,
+          buildingId: spec.id,
+        });
 
         boxAt(tg2, 27.0, 0.018, 8.45, spec.cx, tfy2 + 0.009, spec.cz - 4.375, travelPearlTerrazzo, false, true);
         boxAt(tg2, 23.6, 0.018, 4.2, spec.cx - 1.7, tfy2 + 0.009, spec.cz + 1.9, travelPearlTerrazzo, false, true);
@@ -2751,10 +2603,16 @@ export function buildDistrictBuildings(
       const tg3 = levelGroups[3];
       if (tg3) {
         const tfy3 = spec.groundY + 3 * spec.floorH + SLAB_THICK * 0.5;
-        const t3Fill = new THREE.PointLight(0xf6f9ff, 1.28, 26);
-        t3Fill.position.set(spec.cx, tfy3 + 3.15, spec.cz);
-        tg3.add(t3Fill);
-        warmLights.push(t3Fill);
+        warmLights.push({
+          x: spec.cx,
+          y: tfy3 + 3.15,
+          z: spec.cz,
+          color: 0xf6f9ff,
+          distance: 26,
+          baseScale: 1.07,
+          floor: 3,
+          buildingId: spec.id,
+        });
 
         boxAt(tg3, 27.0, 0.018, 8.45, spec.cx, tfy3 + 0.009, spec.cz - 4.375, travelPearlTerrazzo, false, true);
         boxAt(tg3, 23.6, 0.018, 4.2, spec.cx - 1.7, tfy3 + 0.009, spec.cz + 1.9, travelPearlTerrazzo, false, true);
@@ -3526,10 +3384,16 @@ export function buildDistrictBuildings(
       const sg1 = levelGroups[1];
       if (sg1) {
         const sfy1 = spec.groundY + spec.floorH + SLAB_THICK * 0.5;
-        const s1Fill = new THREE.PointLight(0xffe9c8, 1.24, 26);
-        s1Fill.position.set(spec.cx, sfy1 + 3.1, spec.cz);
-        sg1.add(s1Fill);
-        warmLights.push(s1Fill);
+        warmLights.push({
+          x: spec.cx,
+          y: sfy1 + 3.1,
+          z: spec.cz,
+          color: 0xffe9c8,
+          distance: 26,
+          baseScale: 1.03,
+          floor: 1,
+          buildingId: spec.id,
+        });
 
         // Non-overlapping flooring clearing SE stair void (+11.22..+14.28 x +4.15..+7.95)
         boxAt(sg1, 29.2, 0.018, 12.85, spec.cx, sfy1 + 0.009, spec.cz - 2.275, safariStoneFloor, false, true);
@@ -3637,10 +3501,16 @@ export function buildDistrictBuildings(
       const sg2 = levelGroups[2];
       if (sg2) {
         const sfy2 = spec.groundY + 2 * spec.floorH + SLAB_THICK * 0.5;
-        const s2Fill = new THREE.PointLight(0xffe9c8, 1.26, 26);
-        s2Fill.position.set(spec.cx, sfy2 + 3.1, spec.cz);
-        sg2.add(s2Fill);
-        warmLights.push(s2Fill);
+        warmLights.push({
+          x: spec.cx,
+          y: sfy2 + 3.1,
+          z: spec.cz,
+          color: 0xffe9c8,
+          distance: 26,
+          baseScale: 1.05,
+          floor: 2,
+          buildingId: spec.id,
+        });
 
         boxAt(sg2, 29.2, 0.018, 12.85, spec.cx, sfy2 + 0.009, spec.cz - 2.275, safariStoneFloor, false, true);
         boxAt(sg2, 25.8, 0.018, 4.55, spec.cx - 1.7, sfy2 + 0.009, spec.cz + 6.425, safariStoneFloor, false, true);
@@ -3741,10 +3611,16 @@ export function buildDistrictBuildings(
       const sg3 = levelGroups[3];
       if (sg3) {
         const sfy3 = spec.groundY + 3 * spec.floorH + SLAB_THICK * 0.5;
-        const s3Fill = new THREE.PointLight(0xffebd0, 1.3, 27);
-        s3Fill.position.set(spec.cx, sfy3 + 3.15, spec.cz);
-        sg3.add(s3Fill);
-        warmLights.push(s3Fill);
+        warmLights.push({
+          x: spec.cx,
+          y: sfy3 + 3.15,
+          z: spec.cz,
+          color: 0xffebd0,
+          distance: 27,
+          baseScale: 1.08,
+          floor: 3,
+          buildingId: spec.id,
+        });
 
         boxAt(sg3, 29.2, 0.018, 12.85, spec.cx, sfy3 + 0.009, spec.cz - 2.275, safariStoneFloor, false, true);
         boxAt(sg3, 25.8, 0.018, 4.55, spec.cx - 1.7, sfy3 + 0.009, spec.cz + 6.425, safariStoneFloor, false, true);
@@ -4044,108 +3920,23 @@ export function buildDistrictBuildings(
       roofShellGroup.add(crossBeacon);
       rotatingProps.push({ obj: crossBeacon, speed: 0.75, axis: 'y' });
 
-      // 24h Pharmacy Dispensary Counter & Backlit Medicine Racks on west wing
-      boxAt(g0, 10.2, 1.06, 1.15, spec.cx - 14.5, fy + 0.53, spec.cz - 2.2, M.white, true, true, 0.03);
-      boxAt(g0, 10.4, 0.08, 1.28, spec.cx - 14.5, fy + 1.08, spec.cz - 2.2, accentMat, false, false);
-      // Backlit medicine racks
-      boxAt(g0, 10.4, 2.55, 0.45, spec.cx - 14.5, fy + 1.28, spec.cz - 7.1, M.white, true, true, 0.03);
-      for (let r = 0; r < 3; r++) {
-        for (let b = 0; b < 12; b++) {
-          const bottleCol = b % 3 === 0 ? 0x2dd4bf : b % 3 === 1 ? 0x38bdf8 : 0xf59e0b;
-          boxAt(
-            g0,
-            0.22,
-            0.28,
-            0.18,
-            spec.cx - 18.8 + b * 0.78,
-            fy + 0.68 + r * 0.62,
-            spec.cz - 6.82,
-            std({ color: bottleCol, roughness: 0.35 }),
-            false,
-            false
-          );
-        }
-      }
-
-      // Central Bi-level Patient Triage Counter: patient ledge (1.06m) + rear staff desk (0.78m)
-      boxAt(g0, 4.6, 1.04, 0.5, spec.cx, fy + 0.52, spec.cz - 0.9, M.white, true, true, 0.03);
-      boxAt(g0, 4.72, 0.06, 0.58, spec.cx, fy + 1.06, spec.cz - 0.9, accentMat, false, false, 0.02);
-      boxAt(g0, 4.6, 0.06, 0.88, spec.cx, fy + 0.75, spec.cz - 1.59, M.walnut, true, true, 0.02);
-      [-2.15, 2.15].forEach((lx) => {
-        boxAt(g0, 0.14, 0.72, 0.76, spec.cx + lx, fy + 0.36, spec.cz - 1.54, M.white, true, true, 0.01);
+      buildVitalCareWholeBuilding({
+        spec,
+        levelGroups,
+        levelCeilings,
+        M,
+        archMats,
+        frameDarkMat,
+        accentMat,
+        glassMat,
+        screenReg,
+        registerChair,
+        registerMonitor,
+        pickMeshes,
+        rotatingProps,
+        warmLights,
+        monitors,
       });
-      registerChair(0, spec.cx, fy, spec.cz - 2.3, 0, 1);
-      registerMonitor(0, 0, [spec.cx, fy + 0.78, spec.cz - 1.58], Math.PI, spec.cx, spec.cz - 2.3, 'Lead Pharmacist & Triage', '24h Pharmacy & Patient Intake');
-
-      // Diagnostic Consult Desks on east wing
-      [spec.cx + 10.5, spec.cx + 17.5].forEach((dx, i) => {
-        const dz = spec.cz - 2.6;
-        makeDeskAt(g0, dx, fy, dz, 2.4, 1.05, M);
-        registerChair(0, dx, fy, dz - 0.88, 0, i === 0 ? 1 : -1);
-        registerMonitor(
-          0,
-          i + 1,
-          [dx, fy + 0.77, dz + 0.15],
-          Math.PI,
-          dx,
-          dz - 0.88,
-          i === 0 ? 'Attending Physician' : 'Clinical Lab Specialist',
-          'Outpatient & Diagnostic Suites'
-        );
-      });
-
-      [-6.5, 6.5].forEach((ox) => {
-        armchair(g0, spec.cx + ox, fy, spec.cz + 3.2, Math.PI, M.fabricBlue, M);
-      });
-
-      // Live Diagnostic Vitals & Queue Display Board
-      const medBoard = createCustomBoardScreen(screenReg, 680, 220, (g, w, h, t) => {
-        g.fillStyle = '#071516';
-        g.fillRect(0, 0, w, h);
-        g.fillStyle = '#2dd4bf';
-        g.fillRect(0, 0, w, 34);
-        g.fillStyle = '#071516';
-        g.font = '800 18px sans-serif';
-        g.textAlign = 'left';
-        g.textBaseline = 'middle';
-        g.fillText('VITALCARE MEDICAL · 24H TRIAGE, LAB & COLD-CHAIN TELEMETRY', 16, 17);
-        // Animated ECG waveform
-        g.strokeStyle = '#4ade80';
-        g.lineWidth = 3;
-        g.beginPath();
-        for (let x = 20; x < 360; x += 4) {
-          const ph = ((x + t * 80) % 90) / 90;
-          const ecg = ph > 0.42 && ph < 0.48 ? -26 : ph >= 0.48 && ph < 0.54 ? 18 : 0;
-          const py = 105 + ecg;
-          if (x === 20) g.moveTo(x, py);
-          else g.lineTo(x, py);
-        }
-        g.stroke();
-        const stats = [
-          ['Cold Chain', '4.1 °C OK'],
-          ['Lab Panel', '18 min'],
-          ['Queue Wait', '4 min'],
-        ];
-        stats.forEach((st, i) => {
-          const y = 56 + i * 50;
-          g.fillStyle = 'rgba(45,212,191,0.14)';
-          rr(g, 390, y, 270, 42, 6);
-          g.fill();
-          g.fillStyle = '#99f6e4';
-          g.font = '600 15px sans-serif';
-          g.fillText(st[0], 404, y + 21);
-          g.fillStyle = '#ffffff';
-          g.textAlign = 'right';
-          g.font = '700 16px monospace';
-          g.fillText(st[1], 646, y + 21);
-          g.textAlign = 'left';
-        });
-      });
-      boxAt(g0, 7.6, 2.3, 0.14, spec.cx + 1.5, fy + 2.35, spec.cz - 7.7, frameDarkMat, false, false);
-      const medMesh = new THREE.Mesh(new THREE.PlaneGeometry(7.3, 2.05), medBoard.mat);
-      medMesh.position.set(spec.cx + 1.5, fy + 2.35, spec.cz - 7.62);
-      g0.add(medMesh);
-      medBoard.setMesh(medMesh);
     } else if (spec.id === 'logistics') {
       // SwiftPort Cargo & Logistics: Rooftop radar mast elevated cleanly above asymmetric shed roof peak
       const radarMast = new THREE.Group();
@@ -4558,10 +4349,16 @@ export function buildDistrictBuildings(
       const lg1 = levelGroups[1];
       if (lg1) {
         const lfy1 = spec.groundY + spec.floorH + SLAB_THICK * 0.5;
-        const l1Fill = new THREE.PointLight(0xeef6ff, 1.24, 28);
-        l1Fill.position.set(spec.cx, lfy1 + 3.2, spec.cz);
-        lg1.add(l1Fill);
-        warmLights.push(l1Fill);
+        warmLights.push({
+          x: spec.cx,
+          y: lfy1 + 3.2,
+          z: spec.cz,
+          color: 0xeef6ff,
+          distance: 28,
+          baseScale: 1.03,
+          floor: 1,
+          buildingId: spec.id,
+        });
 
         // Non-overlapping epoxy floor clearing SW stairwell void (-14.32..-11.28 x +4.15..+7.95)
         boxAt(lg1, 31.2, 0.018, 13.7, spec.cx, lfy1 + 0.009, spec.cz - 2.75, cargoEpoxyFloor, false, true);
@@ -4660,10 +4457,16 @@ export function buildDistrictBuildings(
       const lg2 = levelGroups[2];
       if (lg2) {
         const lfy2 = spec.groundY + 2 * spec.floorH + SLAB_THICK * 0.5;
-        const l2Fill = new THREE.PointLight(0xeef6ff, 1.26, 28);
-        l2Fill.position.set(spec.cx, lfy2 + 3.2, spec.cz);
-        lg2.add(l2Fill);
-        warmLights.push(l2Fill);
+        warmLights.push({
+          x: spec.cx,
+          y: lfy2 + 3.2,
+          z: spec.cz,
+          color: 0xeef6ff,
+          distance: 28,
+          baseScale: 1.05,
+          floor: 2,
+          buildingId: spec.id,
+        });
 
         boxAt(lg2, 31.2, 0.018, 13.7, spec.cx, lfy2 + 0.009, spec.cz - 2.75, cargoEpoxyFloor, false, true);
         boxAt(lg2, 26.8, 0.018, 4.0, spec.cx + 2.2, lfy2 + 0.009, spec.cz + 6.1, cargoEpoxyFloor, false, true);
@@ -4741,10 +4544,16 @@ export function buildDistrictBuildings(
       const lg3 = levelGroups[3];
       if (lg3) {
         const lfy3 = spec.groundY + 3 * spec.floorH + SLAB_THICK * 0.5;
-        const l3Fill = new THREE.PointLight(0xf1f7ff, 1.3, 29);
-        l3Fill.position.set(spec.cx, lfy3 + 3.25, spec.cz);
-        lg3.add(l3Fill);
-        warmLights.push(l3Fill);
+        warmLights.push({
+          x: spec.cx,
+          y: lfy3 + 3.25,
+          z: spec.cz,
+          color: 0xf1f7ff,
+          distance: 29,
+          baseScale: 1.08,
+          floor: 3,
+          buildingId: spec.id,
+        });
 
         boxAt(lg3, 31.2, 0.018, 13.7, spec.cx, lfy3 + 0.009, spec.cz - 2.75, cargoEpoxyFloor, false, true);
         boxAt(lg3, 26.8, 0.018, 4.0, spec.cx + 2.2, lfy3 + 0.009, spec.cz + 6.1, cargoEpoxyFloor, false, true);
@@ -5039,10 +4848,16 @@ export function buildDistrictBuildings(
       });
 
       // Warm entrance gallery fill light
-      const lobbyFill = new THREE.PointLight(0xfff1dc, 1.15, 18);
-      lobbyFill.position.set(spec.cx - 2.5, fy + 3.1, spec.cz - 3.6);
-      g0.add(lobbyFill);
-      warmLights.push(lobbyFill);
+      warmLights.push({
+        x: spec.cx - 2.5,
+        y: fy + 3.1,
+        z: spec.cz - 3.6,
+        color: 0xfff1dc,
+        distance: 18,
+        baseScale: 0.96,
+        floor: 0,
+        buildingId: spec.id,
+      });
 
       // 2. Rooftop Architectural Tower Crane (signals Construction & Development across the skyline)
       const craneYellow = std({ color: 0xf59e0b, roughness: 0.42, metalness: 0.28 });
@@ -5650,10 +5465,16 @@ export function buildDistrictBuildings(
       const g1 = levelGroups[1];
       if (g1) {
         const fy1 = spec.groundY + spec.floorH + SLAB_THICK * 0.5;
-        const l1Fill = new THREE.PointLight(0xfff4e0, 1.15, 22);
-        l1Fill.position.set(spec.cx + 1.5, fy1 + 3.1, spec.cz);
-        g1.add(l1Fill);
-        warmLights.push(l1Fill);
+        warmLights.push({
+          x: spec.cx + 1.5,
+          y: fy1 + 3.1,
+          z: spec.cz,
+          color: 0xfff4e0,
+          distance: 22,
+          baseScale: 0.96,
+          floor: 1,
+          buildingId: spec.id,
+        });
 
         // 1. FLOORING LAYERS: Warm oak perimeter & stairwell vestibule + Slate-grey carpet tile zones + Kitchen limestone tile
         boxAt(g1, 13.0, 0.018, 1.25, spec.cx + 5.9, fy1 + 0.009, spec.cz - 8.2, floorWarmOak, false, true);
@@ -5963,10 +5784,16 @@ export function buildDistrictBuildings(
       const g2 = levelGroups[2];
       if (g2) {
         const fy2 = spec.groundY + 2 * spec.floorH + SLAB_THICK * 0.5;
-        const l2Fill = new THREE.PointLight(0xfff4e2, 1.2, 24);
-        l2Fill.position.set(spec.cx, fy2 + 3.1, spec.cz);
-        g2.add(l2Fill);
-        warmLights.push(l2Fill);
+        warmLights.push({
+          x: spec.cx,
+          y: fy2 + 3.1,
+          z: spec.cz,
+          color: 0xfff4e2,
+          distance: 24,
+          baseScale: 1.0,
+          floor: 2,
+          buildingId: spec.id,
+        });
 
         // 1. FLOORING LAYERS: Warm oak front & center promenade + Slate-grey carpet tile showroom zones (clear of stairwell void)
         boxAt(g2, 24.8, 0.018, 1.3, spec.cx + 0.1, fy2 + 0.009, spec.cz - 8.15, floorWarmOak, false, true);
@@ -6295,10 +6122,16 @@ export function buildDistrictBuildings(
       const g3 = levelGroups[3];
       if (g3) {
         const fy3 = spec.groundY + 3 * spec.floorH + SLAB_THICK * 0.5;
-        const l3Fill = new THREE.PointLight(0xfff4e2, 1.2, 24);
-        l3Fill.position.set(spec.cx, fy3 + 3.1, spec.cz);
-        g3.add(l3Fill);
-        warmLights.push(l3Fill);
+        warmLights.push({
+          x: spec.cx,
+          y: fy3 + 3.1,
+          z: spec.cz,
+          color: 0xfff4e2,
+          distance: 24,
+          baseScale: 1.0,
+          floor: 3,
+          buildingId: spec.id,
+        });
 
         // 1. FLOORING LAYERS: Continuous warm oak promenade (avoiding stairwell void -12.25..-9.25 x -0.05..+3.75) + area rugs
         boxAt(g3, 24.4, 0.018, 7.05, spec.cx, fy3 + 0.009, spec.cz - 4.875, floorWarmOak, false, true);
@@ -6564,10 +6397,16 @@ export function buildDistrictBuildings(
       const g4 = levelGroups[4];
       if (g4) {
         const fy4 = spec.groundY + 4 * spec.floorH + SLAB_THICK * 0.5;
-        const l4Fill = new THREE.PointLight(0xfff2dc, 1.28, 25);
-        l4Fill.position.set(spec.cx, fy4 + 3.15, spec.cz);
-        g4.add(l4Fill);
-        warmLights.push(l4Fill);
+        warmLights.push({
+          x: spec.cx,
+          y: fy4 + 3.15,
+          z: spec.cz,
+          color: 0xfff2dc,
+          distance: 25,
+          baseScale: 1.07,
+          floor: 4,
+          buildingId: spec.id,
+        });
 
         const walnutExecMat = std({ color: 0x4b3222, roughness: 0.44, metalness: 0.06 });
         const woolCharcoalMat = std({ color: 0x3b4048, roughness: 0.94 });
@@ -7128,7 +6967,9 @@ export function buildDistrictBuildings(
     root.add(roofShellGroup);
     const roofY = spec.groundY + spec.h;
 
-    if (style === 'tower') {
+    if (spec.id === 'bank') {
+      // Custom Nairobi Trust Bank Reserve Sky-Rotunda & Lantern Crown already populated into roofShellGroup
+    } else if (style === 'tower') {
       // Reference Image 2: Rounded-corner rooftop bullnose terrace crown + infinity plunge pool + fluted timber pavilion + palms
       const roofDeck = new THREE.Mesh(
         getRoundedSlabGeo(spec.w + 2.6, spec.d + 2.6, 3.1, 0.36, 0.08),
