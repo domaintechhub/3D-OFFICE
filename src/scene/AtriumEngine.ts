@@ -26,10 +26,36 @@ import {
 import type { WarmLightAnchor } from './districtBuildings';
 import { createMaterials, type MaterialLibrary } from './materials';
 import { synthesizeProceduralFoliage, type ProceduralFoliageResult } from './organicFoliage';
-import { createScreenRegistry, renderWorkScreenFrame, updateAllScreens, type ScreenRegistry } from './screens';
-import { AtriumSimulation } from './simulation';
+import { isOfflineMode } from '../utils/standalone';
 import { AmbientAudioManager } from './audio';
-import { getMaxAnisotropy, setMaxAnisotropy } from './textures';
+import { onAppFontsReady, waitForAppFonts } from './fonts';
+import { createSeededRng } from './prng';
+import {
+  AdaptiveQualityController,
+  getTierConfig,
+  isReducedMotionPreferred,
+  probeBrowserCapabilities,
+  subscribeReducedMotion,
+  VISUAL_CONTRACT,
+  type BrowserCapabilities,
+  type PerfTelemetry,
+  type QualityMode,
+  type TierConfig,
+} from './quality';
+import {
+  createScreenRegistry,
+  redrawAllScreenTextures,
+  renderWorkScreenFrame,
+  updateAllScreens,
+  type ScreenRegistry,
+} from './screens';
+import { AtriumSimulation } from './simulation';
+import {
+  clearTexturesCache,
+  getMaxAnisotropy,
+  setMaxAnisotropy,
+  setNonTextTexMaxSize,
+} from './textures';
 import { WeatherSystem, type WeatherAtmosphereState } from './weather';
 
 function detectSoftwareGl(): boolean {
@@ -44,6 +70,54 @@ function detectSoftwareGl(): boolean {
   } catch {
     return false;
   }
+}
+
+function createPrebakedSkyTexture(): THREE.CanvasTexture {
+  const rng = createSeededRng(1337);
+  const w = 1024;
+  const h = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+
+  // White base allows vertex colors to control exact time-of-day & weather sky gradient
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, w, h);
+
+  // Subtle equirectangular soft cloud bands painted deterministically in upper hemisphere (y: 45..235)
+  for (let i = 0; i < 68; i++) {
+    const cx = rng() * w;
+    const cy = 65 + rng() * 165;
+    const rx = 44 + rng() * 96;
+    const ry = 10 + rng() * 22;
+    const drawPuff = (px: number) => {
+      const grad = ctx.createRadialGradient(px, cy, 2, px, cy, rx);
+      grad.addColorStop(0, 'rgba(232, 238, 246, 0.24)');
+      grad.addColorStop(0.55, 'rgba(242, 246, 252, 0.12)');
+      grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.save();
+      ctx.translate(px, cy);
+      ctx.scale(1, ry / rx);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(0, 0, rx, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    };
+    drawPuff(cx);
+    if (cx - rx < 0) drawPuff(cx + w);
+    if (cx + rx > w) drawPuff(cx - w);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.generateMipmaps = true;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  return tex;
 }
 
 export interface SceneLoadProgress {
@@ -73,16 +147,25 @@ export class AtriumEngine {
   private asphaltMat!: THREE.MeshStandardMaterial;
   private readonly audio = new AmbientAudioManager();
   private readonly isSoftwareGl: boolean;
+  private readonly caps: BrowserCapabilities;
+  private readonly qualityCtl: AdaptiveQualityController;
+  private tierConfig: TierConfig;
+  private reducedMotion: boolean;
+  private unsubReducedMotion: () => void = () => {};
+  private unsubFontsReady: () => void = () => {};
   private sceneReady = false;
+  private contextLost = false;
+  private windowBlurred = false;
   private currentStage = 'Initializing WebGL context…';
   private onLoadProgress?: (progress: SceneLoadProgress) => void;
 
   private readonly sunLight: THREE.DirectionalLight;
-  private readonly skyFillLight: THREE.DirectionalLight;
   private readonly hemiLight: THREE.HemisphereLight;
-  private readonly skyMat: THREE.ShaderMaterial;
+  private skyTex: THREE.CanvasTexture;
+  private skyMat: THREE.MeshBasicMaterial;
   private readonly skyDome: THREE.Mesh;
   private readonly fog: THREE.FogExp2;
+  private lastSkyColorHash = '';
 
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointerNdc = new THREE.Vector2(-9, -9);
@@ -103,13 +186,13 @@ export class AtriumEngine {
   private timerId = 0;
   private lastTs = 0;
   private lastRenderTs = 0;
+  private lastSimUpdateTs = 0;
   private lastInteractionTs = 0;
   private lastMoveRayTs = 0;
   private elapsed = 0;
   private hudEmitAccum = 0;
   private cutawayAnimating = false;
   private cutawaySettledKey = '';
-  private readonly interiorLightPool: THREE.PointLight[] = [];
   private onHudChange: (snapshot: HudSnapshot) => void;
   private onFatalError?: (message: string) => void;
   private resizeObserver: ResizeObserver | null = null;
@@ -140,7 +223,7 @@ export class AtriumEngine {
   private lastDrawnThoughtKey = '';
   private readonly selectionRing: THREE.Mesh;
 
-  // Scratch vectors
+  // Scratch vectors & frustum (zero per-frame allocations)
   private readonly _sunCol = new THREE.Color();
   private readonly _zenith = new THREE.Color();
   private readonly _horizon = new THREE.Color();
@@ -151,12 +234,17 @@ export class AtriumEngine {
   private readonly _wFog = new THREE.Color();
   private readonly _lightningCol = new THREE.Color(0xcbdcff);
   private readonly _lerpTargetCol = new THREE.Color();
+  private readonly _skyTmpCol = new THREE.Color();
   private readonly _camRight = new THREE.Vector3();
   private readonly _segA = new THREE.Vector3();
   private readonly _segB = new THREE.Vector3();
   private readonly _rayPt = new THREE.Vector3();
   private readonly _segPt = new THREE.Vector3();
   private readonly _lastActorPos = new THREE.Vector3();
+  private readonly _frustum = new THREE.Frustum();
+  private readonly _projScreenMat = new THREE.Matrix4();
+  private readonly _cullCenter = new THREE.Vector3();
+  private readonly _cullSphere = new THREE.Sphere();
 
   constructor(
     container: HTMLElement,
@@ -169,6 +257,10 @@ export class AtriumEngine {
     this.onFatalError = onFatalError;
     this.onLoadProgress = onLoadProgress;
     this.isSoftwareGl = detectSoftwareGl();
+    this.caps = probeBrowserCapabilities();
+    this.qualityCtl = new AdaptiveQualityController(this.caps);
+    this.tierConfig = getTierConfig(this.qualityCtl.currentTier, this.caps);
+    this.reducedMotion = isReducedMotionPreferred();
 
     this.loadingManager = new THREE.LoadingManager();
     this.loadingManager.onStart = (_url, itemsLoaded, itemsTotal) => {
@@ -203,8 +295,8 @@ export class AtriumEngine {
         done: true,
       });
     };
-    this.loadingManager.onError = (url) => {
-      console.warn('LoadingManager asset warning:', url);
+    this.loadingManager.onError = () => {
+      // Handled gracefully offline without console warnings in production
     };
 
     const width = Math.max(1, container.clientWidth);
@@ -212,8 +304,8 @@ export class AtriumEngine {
 
     try {
       this.renderer = new THREE.WebGLRenderer({
-        antialias: !this.isSoftwareGl,
-        powerPreference: this.isSoftwareGl ? 'low-power' : 'high-performance',
+        antialias: this.tierConfig.antialias && !this.isSoftwareGl,
+        powerPreference: this.isSoftwareGl || this.caps.isMobile ? 'low-power' : 'high-performance',
       });
     } catch {
       this.renderer = new THREE.WebGLRenderer({
@@ -222,17 +314,24 @@ export class AtriumEngine {
       });
     }
     this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 1.5));
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.96;
+    this.renderer.setPixelRatio(
+      this.isSoftwareGl ? 1 : this.qualityCtl.computeEffectivePixelRatio(this.tierConfig)
+    );
+    // Visual contract locked identically across all tiers
+    this.renderer.outputColorSpace = VISUAL_CONTRACT.outputColorSpace;
+    this.renderer.toneMapping = VISUAL_CONTRACT.toneMapping;
+    this.renderer.toneMappingExposure = VISUAL_CONTRACT.toneMappingExposure;
     this.renderer.shadowMap.enabled = false;
     this.renderer.domElement.style.display = 'block';
     this.renderer.domElement.style.width = '100%';
     this.renderer.domElement.style.height = '100%';
+    this.renderer.domElement.style.touchAction = 'none';
     container.appendChild(this.renderer.domElement);
 
-    setMaxAnisotropy(this.isSoftwareGl ? 1 : Math.min(8, this.renderer.capabilities.getMaxAnisotropy()));
+    setMaxAnisotropy(
+      this.isSoftwareGl ? 4 : Math.min(8, Math.max(4, this.renderer.capabilities.getMaxAnisotropy()))
+    );
+    setNonTextTexMaxSize(Math.round(1024 * this.tierConfig.nonTextTexScale));
 
     this.scene = new THREE.Scene();
     this.fog = new THREE.FogExp2(0x1b2434, 0.0022);
@@ -258,121 +357,34 @@ export class AtriumEngine {
       this.markInteraction();
     });
 
-    // Procedural atmospheric gradient sky dome with animated FBM cloud strata & storm lightning
-    this.skyMat = new THREE.ShaderMaterial({
+    // Prebaked equirectangular gradient + soft cloud skybox (identical look across all tiers, zero shader cost)
+    this.skyTex = createPrebakedSkyTexture();
+    const skyGeo = new THREE.SphereGeometry(520, 32, 18);
+    const posAttr = skyGeo.attributes.position;
+    const skyColors = new Float32Array(posAttr.count * 3);
+    skyGeo.setAttribute('color', new THREE.BufferAttribute(skyColors, 3));
+    this.skyMat = new THREE.MeshBasicMaterial({
+      map: this.skyTex,
+      vertexColors: true,
       side: THREE.BackSide,
       depthWrite: false,
-      uniforms: {
-        uZenith: { value: new THREE.Color(0x2a5488) },
-        uHorizon: { value: new THREE.Color(0xb8d4f0) },
-        uGround: { value: new THREE.Color(0x3a404a) },
-        uTime: { value: 0 },
-        uCloudCover: { value: 0.08 },
-        uLightning: { value: 0.0 },
-      },
-      vertexShader: `
-        varying vec3 vDir;
-        void main() {
-          vDir = position;
-          vec4 wp = modelMatrix * vec4(position, 1.0);
-          gl_Position = projectionMatrix * viewMatrix * wp;
-        }
-      `,
-      fragmentShader: `
-        uniform vec3 uZenith;
-        uniform vec3 uHorizon;
-        uniform vec3 uGround;
-        uniform float uTime;
-        uniform float uCloudCover;
-        uniform float uLightning;
-        varying vec3 vDir;
-
-        float hash21(vec2 p) {
-          p = fract(p * vec2(234.34, 435.345));
-          p += dot(p, p + 34.23);
-          return fract(p.x * p.y);
-        }
-
-        float noise2(vec2 p) {
-          vec2 i = floor(p);
-          vec2 f = fract(p);
-          f = f * f * (3.0 - 2.0 * f);
-          float a = hash21(i);
-          float b = hash21(i + vec2(1.0, 0.0));
-          float c = hash21(i + vec2(0.0, 1.0));
-          float d = hash21(i + vec2(1.0, 1.0));
-          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-        }
-
-        float fbm(vec2 p) {
-          float v = 0.0;
-          float amp = 0.5;
-          for (int i = 0; i < 4; i++) {
-            v += amp * noise2(p);
-            p = p * 2.04 + vec2(17.3, 9.2);
-            amp *= 0.5;
-          }
-          return v;
-        }
-
-        void main() {
-          vec3 d = normalize(vDir);
-          float h = d.y;
-          vec3 col = h >= 0.0
-            ? mix(uHorizon, uZenith, pow(clamp(h, 0.0, 1.0), 0.52))
-            : mix(uHorizon, uGround, pow(clamp(-h * 3.0, 0.0, 1.0), 0.7));
-
-          if (h > 0.005 && uCloudCover > 0.05) {
-            vec2 cloudUv = (d.xz / (h + 0.20)) * 1.45 + vec2(uTime * 0.018, uTime * 0.008);
-            float n = fbm(cloudUv);
-            float threshold = mix(0.76, 0.20, clamp(uCloudCover, 0.0, 1.0));
-            float cloudMask = smoothstep(threshold, threshold + 0.32, n) * smoothstep(0.005, 0.14, h);
-            float skyLum = dot(uHorizon, vec3(0.299, 0.587, 0.114));
-            vec3 brightCloud = mix(vec3(0.22, 0.26, 0.34), vec3(0.92, 0.95, 0.98), clamp(skyLum * 1.25, 0.0, 1.0));
-            vec3 shadowCloud = mix(vec3(0.09, 0.12, 0.17), vec3(0.45, 0.51, 0.58), clamp(skyLum, 0.0, 1.0));
-            vec3 cloudCol = mix(shadowCloud, brightCloud, smoothstep(0.35, 0.82, n) * (1.0 - uCloudCover * 0.45));
-            col = mix(col, cloudCol, cloudMask * clamp(uCloudCover * 1.12, 0.0, 0.94));
-          }
-
-          if (uLightning > 0.01 && h > 0.0) {
-            col += vec3(0.72, 0.82, 1.0) * uLightning * 0.55 * smoothstep(0.0, 0.35, h);
-          }
-
-          gl_FragColor = vec4(col, 1.0);
-        }
-      `,
+      fog: false,
+      toneMapped: false,
     });
-    this.skyDome = new THREE.Mesh(new THREE.SphereGeometry(520, 48, 32), this.skyMat);
+    this.skyDome = new THREE.Mesh(skyGeo, this.skyMat);
     this.skyDome.frustumCulled = false;
     this.skyDome.renderOrder = -1000;
     this.skyDome.position.copy(this.camera.position);
     this.scene.add(this.skyDome);
 
-    // Three-point + architectural sky/sun illumination (zero real-time shadow pass overhead)
-    this.hemiLight = new THREE.HemisphereLight(0xc8e0ff, 0x565048, 0.84);
+    // Strictly 2 real-time lights across all tiers (1 HemisphereLight + 1 DirectionalLight)
+    this.hemiLight = new THREE.HemisphereLight(0xc8e0ff, 0x565048, 0.96);
     this.scene.add(this.hemiLight);
 
     this.sunLight = new THREE.DirectionalLight(0xfff1d6, 1.85);
     this.sunLight.position.set(42, 64, 54);
     this.sunLight.castShadow = false;
     this.scene.add(this.sunLight);
-
-    // Subtle cool northern sky-bounce fill light for realistic architectural shadow wrap
-    this.skyFillLight = new THREE.DirectionalLight(0xbcd6f6, 0.4);
-    this.skyFillLight.position.set(-40, 26, 46);
-    this.scene.add(this.skyFillLight);
-
-    // Fixed 4-light interior pool (keeps NUM_POINT_LIGHTS constant at 4 across all shaders)
-    for (let i = 0; i < 4; i++) {
-      const pl = new THREE.PointLight(0xfff1dc, 0, 24, 2);
-      pl.castShadow = false;
-      pl.position.set(0, -100, 0);
-      this.scene.add(pl);
-      this.interiorLightPool.push(pl);
-    }
-
-    // Wire window events & begin staged scene initialization tracked by THREE.LoadingManager
-    // Thought bubble sprite/canvas are lazily created on first character selection.
 
     const ringGeo = new THREE.RingGeometry(0.32, 0.42, 24);
     ringGeo.rotateX(-Math.PI / 2);
@@ -391,6 +403,9 @@ export class AtriumEngine {
     this.scene.add(this.selectionRing);
 
     window.addEventListener('resize', this.handleResize);
+    window.addEventListener('orientationchange', this.handleResize);
+    window.addEventListener('blur', this.handleWindowBlur);
+    window.addEventListener('focus', this.handleWindowFocus);
     if (typeof ResizeObserver !== 'undefined') {
       this.resizeObserver = new ResizeObserver(() => this.handleResize());
       this.resizeObserver.observe(this.container);
@@ -404,6 +419,13 @@ export class AtriumEngine {
     this.renderer.domElement.addEventListener('click', this.handleClick);
     this.renderer.domElement.addEventListener('webglcontextlost', this.handleContextLost);
     this.renderer.domElement.addEventListener('webglcontextrestored', this.handleContextRestored);
+
+    this.unsubReducedMotion = subscribeReducedMotion((reduced) => {
+      this.reducedMotion = reduced;
+      if (this.sceneReady) {
+        this.applyTierToSystems();
+      }
+    });
 
     this.unwireWalk = () => {};
     void this.initializeSceneAsync();
@@ -498,10 +520,23 @@ export class AtriumEngine {
     await waitNextFrame();
     if (this.disposed) return;
 
+    this.currentStage = 'Loading embedded typography…';
+    await waitForAppFonts();
+    if (this.disposed) return;
+
+    this.unsubFontsReady = onAppFontsReady(() => {
+      if (this.disposed || !this.sceneReady) return;
+      redrawAllScreenTextures(this.screenReg, this.elapsed);
+      for (const b of this.overheadBadges) b.lastStatus = '';
+      this.lastDrawnThoughtKey = '';
+      this.emitHud();
+    });
+
     const initW = this.weather.update(0.016, this.elapsed, this.sim.simMin, this.activeLevel, this.arch.roofShellGroup.visible);
     this.sim.setWeatherCondition(initW.activeWeather);
     this.sim.setWeatherTimeMultiplier(this.weather.getTimeMultiplier());
     this.sim.snapAll();
+    this.applyTierToSystems();
     this.updateTimeOfDayLighting(this.sim.simMin, initW);
 
     if (!this.isSoftwareGl) {
@@ -518,6 +553,7 @@ export class AtriumEngine {
     }
 
     this.sceneReady = true;
+    redrawAllScreenTextures(this.screenReg, 0);
     this.handleResize();
     this.emitHud();
     this.loadingManager.itemEnd(stages[4]);
@@ -532,8 +568,9 @@ export class AtriumEngine {
     const now = performance.now();
     this.lastTs = now;
     this.lastRenderTs = 0;
+    this.lastSimUpdateTs = now;
     this.lastInteractionTs = now;
-    this.loop(now);
+    this.scheduleNextTick();
   }
 
   private runProceduralFoliageScript(M: MaterialLibrary): ProceduralFoliageResult {
@@ -548,25 +585,49 @@ export class AtriumEngine {
     this.markInteraction();
   };
 
+  private isPaused(): boolean {
+    return this.disposed || this.contextLost || document.hidden || this.windowBlurred;
+  }
+
+  private handleWindowBlur = () => {
+    this.windowBlurred = true;
+    cancelAnimationFrame(this.rafId);
+    clearTimeout(this.timerId);
+    if (this.sceneReady) this.emitHud();
+  };
+
+  private handleWindowFocus = () => {
+    this.windowBlurred = false;
+    if (this.disposed || !this.sceneReady || document.hidden || this.contextLost) return;
+    const now = performance.now();
+    this.lastTs = now;
+    this.lastRenderTs = 0;
+    this.markInteraction();
+    this.emitHud();
+    this.scheduleNextTick();
+  };
+
   private handleVisibilityChange = () => {
     if (this.disposed || !this.sceneReady) return;
-    if (document.hidden) {
+    if (document.hidden || this.windowBlurred) {
       cancelAnimationFrame(this.rafId);
       clearTimeout(this.timerId);
-    } else {
+      this.emitHud();
+    } else if (!this.contextLost) {
       const now = performance.now();
       this.lastTs = now;
       this.lastRenderTs = 0;
       this.markInteraction();
+      this.emitHud();
       this.scheduleNextTick();
     }
   };
 
   private scheduleNextTick() {
-    if (this.disposed || document.hidden) return;
+    if (this.isPaused()) return;
     if (this.isSoftwareGl) {
       this.afterDraw(() => {
-        if (!this.disposed && !document.hidden) {
+        if (!this.isPaused()) {
           this.loop(performance.now());
         }
       });
@@ -584,7 +645,7 @@ export class AtriumEngine {
     }
     gl.flush();
     const poll = () => {
-      if (this.disposed || document.hidden) {
+      if (this.isPaused()) {
         gl.deleteSync(sync);
         return;
       }
@@ -659,7 +720,10 @@ export class AtriumEngine {
     if (!ctx) return null;
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = getMaxAnisotropy();
+    tex.generateMipmaps = true;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.anisotropy = Math.max(VISUAL_CONTRACT.minTextAnisotropy, getMaxAnisotropy());
     const mat = new THREE.SpriteMaterial({
       map: tex,
       transparent: true,
@@ -878,8 +942,11 @@ export class AtriumEngine {
     const h = Math.max(1, this.container.clientHeight);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 1.5));
+    this.renderer.setPixelRatio(
+      this.isSoftwareGl ? 1 : this.qualityCtl.computeEffectivePixelRatio(this.tierConfig)
+    );
     this.renderer.setSize(w, h);
+    this.markInteraction();
   };
 
   private pickActorUnderPointer(): { actor: PersonActor; distance: number } | null {
@@ -922,7 +989,10 @@ export class AtriumEngine {
     const ctx = canvas.getContext('2d');
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = getMaxAnisotropy();
+    tex.generateMipmaps = true;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.anisotropy = Math.max(VISUAL_CONTRACT.minTextAnisotropy, getMaxAnisotropy());
     const sprite = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: tex,
@@ -1308,26 +1378,214 @@ export class AtriumEngine {
 
   private handleContextLost = (e: Event) => {
     e.preventDefault();
+    this.contextLost = true;
     cancelAnimationFrame(this.rafId);
     clearTimeout(this.timerId);
+    if (this.sceneReady) this.emitHud();
   };
 
   private handleContextRestored = () => {
-    if (this.disposed || !this.sceneReady) return;
+    if (this.disposed) return;
+    void this.rebuildOnContextRestore();
+  };
+
+  private async rebuildOnContextRestore(): Promise<void> {
+    const savedSimMin = this.sim ? this.sim.simMin : 9 * 60 + 25;
+    const savedRate = this.sim ? this.sim.simRate : 4;
+    const savedWeather = this.weather ? this.weather.getMode() : 'auto';
+    const savedCamPos = this.camera.position.clone();
+    const savedCamTgt = this.controls.target.clone();
+
+    this.sceneReady = false;
+    this.unwireWalk();
+    if (this.weather) this.weather.dispose();
+    if (this.arch) this.arch.trafficLights.dispose();
+    if (this.sim) this.sim.dispose();
+    this.monitorMeshMap.clear();
+    this.buildingPickMap.clear();
+    this.buildingPickList.length = 0;
+    this.playerCarPickSet.clear();
+    clearTexturesCache();
+    clearArchitecturalFormsCache();
+    this.scene.environment?.dispose();
+    this.scene.environment = null;
+
+    // Remove old architectural & sim objects while keeping lights, skyDome, and selectionRing
+    const keep = new Set<THREE.Object3D>([
+      this.hemiLight,
+      this.sunLight,
+      this.skyDome,
+      this.selectionRing,
+    ]);
+    for (let i = this.scene.children.length - 1; i >= 0; i--) {
+      const child = this.scene.children[i];
+      if (!keep.has(child)) {
+        this.scene.remove(child);
+      }
+    }
+
+    this.skyTex.dispose();
+    this.skyTex = createPrebakedSkyTexture();
+    this.skyMat.map = this.skyTex;
+    this.skyMat.needsUpdate = true;
+
+    try {
+      const pmrem = new THREE.PMREMGenerator(this.renderer);
+      this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      pmrem.dispose();
+    } catch {
+      this.scene.environment = null;
+    }
+
+    setNonTextTexMaxSize(Math.round(1024 * this.tierConfig.nonTextTexScale));
+    const M = createMaterials();
+    this.asphaltMat = M.asphalt;
+    this.screenReg = createScreenRegistry();
+    this.arch = buildSceneArchitecture(this.scene, M, this.screenReg);
+    this.proceduralFoliage = this.runProceduralFoliageScript(M);
+    this.weather = new WeatherSystem(this.scene, this.arch.levelGroups);
+    this.weather.setMode(savedWeather);
+    this.sim = new AtriumSimulation(
+      this.scene,
+      M,
+      this.arch.cabs,
+      this.arch.officeChairs,
+      this.arch.districtBuildings,
+      this.arch.trafficLights,
+      () => this.audio.playFootstep(),
+      () => this.audio.playCarHorn(),
+      (high) => this.audio.playRelayClick(high)
+    );
+    this.sim.setClock(savedSimMin);
+    this.sim.setRate(savedRate);
+    for (const m of this.sim.getPlayerCarPickMeshes()) {
+      this.playerCarPickSet.add(m);
+    }
+    this.unwireWalk = this.sim.wireWalk(this.renderer.domElement, this.camera, this.controls);
+    this.overheadBadges.length = 0;
+    this.initOverheadBadges();
+
+    for (const mp of this.arch.monitorPicks) {
+      for (const m of mp.meshes) this.monitorMeshMap.set(m, mp);
+    }
+    for (const [bId, db] of this.arch.districtBuildings) {
+      for (const m of db.pickMeshes) {
+        this.buildingPickMap.set(m, bId);
+        this.buildingPickList.push({ mesh: m, buildingId: bId });
+      }
+    }
+
+    this.camera.position.copy(savedCamPos);
+    this.controls.target.copy(savedCamTgt);
+    this.controls.update();
+    this.applyTierToSystems();
+    this.cutawaySettledKey = '';
+    this.cutawayAnimating = true;
+    this.updateFloorCutaway(0.1);
+    const wState = this.weather.update(0.016, this.elapsed, this.sim.simMin, this.activeLevel, this.arch.roofShellGroup.visible);
+    this.updateTimeOfDayLighting(this.sim.simMin, wState);
+    redrawAllScreenTextures(this.screenReg, this.elapsed);
+
+    this.contextLost = false;
+    this.sceneReady = true;
+    this.handleResize();
+    this.emitHud();
     const now = performance.now();
     this.lastTs = now;
     this.lastRenderTs = 0;
-    this.handleResize();
     this.scheduleNextTick();
-  };
+  }
+
+  private applyTierToSystems() {
+    this.tierConfig = getTierConfig(this.qualityCtl.currentTier, this.caps);
+    setNonTextTexMaxSize(Math.round(1024 * this.tierConfig.nonTextTexScale));
+    if (this.weather) {
+      this.weather.applyTierConfig({
+        rainCount: this.tierConfig.rainCount,
+        snowCount: this.tierConfig.snowCount,
+        splashCount: this.tierConfig.splashCount,
+        enableWindowOverlay: this.tierConfig.windowDropletShader,
+        reducedMotion: this.reducedMotion,
+      });
+    }
+    if (this.sim) {
+      this.sim.setActorCullDistance(this.tierConfig.actorCullDist);
+    }
+    if (!this.disposed) {
+      this.renderer.setPixelRatio(
+        this.isSoftwareGl ? 1 : this.qualityCtl.computeEffectivePixelRatio(this.tierConfig)
+      );
+    }
+  }
+
+  private updateSkyVertexColors(flash: number) {
+    const hash = `${this._zenith.getHexString()}|${this._horizon.getHexString()}|${this._skyGround.getHexString()}|${Math.round(flash * 20)}`;
+    if (hash === this.lastSkyColorHash) return;
+    this.lastSkyColorHash = hash;
+
+    const pos = this.skyDome.geometry.attributes.position as THREE.BufferAttribute;
+    const col = this.skyDome.geometry.attributes.color as THREE.BufferAttribute;
+    const len = pos.count;
+    for (let i = 0; i < len; i++) {
+      const y = pos.getY(i) / 520;
+      if (y >= 0) {
+        const k = Math.pow(Math.min(1, y), 0.52);
+        this._skyTmpCol.copy(this._horizon).lerp(this._zenith, k);
+        if (flash > 0.01) {
+          this._skyTmpCol.lerp(this._lightningCol, Math.min(0.6, flash * 0.45 * y));
+        }
+      } else {
+        const k = Math.pow(Math.min(1, -y * 3.0), 0.7);
+        this._skyTmpCol.copy(this._horizon).lerp(this._skyGround, k);
+      }
+      col.setXYZ(i, this._skyTmpCol.r, this._skyTmpCol.g, this._skyTmpCol.b);
+    }
+    col.needsUpdate = true;
+  }
+
+  private updateBuildingVisibilityCulling() {
+    if (!this.arch) return;
+    this.camera.updateMatrixWorld();
+    this._projScreenMat.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+    this._frustum.setFromProjectionMatrix(this._projScreenMat);
+
+    const interiorCutoffSq = this.tierConfig.roomCullDist * this.tierConfig.roomCullDist;
+    const outerCutoffSq = Math.pow(this.tierConfig.roomCullDist * 2.35, 2);
+    const cut = this.getCutawayLevelIndex();
+
+    for (const [bId, db] of this.arch.districtBuildings) {
+      const isActive = bId === this.activeBuilding;
+      this._cullCenter.set(db.spec.cx, db.spec.groundY + db.spec.floorH * 1.5, db.spec.cz);
+      const distSq = this._cullCenter.distanceToSquared(this.camera.position);
+
+      if (isActive || (this.sim.walkOn && distSq < 2500)) {
+        db.root.visible = true;
+        continue;
+      }
+
+      this._cullSphere.set(this._cullCenter, 34);
+      const inFrustum = this._frustum.intersectsSphere(this._cullSphere);
+      if (!inFrustum || distSq > outerCutoffSq) {
+        db.root.visible = false;
+        continue;
+      }
+
+      db.root.visible = true;
+      // On Eco/Low tiers, hide interior floor slabs/furniture inside distant neighbor buildings while keeping outer shell crisp
+      const showDetail = cut === null ? distSq <= interiorCutoffSq : distSq <= interiorCutoffSq * 0.85;
+      for (let s = 1; s < db.levelGroups.length; s++) {
+        db.levelGroups[s].visible = showDetail || s === db.levelGroups.length - 1;
+      }
+    }
+  }
 
   private updateTimeOfDayLighting(simMinutes: number, weatherState?: WeatherAtmosphereState) {
     // Solar elevation curve (sunrise ~06:20, zenith ~12:30, sunset ~18:40)
     const hr = simMinutes / 60;
     const dayPhase = Math.max(0, Math.min(1, (hr - 6.2) / 12.6));
-    const sunElev = Math.sin(dayPhase * Math.PI); // 0 at night/horizon, 1 at solar noon
+    const sunElev = Math.sin(dayPhase * Math.PI);
     const isDay = hr >= 6.0 && hr <= 18.8;
-    const baseSunIntensity = isDay ? 0.32 + sunElev * 1.38 : 0.14;
+    const baseSunIntensity = isDay ? 0.36 + sunElev * 1.44 : 0.16;
 
     const az = (dayPhase - 0.5) * Math.PI * 0.85;
     this.sunLight.position.set(
@@ -1336,15 +1594,13 @@ export class AtriumEngine {
       Math.cos(az) * 58
     );
 
-    // Warm golden hour vs crisp equatorial noon vs indigo dusk
     if (!isDay) {
       this._sunCol.setHex(0x8aa8e8);
       this._zenith.setHex(0x0b1322);
       this._horizon.setHex(0x1b2940);
       this._fogCol.setHex(0x121b2b);
       this._skyGround.setHex(0x0c1118);
-      this.hemiLight.intensity = 0.26;
-      this.skyFillLight.intensity = 0.12;
+      this.hemiLight.intensity = 0.44;
     } else if (sunElev < 0.35) {
       const k = sunElev / 0.35;
       this._sunCol.setHex(0xffa968).lerp(this._lerpTargetCol.setHex(0xfff1d6), k);
@@ -1352,16 +1608,14 @@ export class AtriumEngine {
       this._horizon.setHex(0xe89e74).lerp(this._lerpTargetCol.setHex(0xbcd8f4), k);
       this._fogCol.setHex(0x3a3242).lerp(this._lerpTargetCol.setHex(0x7c97b8), k);
       this._skyGround.setHex(0x252832);
-      this.hemiLight.intensity = 0.4 + k * 0.24;
-      this.skyFillLight.intensity = 0.18 + k * 0.1;
+      this.hemiLight.intensity = 0.58 + k * 0.34;
     } else {
       this._sunCol.setHex(0xfff4e0);
       this._zenith.setHex(0x2d64a6);
       this._horizon.setHex(0xc4dcf4);
       this._fogCol.setHex(0x88a4c2);
       this._skyGround.setHex(0x3a404a);
-      this.hemiLight.intensity = 0.64;
-      this.skyFillLight.intensity = 0.28;
+      this.hemiLight.intensity = 0.92;
     }
 
     const w = weatherState ?? this.weather.state;
@@ -1385,97 +1639,38 @@ export class AtriumEngine {
 
     this.sunLight.intensity = baseSunIntensity * w.sunMult + flash * 2.25;
     this.hemiLight.intensity = this.hemiLight.intensity * w.hemiMult + flash * 0.55;
-    this.skyFillLight.intensity = this.skyFillLight.intensity * w.fillMult + flash * 0.35;
     this.fog.density = w.fogDensity;
 
     this.sunLight.color.copy(this._sunCol);
-    this.skyMat.uniforms.uZenith.value.copy(this._zenith);
-    this.skyMat.uniforms.uHorizon.value.copy(this._horizon);
-    this.skyMat.uniforms.uGround.value.copy(this._skyGround);
-    this.skyMat.uniforms.uTime.value = this.elapsed;
-    this.skyMat.uniforms.uCloudCover.value = w.cloudCover;
-    this.skyMat.uniforms.uLightning.value = flash;
+    this.updateSkyVertexColors(flash);
     this.fog.color.copy(this._fogCol);
     this.renderer.setClearColor(this._fogCol, 1);
 
-    // Wet plaza / street asphalt response during rain, thunderstorm, or snowmelt
     this.asphaltMat.roughness = THREE.MathUtils.lerp(0.92, 0.24, w.wetness);
     this.asphaltMat.envMapIntensity = THREE.MathUtils.lerp(0.22, 0.65, w.wetness);
 
-    // Interior warm lights glow brighter after dusk and under overcast/storm skies
-    const weatherGlow = w.skyMix * 0.72;
-    const interiorIntensity = (isDay ? 1.2 : 2.3) + weatherGlow;
-    const anchors = this.arch.interiorWarmLights;
-    const camX = this.camera.position.x;
-    const camY = this.camera.position.y;
-    const camZ = this.camera.position.z;
-    const cutLv = this.getCutawayLevelIndex();
-    let b0: WarmLightAnchor | null = null;
-    let b1: WarmLightAnchor | null = null;
-    let b2: WarmLightAnchor | null = null;
-    let b3: WarmLightAnchor | null = null;
-    let d0 = Infinity;
-    let d1 = Infinity;
-    let d2 = Infinity;
-    let d3 = Infinity;
-    for (let i = 0; i < anchors.length; i++) {
-      const a = anchors[i];
-      const dx = a.x - camX;
-      const dy = a.y - camY;
-      const dz = a.z - camZ;
-      const dSq = dx * dx + dy * dy + dz * dz;
-      const isFocused =
-        a.buildingId === this.activeBuilding && (cutLv === null || a.floor === undefined || a.floor === cutLv);
-      if (dSq > 5625 && !isFocused) continue; // > 75m away unless actively cutaway-focused
-      const score = isFocused ? dSq * 0.42 : dSq;
-      if (score < d0) {
-        d3 = d2; b3 = b2;
-        d2 = d1; b2 = b1;
-        d1 = d0; b1 = b0;
-        d0 = score; b0 = a;
-      } else if (score < d1) {
-        d3 = d2; b3 = b2;
-        d2 = d1; b2 = b1;
-        d1 = score; b1 = a;
-      } else if (score < d2) {
-        d3 = d2; b3 = b2;
-        d2 = score; b2 = a;
-      } else if (score < d3) {
-        d3 = score; b3 = a;
-      }
-    }
-    const chosen = [b0, b1, b2, b3];
-    for (let i = 0; i < this.interiorLightPool.length; i++) {
-      const pl = this.interiorLightPool[i];
-      const a = chosen[i];
-      if (a) {
-        pl.position.set(a.x, a.y, a.z);
-        pl.color.setHex(a.color);
-        pl.distance = a.distance;
-        pl.intensity = interiorIntensity * a.baseScale;
-      } else {
-        pl.intensity = 0;
-      }
-    }
     for (const g of this.arch.streetGlows) {
       (g.material as THREE.SpriteMaterial).opacity = isDay ? 0.14 + w.skyMix * 0.24 : 0.48;
     }
   }
 
   private loop = (now: number) => {
-    if (this.disposed || !this.sceneReady || document.hidden) return;
+    if (this.isPaused() || !this.sceneReady) return;
 
     if (!this.isSoftwareGl) {
       this.rafId = requestAnimationFrame(this.loop);
       const isActive =
-        now - this.lastInteractionTs < 1400 ||
+        now - this.lastInteractionTs < 1800 ||
         this.sim.walkOn ||
         this.sim.isDriving() ||
         this.sim.tourOn ||
         this.sim.isCameraFlying() ||
         this.cutawayAnimating;
-      const minFrameMs = isActive ? 0 : this.sim.simRate === 0 ? 180 : 45;
-      if (minFrameMs > 0 && this.lastRenderTs > 0 && now - this.lastRenderTs < minFrameMs) {
+
+      const capFps = Math.max(15, this.tierConfig.frameCapFps);
+      const capMs = 1000 / capFps;
+      const idleMs = isActive ? capMs : Math.max(capMs, this.sim.simRate === 0 ? 160 : 50);
+      if (this.lastRenderTs > 0 && now - this.lastRenderTs < idleMs) {
         return;
       }
       this.lastRenderTs = now;
@@ -1486,18 +1681,25 @@ export class AtriumEngine {
       this.lastTs = now;
       this.elapsed += dt;
 
-      // Kinetic atrium centerpiece + roof ventilator fans
-      this.arch.sculptureCore.rotation.y += dt * 0.35;
-      this.arch.sculptureCore.rotation.x = 0.26 + Math.sin(this.elapsed * 0.35) * 0.04;
-      if (this.arch.sculptureRings[0]) this.arch.sculptureRings[0].rotation.z += dt * 0.45;
-      if (this.arch.sculptureRings[1]) this.arch.sculptureRings[1].rotation.x -= dt * 0.32;
-      this.arch.sculptureHalo.material.opacity = 0.04 + Math.sin(this.elapsed * 1.9) * 0.015;
-      for (const f of this.arch.roofFans) {
-        f.rotation.y += dt * 4.5;
+      if (this.qualityCtl.recordFrame(dt, this.isSoftwareGl)) {
+        this.applyTierToSystems();
+      }
+
+      if (!this.reducedMotion) {
+        this.skyTex.offset.x = (this.skyTex.offset.x + dt * 0.0022) % 1;
+        this.arch.sculptureCore.rotation.y += dt * 0.35;
+        this.arch.sculptureCore.rotation.x = 0.26 + Math.sin(this.elapsed * 0.35) * 0.04;
+        if (this.arch.sculptureRings[0]) this.arch.sculptureRings[0].rotation.z += dt * 0.45;
+        if (this.arch.sculptureRings[1]) this.arch.sculptureRings[1].rotation.x -= dt * 0.32;
+        this.arch.sculptureHalo.material.opacity = 0.04 + Math.sin(this.elapsed * 1.9) * 0.015;
+        for (const f of this.arch.roofFans) {
+          f.rotation.y += dt * 4.5;
+        }
       }
 
       // Floor cutaway peel-off animation from above
       this.updateFloorCutaway(dt);
+      this.updateBuildingVisibilityCulling();
 
       // Dynamic weather particles, window droplets/frost & time-of-day atmosphere
       const wState = this.weather.update(
@@ -1511,25 +1713,28 @@ export class AtriumEngine {
       this.sim.setWeatherTimeMultiplier(this.weather.getTimeMultiplier());
       this.updateTimeOfDayLighting(this.sim.simMin, wState);
 
-      // Organic foliage breeze modulated by current weather atmosphere
-      const windMul =
-        wState.activeWeather === 'storm'
-          ? 2.4
-          : wState.activeWeather === 'rain'
-            ? 1.75
-            : wState.activeWeather === 'overcast'
-              ? 1.35
-              : 1.0;
-      const windSpeed = wState.activeWeather === 'storm' ? 1.55 : 1.0;
-      const tWind = this.elapsed * windSpeed;
-      if (this.proceduralFoliage) {
-        for (const item of this.proceduralFoliage.windItems) {
-          const w = Math.sin(tWind * item.freq + item.phase);
-          const w2 = Math.cos(tWind * item.freq * 0.83 + item.phase * 1.27);
-          item.obj.rotation.x = item.baseRotX + w * item.amp * windMul;
-          item.obj.rotation.z = item.baseRotZ + w2 * item.amp * 0.78 * windMul;
+      if (!this.reducedMotion && this.proceduralFoliage) {
+        const animMinMs = 1000 / Math.max(15, this.tierConfig.animUpdateHz);
+        if (now - this.lastSimUpdateTs >= animMinMs * 0.85) {
+          const windMul =
+            wState.activeWeather === 'storm'
+              ? 2.4
+              : wState.activeWeather === 'rain'
+                ? 1.75
+                : wState.activeWeather === 'overcast'
+                  ? 1.35
+                  : 1.0;
+          const windSpeed = wState.activeWeather === 'storm' ? 1.55 : 1.0;
+          const tWind = this.elapsed * windSpeed;
+          for (const item of this.proceduralFoliage.windItems) {
+            const w = Math.sin(tWind * item.freq + item.phase);
+            const w2 = Math.cos(tWind * item.freq * 0.83 + item.phase * 1.27);
+            item.obj.rotation.x = item.baseRotX + w * item.amp * windMul;
+            item.obj.rotation.z = item.baseRotZ + w2 * item.amp * 0.78 * windMul;
+          }
         }
       }
+      this.lastSimUpdateTs = now;
 
       // Staff, lifts, traffic, tour & first-person walk
       if (this.selectedActor) {
@@ -1564,7 +1769,6 @@ export class AtriumEngine {
         this.selectionRing.visible = false;
       }
 
-      // Spatialized ambient office audio + drivable vehicle engine RPM / tire noise
       this._camRight.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
       this.audio.update(dt, this.camera.position, this._camRight, this.sim.getAmbientSources(), {
         walkOn: this.sim.walkOn,
@@ -1574,7 +1778,6 @@ export class AtriumEngine {
       });
       this.audio.updateDriveEngine(this.sim.getDriveAudioState());
 
-      // Animated office screens & wall TVs (only draws visible screens on active floors)
       const cut = this.getCutawayLevelIndex();
       updateAllScreens(this.screenReg, this.camera, this.elapsed, cut);
       if (this.inspectedMonitor) {
@@ -1719,7 +1922,50 @@ export class AtriumEngine {
     snap.activeWeather = this.weather.state.activeWeather;
     snap.weatherLabel = this.weather.state.label;
     snap.weatherTimeFactor = this.weather.state.timeFactor;
+    snap.qualityMode = this.qualityCtl.mode;
+    snap.activeTier = this.qualityCtl.currentTier;
+    snap.offlineMode = isOfflineMode();
     this.onHudChange(snap);
+  }
+
+  public setQualityMode(mode: QualityMode) {
+    this.qualityCtl.setMode(mode);
+    this.applyTierToSystems();
+    if (this.sceneReady) {
+      this.emitHud();
+    }
+  }
+
+  public getQualityMode(): QualityMode {
+    return this.qualityCtl.mode;
+  }
+
+  public getPerfTelemetry(): PerfTelemetry {
+    const perfMem = (performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory;
+    const jsHeapMb =
+      perfMem && typeof perfMem.usedJSHeapSize === 'number'
+        ? Math.round((perfMem.usedJSHeapSize / (1024 * 1024)) * 10) / 10
+        : null;
+    const pauseReason = this.contextLost
+      ? 'WebGL context lost'
+      : document.hidden
+        ? 'Tab hidden'
+        : this.windowBlurred
+          ? 'Window blurred'
+          : null;
+    return {
+      fps: this.qualityCtl.getRollingFps(),
+      frameMs: this.qualityCtl.getRollingFrameMs(),
+      drawCalls: this.renderer.info.render.calls,
+      triangles: this.renderer.info.render.triangles,
+      jsHeapMb,
+      mode: this.qualityCtl.mode,
+      tier: this.qualityCtl.currentTier,
+      pixelRatio: Math.round(this.renderer.getPixelRatio() * 100) / 100,
+      paused: pauseReason !== null,
+      pauseReason,
+      benchmarking: this.qualityCtl.benchmarking,
+    };
   }
 
   /* =========================================================
@@ -2104,9 +2350,14 @@ export class AtriumEngine {
     this.disposed = true;
     cancelAnimationFrame(this.rafId);
     clearTimeout(this.timerId);
+    this.unsubReducedMotion();
+    this.unsubFontsReady();
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     window.removeEventListener('resize', this.handleResize);
+    window.removeEventListener('orientationchange', this.handleResize);
+    window.removeEventListener('blur', this.handleWindowBlur);
+    window.removeEventListener('focus', this.handleWindowFocus);
     document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     window.removeEventListener('pointerdown', this.handleAudioUnlock);
     window.removeEventListener('keydown', this.handleAudioUnlock);
@@ -2133,7 +2384,12 @@ export class AtriumEngine {
     }
     this.selectionRing.geometry.dispose();
     (this.selectionRing.material as THREE.Material).dispose();
+    this.skyTex.dispose();
+    this.skyMat.dispose();
+    this.skyDome.geometry.dispose();
+    this.scene.environment?.dispose();
     this.controls.dispose();
+    clearTexturesCache();
     clearArchitecturalFormsCache();
     if (this.proceduralFoliage) {
       for (const g of this.proceduralFoliage.geometries) g.dispose();

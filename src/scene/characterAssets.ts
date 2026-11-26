@@ -227,14 +227,9 @@ function calibrateImportedCharacterMaterials(root: THREE.Object3D): void {
         m.metalness = 0;
         m.envMapIntensity = 0.65;
       } else if (isSkin) {
-        m.roughness = Math.max(m.roughness, 0.62);
+        m.roughness = Math.max(m.roughness, 0.72);
         m.metalness = 0;
-        m.envMapIntensity = Math.min(m.envMapIntensity ?? 0.25, 0.22);
-        if (m instanceof THREE.MeshPhysicalMaterial) {
-          m.clearcoat = 0;
-          m.sheen = Math.max(m.sheen, 0.25);
-          m.sheenRoughness = 0.78;
-        }
+        m.envMapIntensity = Math.min(m.envMapIntensity ?? 0.22, 0.18);
       } else if (isHair) {
         m.roughness = Math.max(m.roughness, 0.56);
         m.metalness = 0;

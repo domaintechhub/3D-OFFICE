@@ -1,4 +1,7 @@
 import type { BuildingId } from './districtData';
+import { createSeededRng } from './prng';
+
+const socialRng = createSeededRng(9103);
 
 export type SocialPlatformId = 'hubpulse' | 'worklink' | 'swiftchat';
 export type JobStatus = 'Queued' | 'In Progress' | 'Completed';
@@ -662,7 +665,7 @@ class DistrictSocialNetwork {
   private pickWorkerForBuilding(buildingId: BuildingId): { name: string; role: string } {
     const list = this.workerRoster.get(buildingId);
     if (list && list.length > 0) {
-      return list[Math.floor(Math.random() * list.length)];
+      return list[Math.floor(socialRng() * list.length)];
     }
     const dir = DISTRICT_SOCIAL_DIRECTORY[buildingId];
     return { name: `${dir.shortName} Specialist`, role: dir.niche };

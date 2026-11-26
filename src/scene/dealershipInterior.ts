@@ -59,8 +59,8 @@ interface DealershipPalette {
   brushedTitanium: THREE.MeshStandardMaterial;
   saddleLeather: THREE.MeshStandardMaterial;
   alcantaraCharcoal: THREE.MeshStandardMaterial;
-  crystalGlass: THREE.MeshPhysicalMaterial;
-  smokedGlass: THREE.MeshPhysicalMaterial;
+  crystalGlass: THREE.MeshStandardMaterial;
+  smokedGlass: THREE.MeshStandardMaterial;
   copperCoil: THREE.MeshStandardMaterial;
   hvOrange: THREE.MeshStandardMaterial;
   warmLed: THREE.MeshBasicMaterial;
@@ -233,23 +233,23 @@ function getDealershipPalette(): DealershipPalette {
       metalness: 0.0,
       envMapIntensity: 0.14,
     }),
-    crystalGlass: new THREE.MeshPhysicalMaterial({
+    crystalGlass: new THREE.MeshStandardMaterial({
       color: 0xdff2fa,
       roughness: 0.07,
-      metalness: 0.08,
+      metalness: 0.1,
       transparent: true,
       opacity: 0.24,
-      envMapIntensity: 0.72,
+      envMapIntensity: 0.78,
       depthWrite: false,
       side: THREE.DoubleSide,
     }),
-    smokedGlass: new THREE.MeshPhysicalMaterial({
+    smokedGlass: new THREE.MeshStandardMaterial({
       color: 0x263240,
       roughness: 0.09,
-      metalness: 0.12,
+      metalness: 0.14,
       transparent: true,
       opacity: 0.42,
-      envMapIntensity: 0.65,
+      envMapIntensity: 0.72,
       depthWrite: false,
       side: THREE.DoubleSide,
     }),
@@ -781,13 +781,11 @@ function buildAeroWindTunnelVitrine(
   });
 
   // Sculpted liquid-crimson & clearcoat GT fastback aerodynamic speedform body
-  const carPaint = new THREE.MeshPhysicalMaterial({
+  const carPaint = new THREE.MeshStandardMaterial({
     color: 0xa61d24,
-    metalness: 0.72,
-    roughness: 0.22,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.08,
-    envMapIntensity: 0.85,
+    metalness: 0.78,
+    roughness: 0.16,
+    envMapIntensity: 0.95,
   });
   const lowerBody = new THREE.Mesh(getRoundedBox(1.88, 0.24, 0.72, 0.09, 3), carPaint);
   lowerBody.position.set(0, 1.16, 0);
@@ -1074,13 +1072,11 @@ export function buildApexDealershipWholeBuilding(ctx: DealershipBuildContext) {
     for (let k = 0; k < 5; k++) {
       const fx = spec.cx - 2.1 + k * 1.05;
       const col = speedformColors[row * 5 + k];
-      const paintMat = new THREE.MeshPhysicalMaterial({
+      const paintMat = new THREE.MeshStandardMaterial({
         color: col,
-        metalness: 0.78,
-        roughness: 0.22,
-        clearcoat: 1.0,
-        clearcoatRoughness: 0.08,
-        envMapIntensity: 0.85,
+        metalness: 0.8,
+        roughness: 0.16,
+        envMapIntensity: 0.95,
       });
       const frogGeo = new THREE.SphereGeometry(0.18, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.55);
       frogGeo.scale(1.5, 0.75, 0.9);

@@ -52,8 +52,8 @@ interface BitVaultPalette {
   matteGunmetal: THREE.MeshStandardMaterial;
   emeraldFelt: THREE.MeshStandardMaterial;
   obsidianLeather: THREE.MeshStandardMaterial;
-  emeraldSmokedGlass: THREE.MeshPhysicalMaterial;
-  dielectricFluid: THREE.MeshPhysicalMaterial;
+  emeraldSmokedGlass: THREE.MeshStandardMaterial;
+  dielectricFluid: THREE.MeshStandardMaterial;
   copperCoil: THREE.MeshStandardMaterial;
   emeraldGlow: THREE.MeshBasicMaterial;
   amberGoldGlow: THREE.MeshBasicMaterial;
@@ -228,27 +228,25 @@ function getBitVaultPalette(): BitVaultPalette {
       metalness: 0.08,
       envMapIntensity: 0.44,
     }),
-    emeraldSmokedGlass: new THREE.MeshPhysicalMaterial({
+    emeraldSmokedGlass: new THREE.MeshStandardMaterial({
       color: 0x8ad9be,
       roughness: 0.09,
-      metalness: 0.08,
-      clearcoat: 0.9,
+      metalness: 0.12,
       transparent: true,
       opacity: 0.36,
-      envMapIntensity: 0.88,
+      envMapIntensity: 0.92,
       depthWrite: false,
       side: THREE.DoubleSide,
     }),
-    dielectricFluid: new THREE.MeshPhysicalMaterial({
+    dielectricFluid: new THREE.MeshStandardMaterial({
       color: 0x10b981,
       emissive: 0x064e3b,
       emissiveIntensity: 0.28,
-      roughness: 0.08,
-      metalness: 0.04,
-      clearcoat: 1.0,
+      roughness: 0.07,
+      metalness: 0.08,
       transparent: true,
       opacity: 0.42,
-      envMapIntensity: 0.95,
+      envMapIntensity: 0.98,
       depthWrite: false,
       side: THREE.DoubleSide,
     }),
@@ -305,7 +303,7 @@ function addCryptoPlaque(
     g.fillStyle = '#f8fafc';
     g.font = '800 32px "Plus Jakarta Sans", sans-serif';
     g.fillText(text, 44, 84);
-  });
+  }, true, true);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = getMaxAnisotropy();
 

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  Activity,
   Brain,
   Building2,
   Car,
@@ -18,13 +19,16 @@ import {
   Footprints,
   Lightbulb,
   Loader2,
+  Maximize2,
   Megaphone,
   MessageSquare,
+  Minimize2,
   Navigation,
   Pause,
   Play,
   Radio,
   Send,
+  SlidersHorizontal,
   Smartphone,
   Snowflake,
   Sparkles,
@@ -33,6 +37,7 @@ import {
   Video,
   Volume2,
   VolumeX,
+  WifiOff,
   X,
 } from 'lucide-react';
 import {
@@ -42,13 +47,15 @@ import {
   type WeatherMode,
 } from '../scene/constants';
 import { DISTRICT_BUILDINGS, type BuildingId } from '../scene/districtData';
+import type { PerfTelemetry, QualityMode } from '../scene/quality';
 import {
   DISTRICT_SOCIAL_DIRECTORY,
   socialNetwork,
   type SocialPlatformId,
 } from '../scene/socialNetwork';
+import { getOfflineNairobiWeather } from '../data/offlineWeb';
 import { WorkstationInspector } from './WorkstationInspector';
-import { isStandaloneMode } from '../utils/standalone';
+import { isOfflineMode, isStandaloneMode } from '../utils/standalone';
 
 interface HudOverlayProps {
   hud: HudSnapshot;
@@ -86,6 +93,10 @@ interface HudOverlayProps {
   onCarHorn: () => void;
   onForceRedrawMonitor: () => void;
   onApplyLiveNairobi: (minutes: number, cond: WeatherMode) => void;
+  onSetQualityMode: (mode: QualityMode) => void;
+  telemetry: PerfTelemetry | null;
+  showPerf: boolean;
+  onTogglePerf: () => void;
 }
 
 function getFloorButtons(buildingId: BuildingId, totalFloors: number): Array<{ key: string; label: string }> {
@@ -116,6 +127,14 @@ const TIME_PRESETS = [
   { label: 'Handover', minutes: 15 * 60 + 30 },
   { label: 'Dinner', minutes: 19 * 60 },
   { label: 'Night', minutes: 22 * 60 + 15 },
+];
+
+const QUALITY_MODES: Array<{ mode: QualityMode; label: string }> = [
+  { mode: 'auto', label: 'Auto' },
+  { mode: 'eco', label: 'Eco' },
+  { mode: 'low', label: 'Low' },
+  { mode: 'med', label: 'Med' },
+  { mode: 'high', label: 'High' },
 ];
 
 const WEATHER_MODES: Array<{ mode: WeatherMode; label: string }> = [
@@ -178,6 +197,10 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
   onCarHorn,
   onForceRedrawMonitor,
   onApplyLiveNairobi,
+  onSetQualityMode,
+  telemetry,
+  showPerf,
+  onTogglePerf,
 }) => {
   const [dockOpen, setDockOpen] = useState(true);
   const [, setSocialVer] = useState(0);
@@ -190,11 +213,73 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
   const [nairobiError, setNairobiError] = useState<string | null>(null);
   const [exportingHtml, setExportingHtml] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isTouchViewport, setIsTouchViewport] = useState(false);
   const joyRef = useRef<HTMLDivElement | null>(null);
   const [joyKnob, setJoyKnob] = useState({ x: 0, y: 0 });
   const joyActive = useRef(false);
   const driveTouchState = useRef({ throttle: 0, steer: 0, brake: false });
   const isStandalone = isStandaloneMode();
+  const offlineActive = hud.offlineMode || isOfflineMode();
+
+  const fullscreenSupported =
+    typeof document !== 'undefined' &&
+    Boolean(
+      document.fullscreenEnabled ||
+        (document as unknown as { webkitFullscreenEnabled?: boolean }).webkitFullscreenEnabled
+    );
+
+  useEffect(() => {
+    const checkTouch = () => {
+      if (typeof window === 'undefined') return;
+      const coarse =
+        'ontouchstart' in window ||
+        (navigator?.maxTouchPoints ?? 0) > 0 ||
+        Boolean(window.matchMedia?.('(pointer: coarse)')?.matches) ||
+        window.innerWidth < 768;
+      setIsTouchViewport(coarse);
+    };
+    const onFsChange = () => {
+      const fsEl =
+        document.fullscreenElement ||
+        (document as unknown as { webkitFullscreenElement?: Element | null }).webkitFullscreenElement;
+      setIsFullscreen(Boolean(fsEl));
+    };
+    checkTouch();
+    onFsChange();
+    window.addEventListener('resize', checkTouch);
+    window.addEventListener('orientationchange', checkTouch);
+    document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+    return () => {
+      window.removeEventListener('resize', checkTouch);
+      window.removeEventListener('orientationchange', checkTouch);
+      document.removeEventListener('fullscreenchange', onFsChange);
+      document.removeEventListener('webkitfullscreenchange', onFsChange);
+    };
+  }, []);
+
+  const toggleFullscreen = async () => {
+    if (!fullscreenSupported) return;
+    try {
+      const doc = document as Document & {
+        webkitFullscreenElement?: Element | null;
+        webkitExitFullscreen?: () => Promise<void>;
+      };
+      const el = document.documentElement as HTMLElement & {
+        webkitRequestFullscreen?: () => Promise<void>;
+      };
+      if (doc.fullscreenElement || doc.webkitFullscreenElement) {
+        if (doc.exitFullscreen) await doc.exitFullscreen();
+        else if (doc.webkitExitFullscreen) await doc.webkitExitFullscreen();
+      } else {
+        if (el.requestFullscreen) await el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+      }
+    } catch {
+      // Ignore fullscreen denial on restricted iFrames
+    }
+  };
 
   const handleDownloadStandaloneHtml = async () => {
     if (exportingHtml) return;
@@ -257,78 +342,48 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
     setNairobiLoading(true);
     setNairobiError(null);
     try {
+      if (isStandalone || isOfflineMode()) {
+        const off = getOfflineNairobiWeather(new Date());
+        onApplyLiveNairobi(off.nairobiHour * 60 + off.nairobiMinute, off.presetSuggestion);
+        setLiveNairobiTemp(`${off.temperatureC}°C · Offline`);
+        return;
+      }
+
       let minutesOfDay: number | null = null;
       let cond: WeatherMode = 'clear';
       let tempC: number | null = null;
       let summary = '';
 
-      if (!isStandalone) {
-        try {
-          const res = await fetch('/api/nairobi-live');
-          if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-            const data = await res.json();
-            if (data?.ok) {
-              minutesOfDay = Number(data.minutesOfDay);
-              cond = (data.condition || 'clear') as WeatherMode;
-              tempC = typeof data.temperatureC === 'number' ? data.temperatureC : null;
-              summary = typeof data.summary === 'string' ? data.summary : '';
-            }
+      try {
+        const res = await fetch('/api/nairobi-live');
+        if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
+          const data = await res.json();
+          if (data?.ok) {
+            minutesOfDay = Number(data.minutesOfDay);
+            cond = (data.condition || 'clear') as WeatherMode;
+            tempC = typeof data.temperatureC === 'number' ? data.temperatureC : null;
+            summary = typeof data.summary === 'string' ? data.summary : '';
           }
-        } catch {
-          // Fall back to direct browser Nairobi EAT + Open-Meteo CORS fetch
         }
+      } catch {
+        // Fall through to local offline clock fallback
       }
 
       if (minutesOfDay === null) {
-        const parts = new Intl.DateTimeFormat('en-GB', {
-          timeZone: 'Africa/Nairobi',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false,
-        }).formatToParts(new Date());
-        const hh = Number(parts.find((p) => p.type === 'hour')?.value) || 0;
-        const mm = Number(parts.find((p) => p.type === 'minute')?.value) || 0;
-        minutesOfDay = hh * 60 + mm;
-
-        try {
-          const wxRes = await fetch(
-            'https://api.open-meteo.com/v1/forecast?latitude=-1.286389&longitude=36.817223&current=temperature_2m,precipitation,weather_code,cloud_cover&timezone=Africa%2FNairobi'
-          );
-          if (wxRes.ok) {
-            const wx = await wxRes.json();
-            const cur = wx?.current;
-            if (cur) {
-              tempC = typeof cur.temperature_2m === 'number' ? Math.round(cur.temperature_2m * 10) / 10 : null;
-              const code = typeof cur.weather_code === 'number' ? cur.weather_code : 0;
-              const precip = typeof cur.precipitation === 'number' ? cur.precipitation : 0;
-              const cloud = typeof cur.cloud_cover === 'number' ? cur.cloud_cover : 0;
-              if (code >= 95) {
-                cond = 'storm';
-                summary = 'Thunderstorm';
-              } else if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82) || precip > 0.2) {
-                cond = 'rain';
-                summary = 'Rain Showers';
-              } else if (code === 2 || code === 3 || code === 45 || code === 48 || cloud >= 60) {
-                cond = 'overcast';
-                summary = code === 45 || code === 48 ? 'Mist & Clouds' : 'Mostly Cloudy';
-              } else {
-                cond = 'clear';
-                summary = code === 1 ? 'Mostly Clear' : 'Clear Sky';
-              }
-            }
-          } else {
-            setNairobiError(`Nairobi EAT clock synced; live weather API returned HTTP ${wxRes.status}.`);
-          }
-        } catch {
-          setNairobiError('Nairobi EAT clock synced locally; live weather feed unavailable offline.');
-        }
+        const off = getOfflineNairobiWeather(new Date());
+        onApplyLiveNairobi(off.nairobiHour * 60 + off.nairobiMinute, off.presetSuggestion);
+        setLiveNairobiTemp(`${off.temperatureC}°C · Offline`);
+        setNairobiError('Nairobi EAT clock synced locally (offline fallback).');
+        return;
       }
 
       onApplyLiveNairobi(Number.isFinite(minutesOfDay) ? minutesOfDay : 12 * 60, cond);
       const tempPart = tempC !== null ? `${tempC}°C` : '';
       setLiveNairobiTemp([tempPart, summary].filter(Boolean).join(' · ') || 'EAT Live');
-    } catch (err) {
-      setNairobiError(err instanceof Error ? err.message : 'Live Nairobi sync failed.');
+    } catch {
+      const off = getOfflineNairobiWeather(new Date());
+      onApplyLiveNairobi(off.nairobiHour * 60 + off.nairobiMinute, off.presetSuggestion);
+      setLiveNairobiTemp(`${off.temperatureC}°C · Offline`);
     } finally {
       setNairobiLoading(false);
     }
@@ -368,10 +423,18 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
   const walkFloorIndices = Array.from({ length: Math.max(1, hud.buildingFloors) }, (_, i) => i);
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-10 select-none text-slate-100">
-      {/* Top Bar: Identity + Clock + Dock Toggle */}
-      <div className="flex items-start justify-between gap-4 p-3 sm:p-4">
-        <div className="pointer-events-auto border border-white/12 bg-[#0d121a]/92 px-3.5 py-2.5 rounded-md shadow-lg">
+    <div
+      className="pointer-events-none fixed inset-0 z-10 select-none text-slate-100"
+      style={{
+        paddingTop: 'var(--sat)',
+        paddingRight: 'var(--sar)',
+        paddingBottom: 'var(--sab)',
+        paddingLeft: 'var(--sal)',
+      }}
+    >
+      {/* Top Bar: Identity + Clock + Quality/Stats/Fullscreen + Dock Toggle */}
+      <div className="flex flex-wrap items-start justify-between gap-2.5 sm:gap-4 p-2.5 sm:p-4">
+        <div className="pointer-events-auto border border-white/12 bg-[#0d121a]/92 px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-md shadow-lg max-w-full">
           <div className="flex flex-wrap items-center gap-2 text-xs tracking-wider uppercase font-semibold">
             <span
               className="inline-block h-2 w-2 rounded-xs shrink-0"
@@ -382,6 +445,12 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
             <span className="text-[11px] font-medium normal-case tracking-normal text-slate-300">
               {hud.activeBuildingNiche}
             </span>
+            {offlineActive && (
+              <span className="inline-flex items-center gap-1 rounded border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-amber-200">
+                <WifiOff className="w-2.5 h-2.5" />
+                <span>Offline mode</span>
+              </span>
+            )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-300">
             <span className="font-mono-tabular font-semibold text-white">{hud.timeText}</span>
@@ -401,12 +470,73 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                 <span className="font-mono-tabular text-sky-300">{hud.weatherTimeFactor.toFixed(2)}×</span>
               )}
             </span>
-            <span className="text-slate-500">·</span>
-            <span className="font-mono-tabular text-slate-400">{hud.statsLabel}</span>
+            <span className="text-slate-500 hidden sm:inline">·</span>
+            <span className="font-mono-tabular text-slate-400 hidden sm:inline">{hud.statsLabel}</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          {/* Quick Quality Tier Selector */}
+          <label className="pointer-events-auto flex items-center gap-1.5 border border-white/12 bg-[#0d121a]/92 px-2 py-1.5 sm:py-2 rounded-md text-xs text-slate-200">
+            <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span className="sr-only">Graphics quality</span>
+            <select
+              aria-label="Graphics quality preset"
+              value={hud.qualityMode}
+              onChange={(e) => onSetQualityMode(e.target.value as QualityMode)}
+              className="bg-transparent text-xs font-medium text-slate-100 focus:outline-none cursor-pointer"
+            >
+              <option value="auto" className="bg-[#0d121a] text-white">
+                Quality: Auto ({hud.activeTier.toUpperCase()})
+              </option>
+              <option value="eco" className="bg-[#0d121a] text-white">
+                Quality: Eco (30 FPS)
+              </option>
+              <option value="low" className="bg-[#0d121a] text-white">
+                Quality: Low
+              </option>
+              <option value="med" className="bg-[#0d121a] text-white">
+                Quality: Med
+              </option>
+              <option value="high" className="bg-[#0d121a] text-white">
+                Quality: High
+              </option>
+            </select>
+          </label>
+
+          {/* Telemetry Overlay Toggle */}
+          <button
+            type="button"
+            aria-pressed={showPerf}
+            onClick={onTogglePerf}
+            title="Toggle Performance Telemetry (F when not walking/driving)"
+            aria-label="Toggle performance telemetry"
+            className={`pointer-events-auto flex items-center gap-1.5 border px-2.5 py-1.5 sm:py-2 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+              showPerf
+                ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-200'
+                : 'border-white/12 bg-[#0d121a]/92 text-slate-200 hover:bg-slate-800/95'
+            }`}
+          >
+            <Activity className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="font-mono-tabular">
+              {telemetry ? `${telemetry.fps} FPS` : 'Stats'}
+            </span>
+          </button>
+
+          {/* Fullscreen Toggle */}
+          {fullscreenSupported && (
+            <button
+              type="button"
+              aria-pressed={isFullscreen}
+              onClick={() => void toggleFullscreen()}
+              title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+              aria-label={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+              className="pointer-events-auto flex items-center gap-1 border border-white/12 bg-[#0d121a]/92 px-2.5 py-1.5 sm:py-2 text-xs font-medium text-slate-200 hover:bg-slate-800/95 hover:text-white rounded-md transition-colors cursor-pointer"
+            >
+              {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            </button>
+          )}
+
           {!hud.walking && !hud.driving && (
             <>
               {!isStandalone && (
@@ -415,7 +545,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                   onClick={handleDownloadStandaloneHtml}
                   disabled={exportingHtml}
                   title="Download self-contained HTML file for your website"
-                  className="pointer-events-auto flex items-center gap-1.5 border border-amber-400/35 bg-[#0d121a]/92 px-3 py-2 text-xs font-medium text-amber-200 hover:bg-amber-500/20 hover:text-white disabled:opacity-60 rounded-md transition-colors cursor-pointer"
+                  className="pointer-events-auto hidden md:flex items-center gap-1.5 border border-amber-400/35 bg-[#0d121a]/92 px-3 py-2 text-xs font-medium text-amber-200 hover:bg-amber-500/20 hover:text-white disabled:opacity-60 rounded-md transition-colors cursor-pointer"
                 >
                   {exportingHtml ? (
                     <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
@@ -430,10 +560,10 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                 onClick={onOpenSocialChannels}
                 aria-label="Open District Social Channels"
                 title="Open District Social Platforms & Cross-Company Dispatch"
-                className="pointer-events-auto flex items-center gap-1.5 border border-sky-400/35 bg-[#0d121a]/92 px-3 py-2 text-xs font-medium text-sky-200 hover:bg-sky-500/20 hover:text-white rounded-md transition-colors cursor-pointer"
+                className="pointer-events-auto flex items-center gap-1.5 border border-sky-400/35 bg-[#0d121a]/92 px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-medium text-sky-200 hover:bg-sky-500/20 hover:text-white rounded-md transition-colors cursor-pointer"
               >
                 <MessageSquare className="w-3.5 h-3.5 text-sky-400" />
-                <span>Social Channels</span>
+                <span className="hidden sm:inline">Social Channels</span>
                 <span className="font-mono-tabular px-1.5 py-0.5 text-[10px] rounded bg-sky-500/20 text-sky-200">
                   {socialNetwork.getStatsSummary().activeJobs}
                 </span>
@@ -443,10 +573,10 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                 onClick={onOpenCharacters}
                 aria-label="Open 3D Character Studio"
                 title="Open 3D Character Studio"
-                className="pointer-events-auto flex items-center gap-1.5 border border-emerald-400/35 bg-[#0d121a]/92 px-3 py-2 text-xs font-medium text-emerald-200 hover:bg-emerald-500/20 hover:text-white rounded-md transition-colors cursor-pointer"
+                className="pointer-events-auto flex items-center gap-1.5 border border-emerald-400/35 bg-[#0d121a]/92 px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-medium text-emerald-200 hover:bg-emerald-500/20 hover:text-white rounded-md transition-colors cursor-pointer"
               >
                 <Users className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Characters</span>
+                <span className="hidden sm:inline">Characters</span>
               </button>
               <button
                 type="button"
@@ -455,16 +585,65 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                 aria-controls="hud-control-dock"
                 aria-label={dockOpen ? 'Collapse Controls' : 'Expand Controls'}
                 title="Toggle Controls (H)"
-                className="pointer-events-auto flex items-center gap-1.5 border border-white/12 bg-[#0d121a]/92 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-800/95 hover:text-white rounded-md transition-colors cursor-pointer"
+                className="pointer-events-auto flex items-center gap-1.5 border border-white/12 bg-[#0d121a]/92 px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-medium text-slate-200 hover:bg-slate-800/95 hover:text-white rounded-md transition-colors cursor-pointer"
               >
                 <span>Controls</span>
-                <span className="font-mono-tabular text-[10px] text-slate-400">[H]</span>
+                <span className="font-mono-tabular text-[10px] text-slate-400 hidden sm:inline">[H]</span>
                 {dockOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
               </button>
             </>
           )}
         </div>
       </div>
+
+      {/* Telemetry Readout Overlay (F shortcut or Stats button) */}
+      {showPerf && telemetry && (
+        <aside
+          role="region"
+          aria-label="Performance Telemetry"
+          className="pointer-events-auto fixed top-[88px] right-3 sm:right-4 z-20 w-[min(90vw,280px)] rounded-md border border-emerald-400/35 bg-[#0a0f18]/94 p-3 shadow-2xl font-mono-tabular text-[11px]"
+        >
+          <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-white/10">
+            <span className="flex items-center gap-1.5 font-semibold text-emerald-300 uppercase tracking-wider text-[10px]">
+              <Activity className="w-3.5 h-3.5" />
+              <span>Performance Telemetry</span>
+            </span>
+            <button
+              type="button"
+              onClick={onTogglePerf}
+              aria-label="Close telemetry"
+              className="p-0.5 text-slate-400 hover:text-white rounded cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-slate-300">
+            <span className="text-slate-400">FPS / Frame</span>
+            <span className="text-right font-semibold text-white">
+              {telemetry.fps} FPS · {telemetry.frameMs.toFixed(1)}ms
+            </span>
+            <span className="text-slate-400">Tier</span>
+            <span className="text-right font-semibold text-emerald-300 uppercase">
+              {telemetry.mode === 'auto' ? `Auto→${telemetry.tier}` : telemetry.tier}
+              {telemetry.benchmarking ? ' (Cal)' : ''}
+            </span>
+            <span className="text-slate-400">Draw Calls</span>
+            <span className="text-right text-white">{telemetry.drawCalls}</span>
+            <span className="text-slate-400">Triangles</span>
+            <span className="text-right text-white">{telemetry.triangles.toLocaleString()}</span>
+            <span className="text-slate-400">Pixel Ratio</span>
+            <span className="text-right text-white">{telemetry.pixelRatio.toFixed(2)}×</span>
+            <span className="text-slate-400">JS Heap</span>
+            <span className="text-right text-white">
+              {telemetry.jsHeapMb !== null ? `${telemetry.jsHeapMb} MB` : 'N/A'}
+            </span>
+            <span className="text-slate-400">Status</span>
+            <span className="text-right text-sky-300 truncate">
+              {telemetry.paused ? telemetry.pauseReason || 'Paused' : offlineActive ? 'Offline' : 'Active'}
+            </span>
+          </div>
+        </aside>
+      )}
 
       {/* Dismissible Live Nairobi / Export Status Toast */}
       {(exportError || nairobiError) && (
@@ -516,7 +695,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
         <aside
           role="region"
           aria-label={`Character Inspector: ${hud.selectedCharacter.name}`}
-          className="pointer-events-auto fixed top-16 right-3 sm:right-4 w-[min(86vw,308px)] max-h-[calc(100vh-11.2rem)] overflow-y-auto border border-white/15 bg-[#0d121a]/95 px-3.5 py-3 rounded-md shadow-2xl"
+          className="pointer-events-auto fixed top-16 right-3 sm:right-4 w-[min(86vw,308px)] max-h-[calc(var(--vvh,100dvh)-11.2rem)] overflow-y-auto border border-white/15 bg-[#0d121a]/95 px-3.5 py-3 rounded-md shadow-2xl"
         >
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
@@ -767,7 +946,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
       {/* Active Floor Cutaway Activity Card */}
       {hud.floorActivity && !hud.walking && !hud.driving && !hud.tourActive && !hud.hoveredRoom && (
         <div
-          className={`pointer-events-auto fixed top-[88px] left-3 sm:left-4 w-[min(80vw,268px)] max-h-[calc(100vh-12.5rem)] overflow-y-auto border border-white/15 bg-[#0d121a]/94 px-3 py-2.5 rounded-md shadow-xl ${
+          className={`pointer-events-auto fixed top-[88px] left-3 sm:left-4 w-[min(80vw,268px)] max-h-[calc(var(--vvh,100dvh)-12.5rem)] overflow-y-auto border border-white/15 bg-[#0d121a]/94 px-3 py-2.5 rounded-md shadow-xl ${
             hud.selectedCharacter || hud.inspectedMonitor ? 'hidden lg:block' : ''
           }`}
         >
@@ -979,27 +1158,33 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
           </section>
 
           {/* Touch Joystick for mobile / tablet walkthrough */}
-          <div
-            ref={joyRef}
-            role="application"
-            aria-label="Walk movement touch joystick"
-            onPointerDown={(e) => {
-              joyActive.current = true;
-              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-              updateJoystick(e.clientX, e.clientY);
-            }}
-            onPointerMove={(e) => {
-              if (joyActive.current) updateJoystick(e.clientX, e.clientY);
-            }}
-            onPointerUp={resetJoystick}
-            onPointerCancel={resetJoystick}
-            className="pointer-events-auto sm:hidden fixed bottom-28 left-4 h-24 w-24 rounded-full border border-white/20 bg-[#0d121a]/85 flex items-center justify-center touch-none"
-          >
+          {isTouchViewport && (
             <div
-              className="h-9 w-9 rounded-full bg-emerald-400/90 border border-white/40 transition-transform duration-75"
-              style={{ transform: `translate(${joyKnob.x}px, ${joyKnob.y}px)` }}
-            />
-          </div>
+              ref={joyRef}
+              role="application"
+              aria-label="Walk movement touch joystick"
+              onPointerDown={(e) => {
+                joyActive.current = true;
+                (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                updateJoystick(e.clientX, e.clientY);
+              }}
+              onPointerMove={(e) => {
+                if (joyActive.current) updateJoystick(e.clientX, e.clientY);
+              }}
+              onPointerUp={resetJoystick}
+              onPointerCancel={resetJoystick}
+              style={{
+                bottom: 'max(7rem, calc(6.5rem + var(--sab)))',
+                left: 'max(1rem, var(--sal))',
+              }}
+              className="pointer-events-auto fixed h-24 w-24 rounded-full border border-white/20 bg-[#0d121a]/85 flex items-center justify-center touch-none"
+            >
+              <div
+                className="h-9 w-9 rounded-full bg-emerald-400/90 border border-white/40 transition-transform duration-75"
+                style={{ transform: `translate(${joyKnob.x}px, ${joyKnob.y}px)` }}
+              />
+            </div>
+          )}
         </>
       )}
 
@@ -1174,54 +1359,70 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
           </div>
 
           {/* Mobile Touch Driving Pedals & Steering */}
-          <div className="pointer-events-auto sm:hidden fixed bottom-36 left-3 flex items-center gap-2 touch-none">
-            <button
-              type="button"
-              aria-label="Steer left"
-              onPointerDown={() => setDriveControl({ steer: -1 })}
-              onPointerUp={() => setDriveControl({ steer: 0 })}
-              onPointerLeave={() => setDriveControl({ steer: 0 })}
-              onPointerCancel={() => setDriveControl({ steer: 0 })}
-              className="h-12 w-12 rounded border border-white/20 bg-[#0d121a]/90 text-sm font-bold text-white active:bg-sky-500 active:text-slate-950"
-            >
-              ◀
-            </button>
-            <button
-              type="button"
-              aria-label="Steer right"
-              onPointerDown={() => setDriveControl({ steer: 1 })}
-              onPointerUp={() => setDriveControl({ steer: 0 })}
-              onPointerLeave={() => setDriveControl({ steer: 0 })}
-              onPointerCancel={() => setDriveControl({ steer: 0 })}
-              className="h-12 w-12 rounded border border-white/20 bg-[#0d121a]/90 text-sm font-bold text-white active:bg-sky-500 active:text-slate-950"
-            >
-              ▶
-            </button>
-          </div>
-          <div className="pointer-events-auto sm:hidden fixed bottom-36 right-3 flex items-center gap-2 touch-none">
-            <button
-              type="button"
-              aria-label="Reverse and brake"
-              onPointerDown={() => setDriveControl({ throttle: -1, brake: true })}
-              onPointerUp={() => setDriveControl({ throttle: 0, brake: false })}
-              onPointerLeave={() => setDriveControl({ throttle: 0, brake: false })}
-              onPointerCancel={() => setDriveControl({ throttle: 0, brake: false })}
-              className="h-12 px-3 rounded border border-rose-400/40 bg-[#0d121a]/90 text-xs font-semibold text-rose-200 active:bg-rose-500 active:text-slate-950"
-            >
-              Rev/Brk
-            </button>
-            <button
-              type="button"
-              aria-label="Accelerate"
-              onPointerDown={() => setDriveControl({ throttle: 1, brake: false })}
-              onPointerUp={() => setDriveControl({ throttle: 0 })}
-              onPointerLeave={() => setDriveControl({ throttle: 0 })}
-              onPointerCancel={() => setDriveControl({ throttle: 0 })}
-              className="h-12 px-3.5 rounded border border-emerald-400/40 bg-[#0d121a]/90 text-xs font-semibold text-emerald-200 active:bg-emerald-500 active:text-slate-950"
-            >
-              Gas
-            </button>
-          </div>
+          {isTouchViewport && (
+            <>
+              <div
+                style={{
+                  bottom: 'max(9rem, calc(8.5rem + var(--sab)))',
+                  left: 'max(0.75rem, var(--sal))',
+                }}
+                className="pointer-events-auto fixed flex items-center gap-2 touch-none"
+              >
+                <button
+                  type="button"
+                  aria-label="Steer left"
+                  onPointerDown={() => setDriveControl({ steer: -1 })}
+                  onPointerUp={() => setDriveControl({ steer: 0 })}
+                  onPointerLeave={() => setDriveControl({ steer: 0 })}
+                  onPointerCancel={() => setDriveControl({ steer: 0 })}
+                  className="h-12 w-12 rounded border border-white/20 bg-[#0d121a]/90 text-sm font-bold text-white active:bg-sky-500 active:text-slate-950"
+                >
+                  ◀
+                </button>
+                <button
+                  type="button"
+                  aria-label="Steer right"
+                  onPointerDown={() => setDriveControl({ steer: 1 })}
+                  onPointerUp={() => setDriveControl({ steer: 0 })}
+                  onPointerLeave={() => setDriveControl({ steer: 0 })}
+                  onPointerCancel={() => setDriveControl({ steer: 0 })}
+                  className="h-12 w-12 rounded border border-white/20 bg-[#0d121a]/90 text-sm font-bold text-white active:bg-sky-500 active:text-slate-950"
+                >
+                  ▶
+                </button>
+              </div>
+              <div
+                style={{
+                  bottom: 'max(9rem, calc(8.5rem + var(--sab)))',
+                  right: 'max(0.75rem, var(--sar))',
+                }}
+                className="pointer-events-auto fixed flex items-center gap-2 touch-none"
+              >
+                <button
+                  type="button"
+                  aria-label="Reverse and brake"
+                  onPointerDown={() => setDriveControl({ throttle: -1, brake: true })}
+                  onPointerUp={() => setDriveControl({ throttle: 0, brake: false })}
+                  onPointerLeave={() => setDriveControl({ throttle: 0, brake: false })}
+                  onPointerCancel={() => setDriveControl({ throttle: 0, brake: false })}
+                  className="h-12 px-3 rounded border border-rose-400/40 bg-[#0d121a]/90 text-xs font-semibold text-rose-200 active:bg-rose-500 active:text-slate-950"
+                >
+                  Rev/Brk
+                </button>
+                <button
+                  type="button"
+                  aria-label="Accelerate"
+                  onPointerDown={() => setDriveControl({ throttle: 1, brake: false })}
+                  onPointerUp={() => setDriveControl({ throttle: 0 })}
+                  onPointerLeave={() => setDriveControl({ throttle: 0 })}
+                  onPointerCancel={() => setDriveControl({ throttle: 0 })}
+                  className="h-12 px-3.5 rounded border border-emerald-400/40 bg-[#0d121a]/90 text-xs font-semibold text-emerald-200 active:bg-emerald-500 active:text-slate-950"
+                >
+                  Gas
+                </button>
+              </div>
+            </>
+          )}
         </>
       )}
 
@@ -1430,6 +1631,25 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
                   className="px-2 py-1 text-[11px] rounded bg-white/5 text-slate-300 hover:bg-white/12 hover:text-white transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 >
                   {p.label}
+                </button>
+              ))}
+            </div>
+
+            <div role="group" aria-label="Graphics quality tier" className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+              <span className="text-[11px] uppercase tracking-wider text-slate-400 mr-1 shrink-0">Quality</span>
+              {QUALITY_MODES.map((q) => (
+                <button
+                  key={q.mode}
+                  type="button"
+                  aria-pressed={hud.qualityMode === q.mode}
+                  onClick={() => onSetQualityMode(q.mode)}
+                  className={`px-2 py-1 text-[11px] rounded transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                    hud.qualityMode === q.mode
+                      ? 'bg-emerald-400 text-slate-950 font-semibold'
+                      : 'bg-white/5 text-slate-300 hover:bg-white/12 hover:text-white'
+                  }`}
+                >
+                  {q.mode === 'auto' ? `Auto (${hud.activeTier.toUpperCase()})` : q.label}
                 </button>
               ))}
             </div>

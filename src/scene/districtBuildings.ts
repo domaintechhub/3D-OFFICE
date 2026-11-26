@@ -93,7 +93,7 @@ function makeSignTexture(title: string, subtitle: string, accentHex: string): TH
     g.fillStyle = accentHex;
     g.font = '600 26px "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif';
     g.fillText(subtitle, 36, 118, W - 54);
-  });
+  }, true, true);
 }
 
 function makeGlobeTexture(): THREE.CanvasTexture {
@@ -234,13 +234,13 @@ function buildPerimeterWalls(
   // Bespoke curved-corner glass entrance showcase & cylindrical white corner columns for Real Estate Ground Floor
   if (spec.id === 'realestate' && isGround) {
     const cornerR = 2.4;
-    const clearGlass = new THREE.MeshPhysicalMaterial({
+    const clearGlass = new THREE.MeshStandardMaterial({
       color: 0xdaf0fa,
       roughness: 0.08,
-      metalness: 0.08,
+      metalness: 0.1,
       transparent: true,
       opacity: 0.2,
-      envMapIntensity: 0.72,
+      envMapIntensity: 0.78,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
@@ -359,13 +359,13 @@ function buildPerimeterWalls(
   // Bespoke Upper-Level Perimeter for Real Estate (L1-L4): Matching curved front glass corners & white cylindrical columns
   if (spec.id === 'realestate' && lv >= 1) {
     const cornerR = 2.4;
-    const clearGlass = new THREE.MeshPhysicalMaterial({
+    const clearGlass = new THREE.MeshStandardMaterial({
       color: 0xdaf0fa,
       roughness: 0.08,
-      metalness: 0.08,
+      metalness: 0.1,
       transparent: true,
       opacity: 0.2,
-      envMapIntensity: 0.72,
+      envMapIntensity: 0.78,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
@@ -557,24 +557,24 @@ export function buildDistrictBuildings(
   const std = (o: THREE.MeshStandardMaterialParameters) =>
     new THREE.MeshStandardMaterial({ roughness: 0.72, metalness: 0.08, envMapIntensity: 0.45, ...o });
 
-  const glassMat = new THREE.MeshPhysicalMaterial({
+  const glassMat = new THREE.MeshStandardMaterial({
     color: 0xaad4eb,
     roughness: 0.14,
-    metalness: 0.12,
+    metalness: 0.14,
     transparent: true,
     opacity: 0.28,
-    envMapIntensity: 0.6,
+    envMapIntensity: 0.65,
     depthWrite: false,
     side: THREE.DoubleSide,
   });
 
-  const warmGlassMat = new THREE.MeshPhysicalMaterial({
+  const warmGlassMat = new THREE.MeshStandardMaterial({
     color: 0xd8cdb8,
     roughness: 0.16,
-    metalness: 0.1,
+    metalness: 0.12,
     transparent: true,
     opacity: 0.27,
-    envMapIntensity: 0.55,
+    envMapIntensity: 0.6,
     depthWrite: false,
     side: THREE.DoubleSide,
   });
@@ -1253,12 +1253,13 @@ export function buildDistrictBuildings(
       const oliveVelvet = std({ color: 0x4e5d38, roughness: 0.86, metalness: 0.02 });
       const amberEmberGlow = new THREE.MeshBasicMaterial({ color: 0xff7b29 });
       const filamentBulbMat = new THREE.MeshBasicMaterial({ color: 0xffe4a1 });
-      const amberWineGlass = new THREE.MeshPhysicalMaterial({
+      const amberWineGlass = new THREE.MeshStandardMaterial({
         color: 0xd99b4e,
         roughness: 0.1,
-        metalness: 0.06,
+        metalness: 0.1,
         transparent: true,
         opacity: 0.26,
+        envMapIntensity: 0.75,
         depthWrite: false,
         side: THREE.DoubleSide,
       });
@@ -1277,7 +1278,7 @@ export function buildDistrictBuildings(
           g.textAlign = 'center';
           g.textBaseline = 'middle';
           g.fillText(title, w * 0.52, h * 0.5);
-        });
+        }, true, true);
         tex.colorSpace = THREE.SRGBColorSpace;
         const mesh = new THREE.Mesh(
           new THREE.PlaneGeometry(1.6, 0.3),
@@ -1982,12 +1983,13 @@ export function buildDistrictBuildings(
       const skyUpholstery = std({ color: 0x2563eb, roughness: 0.76 });
       const cobaltLightUpholstery = std({ color: 0x3b82f6, roughness: 0.74 });
       const amberFlightAccent = std({ color: 0xe67e22, roughness: 0.44, metalness: 0.18 });
-      const cabinGlass = new THREE.MeshPhysicalMaterial({
+      const cabinGlass = new THREE.MeshStandardMaterial({
         color: 0xd6eefc,
         roughness: 0.06,
-        metalness: 0.06,
+        metalness: 0.1,
         transparent: true,
         opacity: 0.26,
+        envMapIntensity: 0.78,
         depthWrite: false,
         side: THREE.DoubleSide,
       });
@@ -2041,7 +2043,7 @@ export function buildDistrictBuildings(
           g.textAlign = 'left';
           g.textBaseline = 'middle';
           g.fillText(title, 34, h * 0.5);
-        });
+        }, true, true);
         const mesh = new THREE.Mesh(
           new THREE.PlaneGeometry(1.48, 0.3),
           new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false })
@@ -3021,12 +3023,13 @@ export function buildDistrictBuildings(
       const wovenRattan = std({ color: 0xb88b52, roughness: 0.84, metalness: 0.02 });
       const safariCopper = std({ color: 0xb96a38, roughness: 0.28, metalness: 0.88 });
       const basaltRockMat = std({ color: 0x2c2b29, roughness: 0.86, metalness: 0.06 });
-      const safariGlass = new THREE.MeshPhysicalMaterial({
+      const safariGlass = new THREE.MeshStandardMaterial({
         color: 0xdff2e4,
         roughness: 0.08,
-        metalness: 0.06,
+        metalness: 0.1,
         transparent: true,
         opacity: 0.22,
+        envMapIntensity: 0.78,
         depthWrite: false,
         side: THREE.DoubleSide,
       });
@@ -3048,7 +3051,7 @@ export function buildDistrictBuildings(
           g.textAlign = 'left';
           g.textBaseline = 'middle';
           g.fillText(title, 32, h * 0.5);
-        });
+        }, true, true);
         const mesh = new THREE.Mesh(
           new THREE.PlaneGeometry(1.48, 0.3),
           new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false })
@@ -4034,12 +4037,13 @@ export function buildDistrictBuildings(
       const brushedAluminum = std({ color: 0xc2ccd6, roughness: 0.26, metalness: 0.88 });
       const birchCrateWood = std({ color: 0xc89d66, roughness: 0.62, metalness: 0.04 });
       const safetyYellowMat = std({ color: 0xfacc15, roughness: 0.4, metalness: 0.22 });
-      const cargoSteelGlass = new THREE.MeshPhysicalMaterial({
+      const cargoSteelGlass = new THREE.MeshStandardMaterial({
         color: 0xcfe7f7,
         roughness: 0.08,
-        metalness: 0.08,
+        metalness: 0.1,
         transparent: true,
         opacity: 0.22,
+        envMapIntensity: 0.78,
         depthWrite: false,
         side: THREE.DoubleSide,
       });
@@ -4070,7 +4074,7 @@ export function buildDistrictBuildings(
           g.textAlign = 'left';
           g.textBaseline = 'middle';
           g.fillText(title, 36, h * 0.5);
-        });
+        }, true, true);
         const mesh = new THREE.Mesh(
           new THREE.PlaneGeometry(1.56, 0.3),
           new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false })

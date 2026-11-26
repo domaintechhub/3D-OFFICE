@@ -72,7 +72,7 @@ export interface RealEstatePalette {
   rebarIron: THREE.MeshStandardMaterial;
   lumberSpruce: THREE.MeshStandardMaterial;
   brushedBronze: THREE.MeshStandardMaterial;
-  vitrineGlass: THREE.MeshPhysicalMaterial;
+  vitrineGlass: THREE.MeshStandardMaterial;
   warmCoveLed: THREE.MeshBasicMaterial;
   cyanBeaconLed: THREE.MeshBasicMaterial;
   slabRackMat: THREE.MeshStandardMaterial;
@@ -280,12 +280,13 @@ export function getRealEstatePalette(M: MaterialLibrary): RealEstatePalette {
       metalness: 0.02,
     }),
     brushedBronze: std({ color: 0x9a7b4f, roughness: 0.34, metalness: 0.76, envMapIntensity: 0.65 }),
-    vitrineGlass: new THREE.MeshPhysicalMaterial({
+    vitrineGlass: new THREE.MeshStandardMaterial({
       color: 0xe6f4fa,
       roughness: 0.06,
-      metalness: 0.04,
+      metalness: 0.08,
       transparent: true,
       opacity: 0.24,
+      envMapIntensity: 0.78,
       depthWrite: false,
       side: THREE.DoubleSide,
     }),
@@ -339,7 +340,7 @@ export function addRealEstatePlaque(
     g.textAlign = 'left';
     g.textBaseline = 'middle';
     g.fillText(title, 34, h * 0.5);
-  });
+  }, true, true);
   const mesh = new THREE.Mesh(
     new THREE.PlaneGeometry(1.42, 0.3),
     new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false })

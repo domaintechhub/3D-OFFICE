@@ -57,9 +57,9 @@ interface VitalCarePalette {
   eucalyptusFabric: THREE.MeshStandardMaterial;
   linenLeather: THREE.MeshStandardMaterial;
   livingMoss: THREE.MeshStandardMaterial;
-  frostedPrivacyGlass: THREE.MeshPhysicalMaterial;
-  sterileGlass: THREE.MeshPhysicalMaterial;
-  cryoFrostGlass: THREE.MeshPhysicalMaterial;
+  frostedPrivacyGlass: THREE.MeshStandardMaterial;
+  sterileGlass: THREE.MeshStandardMaterial;
+  cryoFrostGlass: THREE.MeshStandardMaterial;
   circadianGlow: THREE.MeshBasicMaterial;
   seafoamHaloGlow: THREE.MeshBasicMaterial;
   mriBoreGlow: THREE.MeshBasicMaterial;
@@ -258,30 +258,33 @@ function getVitalCarePalette(): VitalCarePalette {
       roughness: 0.94,
       metalness: 0.0,
     }),
-    frostedPrivacyGlass: new THREE.MeshPhysicalMaterial({
+    frostedPrivacyGlass: new THREE.MeshStandardMaterial({
       color: 0xdef5f0,
       roughness: 0.34,
-      metalness: 0.04,
-      transparent: true,
-      opacity: 0.44,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    }),
-    sterileGlass: new THREE.MeshPhysicalMaterial({
-      color: 0xd8f6f2,
-      roughness: 0.06,
       metalness: 0.06,
       transparent: true,
-      opacity: 0.24,
+      opacity: 0.44,
+      envMapIntensity: 0.65,
       depthWrite: false,
       side: THREE.DoubleSide,
     }),
-    cryoFrostGlass: new THREE.MeshPhysicalMaterial({
+    sterileGlass: new THREE.MeshStandardMaterial({
+      color: 0xd8f6f2,
+      roughness: 0.06,
+      metalness: 0.1,
+      transparent: true,
+      opacity: 0.24,
+      envMapIntensity: 0.8,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }),
+    cryoFrostGlass: new THREE.MeshStandardMaterial({
       color: 0xcbeeff,
       roughness: 0.18,
-      metalness: 0.08,
+      metalness: 0.1,
       transparent: true,
       opacity: 0.36,
+      envMapIntensity: 0.75,
       depthWrite: false,
       side: THREE.DoubleSide,
     }),
@@ -336,7 +339,7 @@ function addClinicalSign(
     g.strokeStyle = '#99f6e4';
     g.lineWidth = 3;
     g.strokeRect(2, 2, w - 4, h - 4);
-  });
+  }, true, true);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = getMaxAnisotropy();
 

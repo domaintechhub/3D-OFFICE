@@ -39,7 +39,8 @@ import {
   type BrowserSession,
   type WorkstationMode,
 } from '../scene/workstations';
-import { isStandaloneMode } from '../utils/standalone';
+import { browseOfflineUrl, searchOfflineWeb } from '../data/offlineWeb';
+import { isOfflineMode, isStandaloneMode } from '../utils/standalone';
 
 interface BrowsePageData {
   ok: boolean;
@@ -145,6 +146,7 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
   const fetchAbortRef = useRef<AbortController | null>(null);
   const autoFetchedStationRef = useRef<string>('');
   const isStandalone = isStandaloneMode();
+  const offlineActive = isStandalone || isOfflineMode();
 
   useEffect(() => socialNetwork.subscribe(() => setSocialVer((v) => v + 1)), []);
 
@@ -333,13 +335,31 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
     }
     const safeNormalized = parsedUrl.toString();
 
-    if (isStandalone) {
+    if (offlineActive) {
       setAutoPilot(false);
       setSearchInput(safeNormalized);
       setBrowseLoading(false);
-      setBrowseError(
-        'Direct webpage proxying requires the DomainTechHub backend server and is disabled in standalone HTML mode. Showing curated desk research below — or use Wikipedia search / open the URL externally.'
-      );
+      setBrowseError(null);
+      const offlinePage = browseOfflineUrl(safeNormalized);
+      const data: BrowsePageData = {
+        ok: true,
+        url: safeNormalized,
+        finalUrl: offlinePage.finalUrl,
+        domain: `${offlinePage.domain} (Offline mode)`,
+        status: 200,
+        latencyMs: 1,
+        contentType: 'text/html',
+        title: offlinePage.title,
+        description: offlinePage.excerpt,
+        siteName: offlinePage.domain,
+        headings: offlinePage.headings,
+        paragraphs: offlinePage.paragraphs,
+        links: offlinePage.links,
+      };
+      const entry: BrowserHistoryEntry = { kind: 'browse', data, inputLabel: data.finalUrl };
+      pushHistory(entry);
+      setSearchInput(data.finalUrl);
+      syncHistoryEntryTo3dMonitor(entry);
       return;
     }
 
@@ -357,7 +377,28 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
       });
       const isJson = (resp.headers.get('content-type') || '').includes('application/json');
       if (!isJson) {
-        setBrowseError(`Direct webpage proxy unavailable in static mode. Use Wikipedia search or open ${safeNormalized} externally.`);
+        const offlinePage = browseOfflineUrl(safeNormalized);
+        const fallbackEntry: BrowserHistoryEntry = {
+          kind: 'browse',
+          data: {
+            ok: true,
+            url: safeNormalized,
+            finalUrl: offlinePage.finalUrl,
+            domain: `${offlinePage.domain} (Offline mode)`,
+            status: 200,
+            latencyMs: 1,
+            contentType: 'text/html',
+            title: offlinePage.title,
+            description: offlinePage.excerpt,
+            siteName: offlinePage.domain,
+            headings: offlinePage.headings,
+            paragraphs: offlinePage.paragraphs,
+            links: offlinePage.links,
+          },
+          inputLabel: offlinePage.finalUrl,
+        };
+        pushHistory(fallbackEntry);
+        syncHistoryEntryTo3dMonitor(fallbackEntry);
         return;
       }
       const json = (await resp.json()) as BrowsePageData;
@@ -382,6 +423,34 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
   const searchLiveWeb = async (rawQuery: string) => {
     const q = rawQuery.trim().slice(0, 180);
     if (!q) return;
+
+    if (offlineActive) {
+      setBrowseLoading(false);
+      setBrowseError(null);
+      setAutoPilot(false);
+      setSearchInput(q);
+      const offlineHits = searchOfflineWeb(q);
+      const offlineSearch: SearchPageData = {
+        ok: true,
+        query: q,
+        latencyMs: 1,
+        instantAbstract: offlineHits[0]?.snippet || 'Offline mode local district index active.',
+        instantSource: 'Offline Mode Index',
+        instantUrl: offlineHits[0]?.url || '',
+        results: offlineHits.map((hit) => ({
+          title: hit.title,
+          url: hit.url,
+          domain: hit.domain,
+          snippet: hit.snippet,
+          source: 'Offline Archive',
+        })),
+      };
+      const entry: BrowserHistoryEntry = { kind: 'search', data: offlineSearch, inputLabel: q };
+      pushHistory(entry);
+      syncHistoryEntryTo3dMonitor(entry);
+      return;
+    }
+
     fetchAbortRef.current?.abort();
     const ac = new AbortController();
     fetchAbortRef.current = ac;
@@ -393,16 +462,14 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
 
     try {
       let json: SearchPageData | null = null;
-      if (!isStandalone) {
-        try {
-          const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ac.signal });
-          if (resp.ok && (resp.headers.get('content-type') || '').includes('application/json')) {
-            const parsed = (await resp.json()) as SearchPageData;
-            if (parsed.ok) json = parsed;
-          }
-        } catch (err) {
-          if (err instanceof DOMException && err.name === 'AbortError') throw err;
+      try {
+        const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ac.signal });
+        if (resp.ok && (resp.headers.get('content-type') || '').includes('application/json')) {
+          const parsed = (await resp.json()) as SearchPageData;
+          if (parsed.ok) json = parsed;
         }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') throw err;
       }
 
       if (!json) {
@@ -442,11 +509,26 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
       syncHistoryEntryTo3dMonitor(entry);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
-      setBrowseError(
-        err instanceof Error
-          ? `Search unavailable (${err.message}). Curated station research remains accessible.`
-          : 'Web search request failed.'
-      );
+      const offlineHits = searchOfflineWeb(q);
+      const fallbackSearch: SearchPageData = {
+        ok: true,
+        query: q,
+        latencyMs: 1,
+        instantAbstract: offlineHits[0]?.snippet || '',
+        instantSource: 'Offline Mode Fallback',
+        instantUrl: offlineHits[0]?.url || '',
+        results: offlineHits.map((hit) => ({
+          title: hit.title,
+          url: hit.url,
+          domain: hit.domain,
+          snippet: hit.snippet,
+          source: 'Offline Fallback',
+        })),
+      };
+      const entry: BrowserHistoryEntry = { kind: 'search', data: fallbackSearch, inputLabel: q };
+      pushHistory(entry);
+      syncHistoryEntryTo3dMonitor(entry);
+      setBrowseError('Live network unavailable — showing offline mode results.');
     } finally {
       if (fetchAbortRef.current === ac) {
         setBrowseLoading(false);
@@ -454,16 +536,16 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
     }
   };
 
-  // Fetch starter URL live automatically when opening the Browser tab (server mode only)
+  // Fetch starter URL live automatically when opening the Browser tab (online server mode only)
   useEffect(() => {
-    if (activeMode !== 'browser' || isStandalone) return;
+    if (activeMode !== 'browser' || offlineActive) return;
     if (liveHistory.length > 0 || browseLoading) return;
     const starterUrl = sessions[browserTabIdx % sessions.length]?.url;
     if (!starterUrl || autoFetchedStationRef.current === `${monitor.id}:${starterUrl}`) return;
     autoFetchedStationRef.current = `${monitor.id}:${starterUrl}`;
     void browseLiveUrl(starterUrl);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMode, monitor.id, isStandalone]);
+  }, [activeMode, monitor.id, offlineActive]);
 
   // Live typing calculation for Data Entry active draft row
   const draftCharsTotal = draftRecord.reduce((s, cell) => s + cell.length + 2, 0);
@@ -532,7 +614,7 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
     <aside
       role="region"
       aria-label={`Workstation Inspector: ${monitor.role}`}
-      className="pointer-events-auto fixed top-16 right-3 sm:right-4 w-[min(94vw,470px)] max-h-[calc(100vh-11.5rem)] flex flex-col border border-white/15 bg-[#0d121a]/96 rounded-md shadow-2xl overflow-hidden"
+      className="pointer-events-auto fixed top-16 right-3 sm:right-4 w-[min(94vw,470px)] max-h-[calc(var(--vvh,100dvh)-11.5rem)] flex flex-col border border-white/15 bg-[#0d121a]/96 rounded-md shadow-2xl overflow-hidden"
     >
       {/* OS Window Title Bar */}
       <div className="shrink-0 px-3.5 py-2.5 border-b border-white/10 bg-[#121923]">
@@ -684,7 +766,7 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
                     aria-pressed={isActive}
                     onClick={() => {
                       setBrowserTabIdx(idx);
-                      if (isStandalone) {
+                      if (offlineActive) {
                         setHistoryIdx(-1);
                         setBrowseError(null);
                         setSearchInput(s.url);
@@ -709,8 +791,8 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
                   key={bm.url}
                   type="button"
                   onClick={() => {
-                    if (isStandalone) {
-                      void searchLiveWeb(bm.label.replace('Wikipedia · ', ''));
+                    if (offlineActive) {
+                      void browseLiveUrl(bm.url);
                     } else {
                       void browseLiveUrl(bm.url);
                     }
@@ -964,9 +1046,9 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
                 </div>
               ) : (
                 <div className="space-y-2.5 text-[11px] text-slate-700 py-1">
-                  {isStandalone && (
+                  {offlineActive && (
                     <div className="rounded border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[10.5px] text-amber-900">
-                      Standalone offline briefing mode — live server proxy is skipped.
+                      Offline mode — showing built-in district documentation &amp; cached search with zero network requests.
                     </div>
                   )}
                   <div>
@@ -992,7 +1074,7 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
                     Desk Note: {activeBrowserSession.researchNote}
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                    {!isStandalone && (
+                    {!offlineActive && (
                       <button
                         type="button"
                         onClick={() => void browseLiveUrl(activeBrowserSession.url)}
@@ -1006,7 +1088,7 @@ export const WorkstationInspector: React.FC<WorkstationInspectorProps> = ({
                       onClick={() => void searchLiveWeb(activeBrowserSession.searchQuery)}
                       className="px-2.5 py-1 rounded border border-slate-300 bg-white text-slate-800 text-[11px] font-medium hover:bg-slate-100 cursor-pointer"
                     >
-                      Search Wikipedia
+                      {offlineActive ? 'Search Offline Index' : 'Search Wikipedia'}
                     </button>
                     <a
                       href={activeBrowserSession.url}

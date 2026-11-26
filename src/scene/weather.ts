@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import { ceilHeight, DEPTH, LV, ROOF, WIDTH, type WeatherCondition, type WeatherMode } from './constants';
+import { createSeededRng } from './prng';
+
+const weatherRng = createSeededRng(4099);
 
 export interface WeatherAtmosphereState {
   activeWeather: WeatherCondition;
@@ -199,6 +202,12 @@ export class WeatherSystem {
 
   private readonly windowMat: THREE.ShaderMaterial;
   private readonly windowOverlaysByLevel: THREE.Group[] = [];
+  private maxRainCount = 3000;
+  private maxSnowCount = 2400;
+  private maxSplashCount = 420;
+  private particlesEnabled = true;
+  private windowOverlayEnabled = true;
+  private reducedMotion = false;
 
   constructor(scene: THREE.Scene, levelGroups: THREE.Group[]) {
     scene.add(this.particleGroup);
@@ -551,6 +560,26 @@ export class WeatherSystem {
     this.mode = mode;
   }
 
+  public applyTierConfig(opts: {
+    rainCount: number;
+    snowCount: number;
+    splashCount: number;
+    enableWindowOverlay: boolean;
+    reducedMotion: boolean;
+  }) {
+    this.maxRainCount = Math.max(0, Math.min(3000, opts.rainCount));
+    this.maxSnowCount = Math.max(0, Math.min(2400, opts.snowCount));
+    this.maxSplashCount = Math.max(0, Math.min(420, opts.splashCount));
+    this.windowOverlayEnabled = opts.enableWindowOverlay;
+    this.reducedMotion = opts.reducedMotion;
+    this.particlesEnabled =
+      !opts.reducedMotion &&
+      (this.maxRainCount > 0 || this.maxSnowCount > 0 || this.maxSplashCount > 0);
+    this.rainPoints.geometry.setDrawRange(0, this.reducedMotion ? 0 : this.maxRainCount);
+    this.snowPoints.geometry.setDrawRange(0, this.reducedMotion ? 0 : this.maxSnowCount);
+    this.splashPoints.geometry.setDrawRange(0, this.reducedMotion ? 0 : this.maxSplashCount);
+  }
+
   public getTimeMultiplier(): number {
     return this.timeFactor;
   }
@@ -587,15 +616,15 @@ export class WeatherSystem {
     this.state.skyTintHorizon.lerp(this._tgtHorizon, colLerp);
     this.state.fogTint.lerp(this._tgtFog, colLerp);
 
-    // Occasional distant sheet lightning during thunderstorms
-    if (this.stormAmount > 0.35) {
+    // Occasional distant sheet lightning during thunderstorms (seeded deterministic)
+    if (this.stormAmount > 0.35 && !this.reducedMotion) {
       this.lightningTimer -= dt;
       if (this.lightningTimer <= 0) {
-        this.lightningFlash = 0.85 + Math.random() * 0.15;
-        this.lightningTimer = 7.5 + Math.random() * 9.0;
+        this.lightningFlash = 0.85 + weatherRng() * 0.15;
+        this.lightningTimer = 7.5 + weatherRng() * 9.0;
       }
     }
-    this.lightningFlash = Math.max(0, this.lightningFlash - dt * 4.5);
+    this.lightningFlash = this.reducedMotion ? 0 : Math.max(0, this.lightningFlash - dt * 4.5);
 
     // Hide exterior precipitation when viewing underground B1/B2 basement cutaways
     const isBasement = activeLevel === 'b1' || activeLevel === 'b2';
@@ -608,8 +637,8 @@ export class WeatherSystem {
     }
 
     // Update GPU rain, snow, splash & office glass overlay uniforms
-    this.particleGroup.visible = !isBasement;
-    this.rainPoints.visible = !isBasement && this.rainAmount > 0.015;
+    this.particleGroup.visible = !isBasement && this.particlesEnabled;
+    this.rainPoints.visible = !isBasement && this.particlesEnabled && this.maxRainCount > 0 && this.rainAmount > 0.015;
     if (this.rainPoints.visible) {
       this.rainMat.uniforms.uTime.value = elapsed;
       this.rainMat.uniforms.uAlpha.value = this.rainAmount;
@@ -618,22 +647,25 @@ export class WeatherSystem {
       this.rainMat.uniforms.uClipMaxY.value = clipMaxY;
     }
 
-    this.splashPoints.visible = !isBasement && this.rainAmount > 0.04;
+    this.splashPoints.visible = !isBasement && this.particlesEnabled && this.maxSplashCount > 0 && this.rainAmount > 0.04;
     if (this.splashPoints.visible) {
       this.splashMat.uniforms.uTime.value = elapsed;
       this.splashMat.uniforms.uAlpha.value = this.rainAmount;
       this.splashMat.uniforms.uClipMaxY.value = clipMaxY;
     }
 
-    this.snowPoints.visible = !isBasement && this.snowAmount > 0.015;
+    this.snowPoints.visible = !isBasement && this.particlesEnabled && this.maxSnowCount > 0 && this.snowAmount > 0.015;
     if (this.snowPoints.visible) {
       this.snowMat.uniforms.uTime.value = elapsed;
       this.snowMat.uniforms.uAlpha.value = this.snowAmount;
       this.snowMat.uniforms.uClipMaxY.value = clipMaxY;
     }
 
-    const showWindowWeather = !isBasement && (this.rainAmount > 0.015 || this.snowAmount > 0.015);
-    this.windowMat.uniforms.uTime.value = elapsed;
+    const showWindowWeather =
+      !isBasement &&
+      this.windowOverlayEnabled &&
+      (this.rainAmount > 0.015 || this.snowAmount > 0.015);
+    this.windowMat.uniforms.uTime.value = this.reducedMotion ? 0 : elapsed;
     this.windowMat.uniforms.uRain.value = this.rainAmount;
     this.windowMat.uniforms.uSnow.value = this.snowAmount;
     for (let i = 0; i < this.windowOverlaysByLevel.length; i++) {

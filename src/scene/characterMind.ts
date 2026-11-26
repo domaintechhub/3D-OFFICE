@@ -1,4 +1,7 @@
 import { DISTRICT_WORK_THOUGHTS } from './districtData';
+import { createSeededRng } from './prng';
+
+const mindRng = createSeededRng(4201);
 
 export type CharacterMood =
   | 'Focused'
@@ -457,7 +460,7 @@ export function pickThoughtForGoal(
     goal === 'work'
       ? WORK_THOUGHTS[brain.identity.topicKey] || DISTRICT_WORK_THOUGHTS[brain.identity.topicKey] || WORK_THOUGHTS.web
       : GOAL_THOUGHTS[goal];
-  const raw = pool[Math.floor(Math.random() * pool.length)];
+  const raw = pool[Math.floor(mindRng() * pool.length)];
 
   if (goal === 'socialize' && peerName) {
     return {
@@ -502,7 +505,7 @@ export function pickThoughtForGoal(
     };
   }
   return {
-    mood: Math.random() < 0.35 ? 'Inspired' : 'Focused',
+    mood: mindRng() < 0.35 ? 'Inspired' : 'Focused',
     actionLabel: 'Working at station',
     thought: raw,
   };

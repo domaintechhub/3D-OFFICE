@@ -77,15 +77,13 @@ function buildStudioChairProp(): THREE.Group {
 
   const shellMat = new THREE.MeshStandardMaterial({ color: 0x161a21, roughness: 0.62, metalness: 0.14 });
   const chromeMat = new THREE.MeshStandardMaterial({ color: 0xd0d6de, roughness: 0.2, metalness: 0.88 });
-  const cushionMat = new THREE.MeshPhysicalMaterial({
+  const cushionMat = new THREE.MeshStandardMaterial({
     color: 0x1c2028,
     normalMap: micro.leatherNormalTex,
     normalScale: new THREE.Vector2(0.32, 0.32),
-    roughness: 0.72,
-    metalness: 0.02,
-    sheen: 0.24,
-    sheenRoughness: 0.78,
-    envMapIntensity: 0.35,
+    roughness: 0.7,
+    metalness: 0.04,
+    envMapIntensity: 0.4,
   });
 
   // Waterfall ergonomic leather seat cushion (top surface ~0.428m, bottom ~0.342m, centered at z=-0.04m)
@@ -322,11 +320,11 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
     controls.target.set(...FRAMING_TARGETS.full.target);
     controls.update();
 
-    // Architectural 3-Point Studio Portrait Lighting (balanced soft key to keep dermal tones matte and natural)
-    const hemi = new THREE.HemisphereLight(0xdce8ff, 0x262933, 0.84);
+    // Balanced 2-Light Studio Portrait Rig (1 HemisphereLight + 1 DirectionalLight + RoomEnvironment IBL)
+    const hemi = new THREE.HemisphereLight(0xdce8ff, 0x333844, 1.12);
     scene.add(hemi);
 
-    const keyLight = new THREE.DirectionalLight(0xfff1e0, 1.85);
+    const keyLight = new THREE.DirectionalLight(0xfff1e0, 1.9);
     keyLight.position.set(2.3, 3.2, 2.7);
     keyLight.castShadow = true;
     keyLight.shadow.mapSize.set(1024, 1024);
@@ -339,14 +337,6 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
     keyLight.shadow.bias = -0.0004;
     keyLight.shadow.normalBias = 0.015;
     scene.add(keyLight);
-
-    const rimLight = new THREE.DirectionalLight(0xc4ddff, 0.95);
-    rimLight.position.set(-2.2, 2.5, -2.4);
-    scene.add(rimLight);
-
-    const fillLight = new THREE.DirectionalLight(0xeef3ff, 0.55);
-    fillLight.position.set(-2.4, 1.3, 1.8);
-    scene.add(fillLight);
 
     // Architectural studio turntable disc + soft shadow floor
     const floorMat = new THREE.MeshStandardMaterial({
@@ -651,7 +641,7 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
       await exportActorToGLB(st.actor, `${selectedPreset.id}.glb`);
       setExportNote(`Exported ${selectedPreset.id}.glb`);
     } catch {
-      setExportNote('Export failed — check console');
+      setExportNote('Export failed — please try again');
     } finally {
       setExporting(false);
     }
@@ -672,7 +662,7 @@ export const CharacterStudioModal: React.FC<CharacterStudioModalProps> = ({ isOp
         aria-modal="true"
         aria-labelledby="character-studio-title"
         tabIndex={-1}
-        className="flex h-[min(94vh,860px)] w-[min(97vw,1360px)] flex-col overflow-hidden rounded-md border border-white/15 bg-[#0d121a] shadow-2xl focus:outline-none"
+        className="flex h-[min(94dvh,860px)] w-[min(97vw,1360px)] flex-col overflow-hidden rounded-md border border-white/15 bg-[#0d121a] shadow-2xl focus:outline-none"
       >
         {/* Studio Header */}
         <div className="flex items-center justify-between gap-3 border-b border-white/12 px-4 py-3">

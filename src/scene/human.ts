@@ -32,6 +32,7 @@ import { getEyeIrisTexture, getHumanMicroMaps, getPhotorealFaceTexture } from '.
 import type { MaterialLibrary } from './materials';
 import { contact, getRoundedBox } from './props';
 import { DISTRICT_SOCIAL_DIRECTORY, socialNetwork } from './socialNetwork';
+import { createSeededRng } from './prng';
 import { getMaxAnisotropy, makeCanvasTex, plateTex, rr } from './textures';
 
 export type OutfitArchetype = 'suit' | 'dress' | 'blouseSkirt' | 'shirtTrousers' | 'smartCasual' | 'knit';
@@ -549,8 +550,9 @@ export const MODES: Record<string, Array<[string, number]>> = {
   ],
 };
 
+const poseRng = createSeededRng(7331);
 export function pickMode(m: Array<[string, number]>): string {
-  let r = Math.random();
+  let r = poseRng();
   for (const x of m) {
     r -= x[1];
     if (r <= 0) return x[0];
@@ -1131,19 +1133,16 @@ export function createHumanPalette(_M: MaterialLibrary): HumanPalette {
     g.fillRect(68, 72, 30, 6);
   });
 
-  // Natural matte PBR human skin with soft warm velvet sheen (zero plastic specular blowout)
+  // Natural matte PBR human skin with balanced micro-roughness (tier-identical MeshStandardMaterial)
   const mkSkin = (c: number) =>
-    new THREE.MeshPhysicalMaterial({
+    new THREE.MeshStandardMaterial({
       color: c,
       normalMap: micro.skinNormalTex,
       normalScale: new THREE.Vector2(0.14, 0.14),
       roughnessMap: micro.skinRoughTex,
-      roughness: 0.88,
+      roughness: 0.86,
       metalness: 0,
-      envMapIntensity: 0.1,
-      sheen: 0.18,
-      sheenRoughness: 0.86,
-      sheenColor: new THREE.Color(c).lerp(new THREE.Color(0xffb899), 0.28),
+      envMapIntensity: 0.16,
     });
 
   const mkCloth = (c: number, r = 0.88) =>
@@ -1756,17 +1755,14 @@ export function makePerson(
     size: o.faceSize || (detail === 'studio' ? 512 : 256),
   });
   const faceMat = getPooledMat(matPool, `face:${faceTex.uuid}:${skinHex}`, () =>
-    new THREE.MeshPhysicalMaterial({
+    new THREE.MeshStandardMaterial({
       map: faceTex,
       normalMap: micro.skinNormalTex,
       normalScale: new THREE.Vector2(0.12, 0.12),
       roughnessMap: micro.skinRoughTex,
-      roughness: 0.88,
+      roughness: 0.86,
       metalness: 0,
-      envMapIntensity: 0.1,
-      sheen: 0.16,
-      sheenRoughness: 0.86,
-      sheenColor: skin.color.clone().lerp(new THREE.Color(0xffb899), 0.26),
+      envMapIntensity: 0.16,
     })
   );
 
@@ -2339,7 +2335,7 @@ export function makePerson(
     cur: { ...POSES.stand },
     tgt: POSES.stand,
     moving: false,
-    phase: Math.random() * 6,
+    phase: ((seed * 1.6180339) % 1) * 6,
     yaw: 0,
     tyaw: 0,
     swing: 1,
@@ -2355,7 +2351,7 @@ export function makePerson(
     modes: null,
     timer: 0,
     pose: 'stand',
-    asym: Math.random() - 0.5,
+    asym: (((seed * 0.7548776) % 1) - 0.5),
     shadow,
     meshes,
     mk,

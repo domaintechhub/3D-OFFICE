@@ -689,12 +689,13 @@ export function buildSceneArchitecture(
       metalness: 0.0,
       side: THREE.DoubleSide,
     });
-    const frostedScreenMat = new THREE.MeshPhysicalMaterial({
+    const frostedScreenMat = new THREE.MeshStandardMaterial({
       color: 0xdbeafe,
-      roughness: 0.38,
-      metalness: 0.02,
+      roughness: 0.36,
+      metalness: 0.06,
       transparent: true,
       opacity: 0.68,
+      envMapIntensity: 0.65,
     });
     const wovenRugMat = new THREE.MeshStandardMaterial({ color: 0xc8bca8, roughness: 0.94, metalness: 0.0 });
     const towelMats = [
@@ -702,17 +703,21 @@ export function buildSceneArchitecture(
       new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.92 }),
       new THREE.MeshStandardMaterial({ color: 0x14b8a6, roughness: 0.92 }),
     ];
-    const icedDrinkMat = new THREE.MeshPhysicalMaterial({
+    const icedDrinkMat = new THREE.MeshStandardMaterial({
       color: 0x38bdf8,
-      roughness: 0.12,
+      roughness: 0.1,
+      metalness: 0.08,
       transparent: true,
       opacity: 0.82,
+      envMapIntensity: 0.8,
     });
-    const citrusDrinkMat = new THREE.MeshPhysicalMaterial({
+    const citrusDrinkMat = new THREE.MeshStandardMaterial({
       color: 0xf59e0b,
-      roughness: 0.12,
+      roughness: 0.1,
+      metalness: 0.08,
       transparent: true,
       opacity: 0.84,
+      envMapIntensity: 0.8,
     });
 
     // Flush warm cedar plank deck spanning from pool east coping to conversation lounge
@@ -1219,7 +1224,7 @@ export function buildSceneArchitecture(
     gc.fillStyle = '#6fe3a1';
     gc.fillRect(lW / 2 - 96, lH - 18, 192, 4);
     gc.restore();
-  });
+  }, true, true);
   const brandSign = new THREE.Mesh(
     new THREE.PlaneGeometry(5.4, 0.8),
     new THREE.MeshBasicMaterial({ map: signTex, transparent: true, toneMapped: false })
@@ -2981,7 +2986,7 @@ export function buildSceneArchitecture(
     g.font = '700 24px "Plus Jakarta Sans",ui-sans-serif,sans-serif';
     g.fillText('CORE · 42 NODES · 18.4 TB/s', 20, lH - 16);
     g.restore();
-  });
+  }, true, true);
   planeAt(gB1, 6.4, 1.9, -1.2, ch1 - 1.1, 0.38, new THREE.MeshBasicMaterial({ map: nocTex, toneMapped: false }));
   planeAt(
     gB1,
@@ -3022,7 +3027,7 @@ export function buildSceneArchitecture(
     g.fillStyle = '#ffb14a';
     g.fillText('GRID 0', 18, 110);
     g.restore();
-  });
+  }, true, true);
   for (let i = 0; i < 3; i++) {
     const x = 1.4 + i * 1.4;
     boxAt(gB2, 1.24, 2.0, 0.72, x, y2 + 1.0, 1.02, M.cabinet, true, false, 0.04);
@@ -3961,21 +3966,41 @@ export function buildSceneArchitecture(
   const trafficLights = new TrafficLightSystem(M, ySt);
   cityGroup.add(trafficLights.group);
 
-  // Brushed stainless cylindrical bollards along Hub plaza edge & boulevard terracotta promenade
+  // Brushed stainless cylindrical bollards along Hub plaza edge & boulevard terracotta promenade (InstancedMesh)
   const bolMat = std({ color: 0xd6dde4, roughness: 0.24, metalness: 0.88 });
+  const bollardSpecs: Array<{ x: number; z: number; r: number; h: number }> = [];
   for (let x = -21; x <= 21; x += 3) {
     if (Math.abs(x) < 4) continue;
-    cylAt(cityGroup, 0.085, 0.095, 0.9, x, ySt + 0.45, 55.5, bolMat, true, true, 12);
-    const bCap = new THREE.Mesh(new THREE.SphereGeometry(0.086, 12, 8), M.metal);
-    bCap.position.set(x, ySt + 0.9, 55.5);
-    cityGroup.add(bCap);
+    bollardSpecs.push({ x, z: 55.5, r: 0.09, h: 0.9 });
   }
   for (let x = -28; x <= 28; x += 5.5) {
     if (Math.abs(x) < 5) continue;
-    cylAt(cityGroup, 0.075, 0.082, 0.82, x, ySt + 0.41, ROAD_Z - 8.95, bolMat, true, true, 12);
-    const bCap = new THREE.Mesh(new THREE.SphereGeometry(0.076, 12, 8), M.metal);
-    bCap.position.set(x, ySt + 0.82, ROAD_Z - 8.95);
-    cityGroup.add(bCap);
+    bollardSpecs.push({ x, z: ROAD_Z - 8.95, r: 0.078, h: 0.82 });
+  }
+  if (bollardSpecs.length > 0) {
+    const postGeo = new THREE.CylinderGeometry(1, 1, 1, 12);
+    const capGeo = new THREE.SphereGeometry(1, 12, 8);
+    const postInst = new THREE.InstancedMesh(postGeo, bolMat, bollardSpecs.length);
+    const capInst = new THREE.InstancedMesh(capGeo, M.metal, bollardSpecs.length);
+    postInst.castShadow = true;
+    postInst.receiveShadow = true;
+    const dummy = new THREE.Object3D();
+    bollardSpecs.forEach((b, idx) => {
+      dummy.position.set(b.x, ySt + b.h * 0.5, b.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(b.r, b.h, b.r);
+      dummy.updateMatrix();
+      postInst.setMatrixAt(idx, dummy.matrix);
+
+      dummy.position.set(b.x, ySt + b.h, b.z);
+      dummy.scale.set(b.r, b.r, b.r);
+      dummy.updateMatrix();
+      capInst.setMatrixAt(idx, dummy.matrix);
+    });
+    postInst.instanceMatrix.needsUpdate = true;
+    capInst.instanceMatrix.needsUpdate = true;
+    cityGroup.add(postInst);
+    cityGroup.add(capInst);
   }
 
   // Approach path river-stone landscaping beds with botanical foliage (strictly outside parking aisles)
@@ -4076,20 +4101,20 @@ export function buildSceneArchitecture(
 
   const wheelStopMat = std({ color: 0xd9d4c7, roughness: 0.78, metalness: 0.02 });
   const wheelStopGeo = getRoundedSlabGeo(1.75, 0.16, 0.055, 0.105, 0.024);
+  const wheelStopPositions: Array<[number, number]> = [];
+  const asphaltSlabs: Array<{ w: number; d: number; x: number; z: number; y: number }> = [];
+  const lineMarks: Array<{ w: number; d: number; x: number; z: number; y: number }> = [];
+
   const addWheelStop = (wx: number, wz: number) => {
-    const ws = new THREE.Mesh(wheelStopGeo, wheelStopMat);
-    ws.position.set(wx, -0.555, wz);
-    ws.castShadow = true;
-    ws.receiveShadow = true;
-    cityGroup.add(ws);
+    wheelStopPositions.push([wx, wz]);
   };
 
   const flat = (w: number, d: number, x: number, z: number, y: number, mat: THREE.Material) => {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat);
-    m.rotation.x = -Math.PI / 2;
-    m.position.set(x, y, z);
-    m.receiveShadow = true;
-    cityGroup.add(m);
+    if (mat === asphaltMat) {
+      asphaltSlabs.push({ w, d, x, z, y });
+    } else {
+      lineMarks.push({ w, d, x, z, y });
+    }
   };
 
   // Helper to paint perpendicular parking bay lines
@@ -4194,6 +4219,50 @@ export function buildSceneArchitecture(
     flat(4.4, 0.12, 73.1, bz - 1.9, -0.598, linePaintMat);
     flat(4.4, 0.12, 73.1, bz + 1.9, -0.598, linePaintMat);
   });
+
+  // Flush batched road/parking InstancedMeshes (cuts ~150 static draw calls down to 3)
+  const instDummy = new THREE.Object3D();
+  if (asphaltSlabs.length > 0) {
+    const aGeo = new THREE.PlaneGeometry(1, 1);
+    const aInst = new THREE.InstancedMesh(aGeo, asphaltMat, asphaltSlabs.length);
+    aInst.receiveShadow = true;
+    asphaltSlabs.forEach((s, idx) => {
+      instDummy.position.set(s.x, s.y, s.z);
+      instDummy.rotation.set(-Math.PI / 2, 0, 0);
+      instDummy.scale.set(s.w, s.d, 1);
+      instDummy.updateMatrix();
+      aInst.setMatrixAt(idx, instDummy.matrix);
+    });
+    aInst.instanceMatrix.needsUpdate = true;
+    cityGroup.add(aInst);
+  }
+  if (lineMarks.length > 0) {
+    const lGeo = new THREE.PlaneGeometry(1, 1);
+    const lInst = new THREE.InstancedMesh(lGeo, linePaintMat, lineMarks.length);
+    lineMarks.forEach((s, idx) => {
+      instDummy.position.set(s.x, s.y, s.z);
+      instDummy.rotation.set(-Math.PI / 2, 0, 0);
+      instDummy.scale.set(s.w, s.d, 1);
+      instDummy.updateMatrix();
+      lInst.setMatrixAt(idx, instDummy.matrix);
+    });
+    lInst.instanceMatrix.needsUpdate = true;
+    cityGroup.add(lInst);
+  }
+  if (wheelStopPositions.length > 0) {
+    const wInst = new THREE.InstancedMesh(wheelStopGeo, wheelStopMat, wheelStopPositions.length);
+    wInst.castShadow = true;
+    wInst.receiveShadow = true;
+    wheelStopPositions.forEach(([wx, wz], idx) => {
+      instDummy.position.set(wx, -0.555, wz);
+      instDummy.rotation.set(0, 0, 0);
+      instDummy.scale.set(1, 1, 1);
+      instDummy.updateMatrix();
+      wInst.setMatrixAt(idx, instDummy.matrix);
+    });
+    wInst.instanceMatrix.needsUpdate = true;
+    cityGroup.add(wInst);
+  }
 
   return {
     picks,

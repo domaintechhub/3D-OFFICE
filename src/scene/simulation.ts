@@ -57,6 +57,8 @@ import {
   type MakePersonOptions,
   type PersonActor,
 } from './human';
+import { createSeededRng } from './prng';
+import { isReducedMotionPreferred } from './quality';
 import { socialNetwork } from './socialNetwork';
 import {
   createCharacterBrain,
@@ -67,6 +69,8 @@ import {
   type CharacterIdentity,
   type FreeGoal,
 } from './characterMind';
+
+const simRng = createSeededRng(8421);
 import type { MaterialLibrary } from './materials';
 import { getRoundedBox, makeCar, updateCarVisualState, type CarRig } from './props';
 import {
@@ -186,7 +190,7 @@ const DEPT_ROLE: Record<string, string> = {
 type TrafficVehicle = {
   g: THREE.Group;
   rig: CarRig;
-  bm: THREE.MeshPhysicalMaterial;
+  bm: THREE.MeshStandardMaterial;
   spd: number;
   cruiseSpd: number;
   vel: number;
@@ -600,6 +604,7 @@ export class AtriumSimulation {
   private weatherTimeMultiplier = 1.0;
   private activeWeather: WeatherCondition = 'clear';
   private phoneTexAccum = 0;
+  private actorCullDistSq = 160 * 160;
   private readonly districtSim: DistrictSim;
   private readonly trafficLights?: TrafficLightSystem;
 
@@ -828,7 +833,7 @@ export class AtriumSimulation {
     P.look = opts.look || 0;
     P.gest = !!opts.gest;
     P.modes = opts.modes || null;
-    P.timer = 2 + Math.random() * 6;
+    P.timer = 2 + simRng() * 6;
     if (opts.route) {
       P.route = opts.route;
       P.ri = 0;
@@ -2572,7 +2577,7 @@ export class AtriumSimulation {
       this.TRAF.push({
         g: car,
         rig,
-        bm: car.userData.body as THREE.MeshPhysicalMaterial,
+        bm: car.userData.body as THREE.MeshStandardMaterial,
         spd: cruiseSpd,
         cruiseSpd,
         vel: cruiseSpd,
@@ -2583,7 +2588,7 @@ export class AtriumSimulation {
         ringDir: i % 2 ? 1 : -1,
         state: 'street',
         bay: null,
-        phase: Math.random() * 6,
+        phase: simRng() * 6,
         steer: 0,
         pitch: 0,
         roll: 0,
@@ -2610,7 +2615,7 @@ export class AtriumSimulation {
       this.TRAF.push({
         g: car,
         rig,
-        bm: car.userData.body as THREE.MeshPhysicalMaterial,
+        bm: car.userData.body as THREE.MeshStandardMaterial,
         spd: cruiseSpd,
         cruiseSpd,
         vel: cruiseSpd,
@@ -2622,7 +2627,7 @@ export class AtriumSimulation {
         ringOnly: i % 3 !== 0,
         state: 'ring',
         bay: null,
-        phase: Math.random() * 6,
+        phase: simRng() * 6,
         steer: 0,
         pitch: 0,
         roll: 0,
@@ -2652,7 +2657,7 @@ export class AtriumSimulation {
       const veh: TrafficVehicle = {
         g: car,
         rig,
-        bm: car.userData.body as THREE.MeshPhysicalMaterial,
+        bm: car.userData.body as THREE.MeshStandardMaterial,
         spd: style === 'van' ? 4.4 : 4.8,
         cruiseSpd: style === 'van' ? 8.2 : 9.0 + (idx % 3) * 0.9,
         vel: 0,
@@ -3780,7 +3785,7 @@ export class AtriumSimulation {
     if (goal === 'stretch') {
       if (dock) {
         out.push(
-          { x: dock.x, z: dock.z, face: (Math.random() - 0.5) * 1.2 },
+          { x: dock.x, z: dock.z, face: (simRng() - 0.5) * 1.2 },
           { x: dock.x, z: Math.min(9.8, dock.z + 0.45), face: 0 }
         );
       } else if (lv === 0 && Math.abs(homeX) < 3.7 && homeZ < 5.7) {
@@ -3913,15 +3918,15 @@ export class AtriumSimulation {
 
     // Drift internal needs realistically
     if (ag.mode === 'home') {
-      brain.energy = Math.max(18, brain.energy - (6 + Math.random() * 8));
-      brain.social = Math.max(15, brain.social - (4 + Math.random() * 7));
+      brain.energy = Math.max(18, brain.energy - (6 + simRng() * 8));
+      brain.social = Math.max(15, brain.social - (4 + simRng() * 7));
       brain.focus = Math.min(98, brain.focus + 5);
     } else {
-      brain.energy = Math.min(98, brain.energy + (8 + Math.random() * 10));
+      brain.energy = Math.min(98, brain.energy + (8 + simRng() * 10));
       brain.social = Math.min(98, brain.social + 6);
     }
 
-    const r = Math.random();
+    const r = simRng();
     let goal: FreeGoal = 'work';
     const hallwayBusy = this.countHallwayLingerers(ag.lv) >= 2;
 
@@ -3986,7 +3991,7 @@ export class AtriumSimulation {
       brain.goal = 'work';
       const thoughtPack = pickThoughtForGoal(brain, 'work');
       setBrainThought(brain, thoughtPack.mood, thoughtPack.actionLabel, thoughtPack.thought);
-      brain.nextDecisionIn = 12 + Math.random() * 16;
+      brain.nextDecisionIn = 12 + simRng() * 16;
       const distHome = Math.hypot(curX - ag.homeX, curZ - ag.homeZ);
       if (distHome > 0.22) {
         ag.mode = 'toHome';
@@ -4026,7 +4031,7 @@ export class AtriumSimulation {
           Math.hypot(other.g.position.x - curX, other.g.position.z - curZ) > 0.8
       );
       if (peers.length > 0) {
-        const shuffled = peers.slice().sort(() => Math.random() - 0.5).slice(0, 4);
+        const shuffled = peers.slice().sort(() => simRng() - 0.5).slice(0, 4);
         for (const peer of shuffled) {
           const px = peer.g.position.x;
           const pz = peer.g.position.z;
@@ -4061,10 +4066,10 @@ export class AtriumSimulation {
             const faceToPeer = Math.atan2(px - pickedStand.x, pz - pickedStand.z);
             const thoughtPack = pickThoughtForGoal(brain, 'socialize', peer.brain!.identity.name);
             setBrainThought(brain, thoughtPack.mood, thoughtPack.actionLabel, thoughtPack.thought);
-            brain.nextDecisionIn = 10 + Math.random() * 9;
+            brain.nextDecisionIn = 10 + simRng() * 9;
             ag.mode = 'toGoal';
             ag.queue = leaveWithDock(pickedStand.x, pickedStand.z);
-            ag.targetPose = Math.random() < 0.55 ? 'talk' : 'collaborate';
+            ag.targetPose = simRng() < 0.55 ? 'talk' : 'collaborate';
             ag.targetFace = faceToPeer;
             this.setSafePose(actor, 'stand');
             return;
@@ -4078,7 +4083,7 @@ export class AtriumSimulation {
       brain.goal = goal;
       const thoughtPack = pickThoughtForGoal(brain, goal);
       setBrainThought(brain, thoughtPack.mood, thoughtPack.actionLabel, thoughtPack.thought);
-      brain.nextDecisionIn = goal === 'stretch' ? 8 + Math.random() * 8 : 10 + Math.random() * 10;
+      brain.nextDecisionIn = goal === 'stretch' ? 8 + simRng() * 8 : 10 + simRng() * 10;
 
       const spots = this.getDesignatedSpotsForActor(ag.lv, ag.homeX, ag.homeZ, goal);
       // Shuffle and prefer spots nearest to same wing/half when possible
@@ -4091,7 +4096,7 @@ export class AtriumSimulation {
       }
       const chosen =
         validSpots.length > 0
-          ? validSpots[Math.floor(Math.random() * validSpots.length)]
+          ? validSpots[Math.floor(simRng() * validSpots.length)]
           : homeDock
             ? { x: homeDock.x, z: homeDock.z, face: 0 }
             : { x: curX, z: curZ, face: 0 };
@@ -4101,10 +4106,10 @@ export class AtriumSimulation {
         Math.hypot(curX - chosen.x, curZ - chosen.z) > 0.25 ? leaveWithDock(chosen.x, chosen.z) : [];
       ag.targetPose =
         goal === 'stretch'
-          ? Math.random() < 0.5
+          ? simRng() < 0.5
             ? 'hold'
             : 'stand'
-          : goal === 'coffeeBreak' || Math.random() < 0.35
+          : goal === 'coffeeBreak' || simRng() < 0.35
             ? 'coffee'
             : 'stand';
       ag.targetFace = chosen.face;
@@ -4122,7 +4127,7 @@ export class AtriumSimulation {
     brain.goal = goal;
     const thoughtPack = pickThoughtForGoal(brain, goal);
     setBrainThought(brain, thoughtPack.mood, thoughtPack.actionLabel, thoughtPack.thought);
-    brain.nextDecisionIn = 9 + Math.random() * 9;
+    brain.nextDecisionIn = 9 + simRng() * 9;
 
     const stations: Array<{ x: number; z: number; face: number; pose: string }> =
       ag.lv === -1
@@ -4165,7 +4170,7 @@ export class AtriumSimulation {
               { x: 0.2, z: 10.2, face: 0, pose: 'stand' },
             ];
 
-    const pick = stations[Math.floor(Math.random() * stations.length)];
+    const pick = stations[Math.floor(simRng() * stations.length)];
     ag.mode = 'toGoal';
     ag.queue = leaveWithDock(pick.x, pick.z);
     ag.targetPose = pick.pose;
@@ -4276,7 +4281,7 @@ export class AtriumSimulation {
     });
     if (!candidate || !candidate.brain) return;
     if (candidate.modes) {
-      this.setSafePose(candidate, Math.random() < 0.55 ? 'type' : 'sitPhone');
+      this.setSafePose(candidate, simRng() < 0.55 ? 'type' : 'sitPhone');
     }
     if (job) {
       setBrainThought(
@@ -4286,6 +4291,11 @@ export class AtriumSimulation {
         `Picked up ${job.code} (${job.title}) from ${job.fromName} on my workstation.`
       );
     }
+  }
+
+  public setActorCullDistance(dist: number) {
+    this.actorCullDistSq = dist * dist;
+    this.districtSim.setActorCullDistance(dist);
   }
 
   public getAllActors(): PersonActor[] {
@@ -4307,8 +4317,8 @@ export class AtriumSimulation {
         if (p.commuterCar && p.commuterCar.state !== 'parked') {
           return;
         }
-        let sx = p.sd * (1.2 + Math.random() * 2.0);
-        let sz = 15.0 + Math.random() * 3.0;
+        let sx = p.sd * (1.2 + simRng() * 2.0);
+        let sz = 15.0 + simRng() * 3.0;
         if (p.commuterCar?.bay) {
           const bay = p.commuterCar.bay;
           const sideOff = bay.face === 0 ? 1.25 : -1.25;
@@ -4424,7 +4434,7 @@ export class AtriumSimulation {
         if (ag && ag.mode === 'home' && ag.queue.length === 0 && p.modes) {
           p.timer -= dt;
           if (p.timer <= 0) {
-            p.timer = 4.5 + Math.random() * 5.0;
+            p.timer = 4.5 + simRng() * 5.0;
             this.setSafePose(p, pickMode(p.modes));
           }
         }
@@ -4618,7 +4628,7 @@ export class AtriumSimulation {
         if (ag && ag.mode === 'home' && ag.queue.length === 0 && p.modes) {
           p.timer -= dt;
           if (p.timer <= 0) {
-            p.timer = 4.5 + Math.random() * 5.0;
+            p.timer = 4.5 + simRng() * 5.0;
             this.setSafePose(p, pickMode(p.modes));
           }
         }
@@ -6569,11 +6579,60 @@ export class AtriumSimulation {
       this.walkLocked = locked;
     };
 
+    let lookTouchId: number | null = null;
+    let lookTouchX = 0;
+    let lookTouchY = 0;
+    const onTouchStart = (e: TouchEvent) => {
+      if (!this.walkOn && !this.driveOn) return;
+      if (lookTouchId !== null) return;
+      const t = e.changedTouches[0];
+      if (!t) return;
+      lookTouchId = t.identifier;
+      lookTouchX = t.clientX;
+      lookTouchY = t.clientY;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (lookTouchId === null) return;
+      if (!this.walkOn && !this.driveOn) {
+        lookTouchId = null;
+        return;
+      }
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        if (t.identifier !== lookTouchId) continue;
+        const dx = Math.max(-120, Math.min(120, t.clientX - lookTouchX));
+        const dy = Math.max(-120, Math.min(120, t.clientY - lookTouchY));
+        lookTouchX = t.clientX;
+        lookTouchY = t.clientY;
+        if (this.driveOn) {
+          this.driveOrbitYawOffset -= dx * 0.0055;
+          this.driveOrbitPitch = Math.max(0.08, Math.min(0.75, this.driveOrbitPitch + dy * 0.004));
+        } else if (this.walkOn) {
+          this.walkYaw -= dx * 0.0045;
+          this.walkPitch = Math.max(-1.15, Math.min(1.15, this.walkPitch - dy * 0.004));
+        }
+        break;
+      }
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      if (lookTouchId === null) return;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === lookTouchId) {
+          lookTouchId = null;
+          break;
+        }
+      }
+    };
+
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
     dom.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mouseup', onMouseUp);
     window.addEventListener('mousemove', onMouseMove);
+    dom.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
+    window.addEventListener('touchend', onTouchEnd, { passive: true });
+    window.addEventListener('touchcancel', onTouchEnd, { passive: true });
     document.addEventListener('pointerlockchange', onLockChange);
 
     return () => {
@@ -6582,6 +6641,10 @@ export class AtriumSimulation {
       dom.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('mousemove', onMouseMove);
+      dom.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('touchcancel', onTouchEnd);
       document.removeEventListener('pointerlockchange', onLockChange);
     };
   }
@@ -6903,7 +6966,7 @@ export class AtriumSimulation {
       this.walkEyeY = baseY;
     }
     this.walkPos.y = this.walkEyeY;
-    const bob = mag > 0.05 ? Math.sin(this.walkStep) * 0.042 : 0;
+    const bob = !isReducedMotionPreferred() && mag > 0.05 ? Math.sin(this.walkStep) * 0.042 : 0;
     camera.position.set(this.walkPos.x, this.walkEyeY + bob, this.walkPos.z);
     camera.rotation.order = 'YXZ';
     camera.rotation.y = this.walkYaw;
@@ -7582,7 +7645,7 @@ export class AtriumSimulation {
       if (ag && ag.mode === 'home' && b.modes && ag.queue.length === 0) {
         b.timer -= dt;
         if (b.timer <= 0) {
-          b.timer = 5 + Math.random() * 6;
+          b.timer = 5 + simRng() * 6;
           this.setSafePose(b, pickMode(b.modes));
         }
       }
@@ -7619,6 +7682,13 @@ export class AtriumSimulation {
       }
 
       if (!this.applyActorCutaway(P)) continue;
+
+      const dxCam = P.g.position.x - camera.position.x;
+      const dzCam = P.g.position.z - camera.position.z;
+      if (dxCam * dxCam + dzCam * dzCam > this.actorCullDistSq) {
+        for (let ci = 0; ci < P.g.children.length; ci++) P.g.children[ci].visible = false;
+        continue;
+      }
 
       // Subtle glance toward camera/player when nearby
       let glance = 0;
@@ -8587,6 +8657,9 @@ export class AtriumSimulation {
         this.driveOn && this.trafficLights
           ? this.trafficLights.getNearestPlayerSignal(this.drivePos.x, this.drivePos.z, this.driveYaw)
           : null,
+      qualityMode: 'auto',
+      activeTier: 'high',
+      offlineMode: false,
     };
   }
 

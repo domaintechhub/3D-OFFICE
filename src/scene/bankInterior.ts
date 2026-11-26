@@ -68,9 +68,9 @@ interface BankPalette {
   warmCoveLed: THREE.MeshBasicMaterial;
   cobaltLedgerLed: THREE.MeshBasicMaterial;
   tealSignalLed: THREE.MeshBasicMaterial;
-  bronzeTintedGlass: THREE.MeshPhysicalMaterial;
-  frostedLoomGlass: THREE.MeshPhysicalMaterial;
-  clearArmorGlass: THREE.MeshPhysicalMaterial;
+  bronzeTintedGlass: THREE.MeshStandardMaterial;
+  frostedLoomGlass: THREE.MeshStandardMaterial;
+  clearArmorGlass: THREE.MeshStandardMaterial;
 }
 
 let cachedPalette: BankPalette | null = null;
@@ -394,30 +394,33 @@ function getBankPalette(): BankPalette {
     warmCoveLed: new THREE.MeshBasicMaterial({ color: 0xffe4ad, toneMapped: false }),
     cobaltLedgerLed: new THREE.MeshBasicMaterial({ color: 0x38bdf8, toneMapped: false }),
     tealSignalLed: new THREE.MeshBasicMaterial({ color: 0x2dd4bf, toneMapped: false }),
-    bronzeTintedGlass: new THREE.MeshPhysicalMaterial({
+    bronzeTintedGlass: new THREE.MeshStandardMaterial({
       color: 0xc2b298,
       transparent: true,
       opacity: 0.26,
       roughness: 0.1,
-      metalness: 0.1,
+      metalness: 0.14,
+      envMapIntensity: 0.8,
       depthWrite: false,
       side: THREE.DoubleSide,
     }),
-    frostedLoomGlass: new THREE.MeshPhysicalMaterial({
+    frostedLoomGlass: new THREE.MeshStandardMaterial({
       color: 0xe6dfd3,
       transparent: true,
       opacity: 0.52,
-      roughness: 0.44,
-      metalness: 0.04,
+      roughness: 0.42,
+      metalness: 0.06,
+      envMapIntensity: 0.6,
       depthWrite: false,
       side: THREE.DoubleSide,
     }),
-    clearArmorGlass: new THREE.MeshPhysicalMaterial({
+    clearArmorGlass: new THREE.MeshStandardMaterial({
       color: 0xdff2fa,
       transparent: true,
       opacity: 0.22,
       roughness: 0.08,
-      metalness: 0.08,
+      metalness: 0.12,
+      envMapIntensity: 0.85,
       depthWrite: false,
       side: THREE.DoubleSide,
     }),
@@ -453,7 +456,7 @@ function addZonePlaque(
     g.fillStyle = '#d9b56b';
     g.font = '600 13px "IBM Plex Mono", monospace';
     g.fillText(subtitle, 36, 61);
-  });
+  }, true, true);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = getMaxAnisotropy();
 

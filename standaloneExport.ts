@@ -31,7 +31,8 @@ export async function buildStandaloneHtml(useCache = false): Promise<string> {
       if (
         prebuilt.includes('<div id="root"></div>') &&
         !prebuilt.includes('jsxDEV') &&
-        !prebuilt.includes('_aistudio-iframe')
+        !prebuilt.includes('_aistudio-iframe') &&
+        !prebuilt.includes('fonts.googleapis')
       ) {
         cachedProdHtml = prebuilt;
         return prebuilt;
@@ -76,9 +77,15 @@ export async function buildStandaloneHtml(useCache = false): Promise<string> {
         target: 'es2022',
         assetsInlineLimit: 100_000_000,
         cssCodeSplit: false,
-        rollupOptions: {
+        rolldownOptions: {
           output: {
-            inlineDynamicImports: true,
+            codeSplitting: false,
+            minify: {
+              compress: {
+                dropConsole: true,
+                dropDebugger: true,
+              },
+            },
           },
         },
       },
@@ -119,11 +126,12 @@ export async function buildStandaloneHtml(useCache = false): Promise<string> {
       htmlSource = await fs.readFile(path.resolve(__dirname, 'index.html'), 'utf8');
     }
 
-    // Strip any external scripts (including AI Studio dev harness), modulepreload links, and local stylesheets
+    // Strip any external scripts (including AI Studio dev harness), modulepreload links, Google Fonts links, and local stylesheets
     let inlined = htmlSource
       .replace(/<script\b[^>]*_aistudio-iframe[^>]*>[\s\S]*?<\/script\s*>/gi, '')
       .replace(/<script\b[^>]*\bsrc\s*=\s*["'][^"']+["'][^>]*>[\s\S]*?<\/script\s*>/gi, '')
       .replace(/<link\b[^>]*\brel\s*=\s*["']modulepreload["'][^>]*>/gi, '')
+      .replace(/<link\b[^>]*fonts\.(?:googleapis|gstatic)\.com[^>]*>/gi, '')
       .replace(/<link\b[^>]*\brel\s*=\s*["']stylesheet["'][^>]*href\s*=\s*["'](?!https?:\/\/)[^"']+["'][^>]*>/gi, '');
 
     const combinedCss = escapeStyleClose(cssChunks.join('\n'));
@@ -155,4 +163,13 @@ export async function buildStandaloneHtml(useCache = false): Promise<string> {
   } finally {
     inflightBuild = null;
   }
+}
+
+export async function writeStandaloneDistFile(): Promise<string> {
+  const html = await buildStandaloneHtml(false);
+  const distDir = path.resolve(__dirname, 'dist');
+  await fs.mkdir(distDir, { recursive: true });
+  const outPath = path.join(distDir, 'domaintechhub-office-3d.html');
+  await fs.writeFile(outPath, html, 'utf8');
+  return outPath;
 }

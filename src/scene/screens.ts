@@ -13,11 +13,20 @@ import {
 
 export const WS_LOGICAL_W = 384;
 export const WS_LOGICAL_H = 216;
-const WS_SCALE = 2;
-const WS_W = WS_LOGICAL_W * WS_SCALE;
-const WS_H = WS_LOGICAL_H * WS_SCALE;
-const WS_MONO = 'ui-monospace,Menlo,Consolas,"Courier New",monospace';
+const WS_W = 1024;
+const WS_H = 576;
+const WS_SCALE = WS_W / WS_LOGICAL_W;
+const WS_MONO = '"IBM Plex Mono",ui-monospace,Menlo,Consolas,"Courier New",monospace';
 const WS_SANS = '"Plus Jakarta Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif';
+
+function configureCrispTextTexture(tx: THREE.CanvasTexture): THREE.CanvasTexture {
+  tx.colorSpace = THREE.SRGBColorSpace;
+  tx.generateMipmaps = true;
+  tx.minFilter = THREE.LinearMipmapLinearFilter;
+  tx.magFilter = THREE.LinearFilter;
+  tx.anisotropy = Math.max(4, getMaxAnisotropy());
+  return tx;
+}
 
 const liveBrowserOverrides = new Map<string, BrowserSession>();
 
@@ -59,12 +68,23 @@ export interface WallTVRef {
   data: { build: string[]; proj: Array<[string, number, string]>; news: string[] };
   accent: string;
   needsInitDraw?: boolean;
+  lastKey?: string;
 }
 
 export interface ScreenRegistry {
   wallTVs: WallTVRef[];
   workScreens: WorkScreenRef[];
-  boardScreens: Array<{ g: CanvasRenderingContext2D; tx: THREE.CanvasTexture; mat: THREE.MeshStandardMaterial; w: number; h: number; mesh?: THREE.Mesh; fn: (g: CanvasRenderingContext2D, w: number, h: number, t: number) => void }>;
+  boardScreens: Array<{
+    g: CanvasRenderingContext2D;
+    tx: THREE.CanvasTexture;
+    mat: THREE.MeshStandardMaterial;
+    w: number;
+    h: number;
+    applyScale?: number;
+    mesh?: THREE.Mesh;
+    lastKey?: string;
+    fn: (g: CanvasRenderingContext2D, w: number, h: number, t: number) => void;
+  }>;
 }
 
 export function createScreenRegistry(): ScreenRegistry {
@@ -495,9 +515,7 @@ export function createWallTvMat(reg: ScreenRegistry, d: RoomDef, idx: number): T
   const cv = document.createElement('canvas');
   cv.width = TV_W;
   cv.height = TV_H;
-  const tx = new THREE.CanvasTexture(cv);
-  tx.colorSpace = THREE.SRGBColorSpace;
-  tx.anisotropy = getMaxAnisotropy();
+  const tx = configureCrispTextTexture(new THREE.CanvasTexture(cv));
 
   const mat = new THREE.MeshStandardMaterial({
     color: 0x000000,
@@ -541,6 +559,15 @@ export function createWallTvMat(reg: ScreenRegistry, d: RoomDef, idx: number): T
 }
 
 export function drawWallTV(tv: WallTVRef, t: number) {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+  const qT = Math.floor(t * 2);
+  const pulse = Math.sin(t * 4) > -0.2 ? 1 : 0;
+  const newsIdx = Math.floor(t / 5 + tv.idx) % tv.data.news.length;
+  const key = `${qT}|${hh}|${pulse}|${newsIdx}`;
+  if (tv.lastKey === key) return;
+  tv.lastKey = key;
+
   const g = tv.g;
   const A = tv.accent;
   const D = tv.data;
@@ -564,8 +591,6 @@ export function drawWallTV(tv: WallTVRef, t: number) {
   g.font = `700 34px ${WS_SANS}`;
   g.fillText(tv.d.n, 108, 31);
 
-  const now = new Date();
-  const hh = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
   g.textAlign = 'right';
   g.fillStyle = '#cbd5e1';
   g.font = `600 20px ${WS_SANS}`;
@@ -1432,9 +1457,7 @@ export function createDeskScreenMat(reg: ScreenRegistry, d: RoomDef, k: number):
   const cv = document.createElement('canvas');
   cv.width = WS_W;
   cv.height = WS_H;
-  const tx = new THREE.CanvasTexture(cv);
-  tx.colorSpace = THREE.SRGBColorSpace;
-  tx.anisotropy = getMaxAnisotropy();
+  const tx = configureCrispTextTexture(new THREE.CanvasTexture(cv));
 
   const mat = new THREE.MeshStandardMaterial({
     color: 0x000000,
@@ -1494,9 +1517,7 @@ export function createExecScreen(reg: ScreenRegistry, key: string, k: number): W
   const cv = document.createElement('canvas');
   cv.width = WS_W;
   cv.height = WS_H;
-  const tx = new THREE.CanvasTexture(cv);
-  tx.colorSpace = THREE.SRGBColorSpace;
-  tx.anisotropy = getMaxAnisotropy();
+  const tx = configureCrispTextTexture(new THREE.CanvasTexture(cv));
 
   const mat = new THREE.MeshStandardMaterial({
     color: 0x000000,
@@ -1572,6 +1593,13 @@ export function createExecScreen(reg: ScreenRegistry, key: string, k: number): W
 }
 
 export function renderWorkScreenFrame(s: WorkScreenRef, t: number) {
+  const ov = s.stationKey ? liveBrowserOverrides.get(s.stationKey) : undefined;
+  const qT = Math.floor((t + s.off) * 4);
+  const socialRev = socialNetwork.getStatsSummary().activeJobs;
+  const nextKey = `${qT}|${ov ? ov.url : ''}|${socialRev}`;
+  if (s.lastKey === nextKey) return;
+  s.lastKey = nextKey;
+
   s.g.setTransform(1, 0, 0, 1, 0, 0);
   s.g.clearRect(0, 0, WS_W, WS_H);
   s.fn(s.g, WS_LOGICAL_W, WS_LOGICAL_H, t + s.off);
@@ -1584,9 +1612,7 @@ export function createBoardScreenMat(reg: ScreenRegistry): THREE.MeshStandardMat
   const cv = document.createElement('canvas');
   cv.width = LWb * 2;
   cv.height = LHb * 2;
-  const tx = new THREE.CanvasTexture(cv);
-  tx.colorSpace = THREE.SRGBColorSpace;
-  tx.anisotropy = getMaxAnisotropy();
+  const tx = configureCrispTextTexture(new THREE.CanvasTexture(cv));
 
   const mat = new THREE.MeshStandardMaterial({
     color: 0x000000,
@@ -1656,12 +1682,11 @@ export function createCustomBoardScreen(
   logicalH: number,
   fn: (g: CanvasRenderingContext2D, w: number, h: number, t: number) => void
 ): { mat: THREE.MeshStandardMaterial; setMesh: (m: THREE.Mesh) => void } {
+  const scale = Math.max(2, Math.ceil(1024 / Math.max(1, logicalW)));
   const cv = document.createElement('canvas');
-  cv.width = logicalW * 2;
-  cv.height = logicalH * 2;
-  const tx = new THREE.CanvasTexture(cv);
-  tx.colorSpace = THREE.SRGBColorSpace;
-  tx.anisotropy = getMaxAnisotropy();
+  cv.width = logicalW * scale;
+  cv.height = logicalH * scale;
+  const tx = configureCrispTextTexture(new THREE.CanvasTexture(cv));
 
   const mat = new THREE.MeshStandardMaterial({
     color: 0x000000,
@@ -1678,10 +1703,14 @@ export function createCustomBoardScreen(
     mat,
     w: logicalW,
     h: logicalH,
+    applyScale: scale,
     fn,
   };
   reg.boardScreens.push(entry);
+  entry.g.save();
+  entry.g.setTransform(scale, 0, 0, scale, 0, 0);
   fn(entry.g, logicalW, logicalH, 0);
+  entry.g.restore();
   tx.needsUpdate = true;
   return {
     mat,
@@ -1689,6 +1718,36 @@ export function createCustomBoardScreen(
       entry.mesh = m;
     },
   };
+}
+
+export function redrawAllScreenTextures(reg: ScreenRegistry, t = 0) {
+  const aniso = Math.max(4, getMaxAnisotropy());
+  for (const tv of reg.wallTVs) {
+    tv.tx.anisotropy = aniso;
+    tv.lastKey = undefined;
+    drawWallTV(tv, t);
+  }
+  for (const ws of reg.workScreens) {
+    (ws.tx as THREE.CanvasTexture).anisotropy = aniso;
+    ws.lastKey = undefined;
+    ws.next = 0;
+    if (ws.mesh) {
+      renderWorkScreenFrame(ws, t);
+    }
+  }
+  for (const b of reg.boardScreens) {
+    b.tx.anisotropy = aniso;
+    b.lastKey = undefined;
+    if (b.applyScale) {
+      b.g.save();
+      b.g.setTransform(b.applyScale, 0, 0, b.applyScale, 0, 0);
+      b.fn(b.g, b.w, b.h, t);
+      b.g.restore();
+    } else {
+      b.fn(b.g, b.w, b.h, t);
+    }
+    b.tx.needsUpdate = true;
+  }
 }
 
 const _tvFr = new THREE.Frustum();
@@ -1710,13 +1769,23 @@ export function updateAllScreens(
 
   if (t - scrLast >= 0.65) {
     scrLast = t;
+    const boardKey = String(Math.floor(t * 2));
     for (const b of reg.boardScreens) {
+      if (b.lastKey === boardKey) continue;
       if (b.mesh) {
         if (!_tvFr.intersectsObject(b.mesh)) continue;
         b.mesh.getWorldPosition(_wsV);
         if (_wsV.distanceTo(camera.position) > 95) continue;
       }
-      b.fn(b.g, b.w, b.h, t);
+      b.lastKey = boardKey;
+      if (b.applyScale) {
+        b.g.save();
+        b.g.setTransform(b.applyScale, 0, 0, b.applyScale, 0, 0);
+        b.fn(b.g, b.w, b.h, t);
+        b.g.restore();
+      } else {
+        b.fn(b.g, b.w, b.h, t);
+      }
       b.tx.needsUpdate = true;
     }
   }

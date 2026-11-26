@@ -30,6 +30,7 @@ export interface WorkScreenRef {
   off: number;
   lv?: number;
   stationKey?: string;
+  lastKey?: string;
   fn: (g: CanvasRenderingContext2D, w: number, h: number, t: number) => void;
 }
 
@@ -144,6 +145,9 @@ export interface HudSnapshot {
   driveNearbyName: string | null;
   nearPlayerCarInWalk: boolean;
   driveTrafficSignal: { label: string; aspect: 'green' | 'amber' | 'red'; distance: number } | null;
+  qualityMode: 'auto' | 'eco' | 'low' | 'med' | 'high';
+  activeTier: 'eco' | 'low' | 'med' | 'high';
+  offlineMode: boolean;
 }
 
 export const BW = 10;

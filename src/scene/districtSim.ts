@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import type { BuildingId, DistrictBuildingSpec } from './districtData';
 import { DISTRICT_BUILDING_MAP } from './districtData';
+import { createSeededRng } from './prng';
+
+const distRng = createSeededRng(5209);
 import type { DistrictBuildingHandle, DistrictChairHandle } from './districtBuildings';
 import {
   createCharacterBrain,
@@ -87,7 +90,12 @@ export class DistrictSim {
   private cutawayMinY: number | null = null;
   private cutawayMaxY: number | null = null;
   private staffVisible = true;
+  private actorCullDistSq = 160 * 160;
   private readonly trafficLights?: TrafficLightSystem;
+
+  public setActorCullDistance(dist: number) {
+    this.actorCullDistSq = dist * dist;
+  }
 
   constructor(
     scene: THREE.Scene,
@@ -198,7 +206,7 @@ export class DistrictSim {
     p.yaw = p.tyaw = face;
     p.g.rotation.y = face;
     p.look = 0.28;
-    p.timer = 2 + Math.random() * 5;
+    p.timer = 2 + distRng() * 5;
     p.buildingId = bId;
     p.lv = lv;
     p.homeX = x;
@@ -2159,7 +2167,7 @@ export class DistrictSim {
       brain.energy = Math.min(98, brain.energy + 9);
     }
 
-    const r = Math.random();
+    const r = distRng();
     let goal: FreeGoal = 'work';
     if (forceMove || a.mode === 'home') {
       if (!forceMove && r < 0.52) goal = 'work';
@@ -2189,7 +2197,7 @@ export class DistrictSim {
       brain.goal = 'work';
       const tp = pickThoughtForGoal(brain, 'work');
       setBrainThought(brain, tp.mood, tp.actionLabel, tp.thought);
-      brain.nextDecisionIn = 12 + Math.random() * 14;
+      brain.nextDecisionIn = 12 + distRng() * 14;
       if (Math.hypot(curX - a.homeX, curZ - a.homeZ) > 0.2) {
         a.mode = 'toHome';
         a.queue = dock
@@ -2212,7 +2220,7 @@ export class DistrictSim {
     brain.goal = goal;
     const tp = pickThoughtForGoal(brain, goal);
     setBrainThought(brain, tp.mood, tp.actionLabel, tp.thought);
-    brain.nextDecisionIn = 8 + Math.random() * 10;
+    brain.nextDecisionIn = 8 + distRng() * 10;
 
     if (goal === 'stretch' && dock) {
       a.mode = 'toGoal';
@@ -2222,7 +2230,7 @@ export class DistrictSim {
     } else {
       const spots = this.getFloorWalkSpots(bId, a.lv);
       const valid = spots.filter((s) => !resolveDistrictObstacle(bId, a.lv, s.x, s.z).blocked);
-      const chosen = valid.length > 0 ? valid[Math.floor(Math.random() * valid.length)] : spots[0];
+      const chosen = valid.length > 0 ? valid[Math.floor(distRng() * valid.length)] : spots[0];
       a.mode = 'toGoal';
       a.queue = Math.hypot(curX - chosen.x, curZ - chosen.z) > 0.25 ? leaveWithDock(chosen.x, chosen.z) : [];
       a.targetPose = chosen.pose;
@@ -2252,7 +2260,7 @@ export class DistrictSim {
     const actor = candidates[0];
     if (!actor || !actor.brain) return;
     if (actor.modes) {
-      this.setSafePose(actor, Math.random() < 0.55 ? 'type' : 'sitPhone');
+      this.setSafePose(actor, distRng() < 0.55 ? 'type' : 'sitPhone');
     }
     if (job) {
       setBrainThought(
@@ -2465,7 +2473,13 @@ export class DistrictSim {
             }
           }
         }
-        updatePersonKinematics(a, dt, t, 0);
+        const dxCam = camera.position.x - a.g.position.x;
+        const dzCam = camera.position.z - a.g.position.z;
+        const withinDist = dxCam * dxCam + dzCam * dzCam <= this.actorCullDistSq;
+        a.g.visible = withinDist;
+        if (withinDist) {
+          updatePersonKinematics(a, dt, t, 0);
+        }
         continue;
       }
 
@@ -2515,7 +2529,7 @@ export class DistrictSim {
         if (a.mode === 'home' && a.modes) {
           a.timer -= dt;
           if (a.timer <= 0) {
-            a.timer = 4.5 + Math.random() * 5.0;
+            a.timer = 4.5 + distRng() * 5.0;
             this.setSafePose(a, pickMode(a.modes));
           }
         }
@@ -2525,12 +2539,17 @@ export class DistrictSim {
         }
       }
 
-      // Floor cutaway hiding on active inspected district building
+      // Floor cutaway & tier distance culling on district building actors
       let visibleInCutaway = true;
       if (this.cutawayBuildingId === a.buildingId && this.cutawayMaxY !== null) {
         const py = a.g.position.y;
         visibleInCutaway =
           (this.cutawayMinY === null || py >= this.cutawayMinY) && py <= this.cutawayMaxY;
+      } else {
+        this._v1.subVectors(camera.position, a.g.position);
+        if (this._v1.x * this._v1.x + this._v1.z * this._v1.z > this.actorCullDistSq) {
+          visibleInCutaway = false;
+        }
       }
       for (let c = 0; c < a.g.children.length; c++) {
         a.g.children[c].visible = visibleInCutaway;

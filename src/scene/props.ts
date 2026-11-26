@@ -8,15 +8,27 @@ export const GEO_SHARED = {
   rbox: new RoundedBoxGeometry(1, 1, 1, 3, 0.08),
   cyl: new THREE.CylinderGeometry(0.5, 0.5, 1, 20),
   sph: new THREE.SphereGeometry(0.5, 16, 12),
+  plane: new THREE.PlaneGeometry(1, 1),
 };
 
 const RBOX_CACHE = new Map<string, THREE.BufferGeometry>();
+const CYL_CACHE = new Map<string, THREE.BufferGeometry>();
 export function getRoundedBox(w: number, h: number, d: number, r = 0.04, seg = 3): THREE.BufferGeometry {
   const key = `${w.toFixed(3)}_${h.toFixed(3)}_${d.toFixed(3)}_${r.toFixed(3)}_${seg}`;
   let g = RBOX_CACHE.get(key);
   if (!g) {
     g = new RoundedBoxGeometry(w, h, d, seg, Math.min(r, w * 0.45, h * 0.45, d * 0.45));
     RBOX_CACHE.set(key, g);
+  }
+  return g;
+}
+
+function getCylGeo(r1: number, r2: number, h: number, segs: number): THREE.BufferGeometry {
+  const key = `${r1.toFixed(3)}_${r2.toFixed(3)}_${h.toFixed(3)}_${segs}`;
+  let g = CYL_CACHE.get(key);
+  if (!g) {
+    g = new THREE.CylinderGeometry(r1, r2, h, segs);
+    CYL_CACHE.set(key, g);
   }
   return g;
 }
@@ -57,7 +69,9 @@ export function cylAt(
   recv = false,
   segs = 20
 ): THREE.Mesh {
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, h, segs), mat);
+  const sameR = Math.abs(r1 - r2) < 0.0005 && segs === 20;
+  const m = new THREE.Mesh(sameR ? GEO_SHARED.cyl : getCylGeo(r1, r2, h, segs), mat);
+  if (sameR) m.scale.set(r1 * 2, h, r1 * 2);
   m.position.set(x, y, z);
   m.castShadow = cast;
   m.receiveShadow = recv;
@@ -74,12 +88,14 @@ export function planeAt(
   z: number,
   mat: THREE.Material
 ): THREE.Mesh {
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+  const m = new THREE.Mesh(GEO_SHARED.plane, mat);
+  m.scale.set(w, h, 1);
   m.position.set(x, y, z);
   parent.add(m);
   return m;
 }
 
+const CONTACT_MAT_CACHE = new Map<string, THREE.MeshBasicMaterial>();
 export function contact(
   parent: THREE.Object3D,
   x: number,
@@ -90,21 +106,30 @@ export function contact(
   op: number | null,
   shadowTex: THREE.Texture
 ): THREE.Mesh {
-  const m = new THREE.Mesh(
-    new THREE.PlaneGeometry(w, d),
-    new THREE.MeshBasicMaterial({
+  const opacity = op == null ? 0.6 : op;
+  const key = `${shadowTex.uuid}_${opacity.toFixed(2)}`;
+  let mat = CONTACT_MAT_CACHE.get(key);
+  if (!mat) {
+    mat = new THREE.MeshBasicMaterial({
       map: shadowTex,
       transparent: true,
-      opacity: op == null ? 0.6 : op,
+      opacity,
       depthWrite: false,
-    })
-  );
+    });
+    CONTACT_MAT_CACHE.set(key, mat);
+  }
+  const m = new THREE.Mesh(GEO_SHARED.plane, mat);
+  m.scale.set(w, d, 1);
   m.rotation.x = -Math.PI / 2;
   m.position.set(x, y + 0.012, z);
   m.renderOrder = 1;
   parent.add(m);
   return m;
 }
+
+const DOWNLIGHT_BAFFLE_GEO = new THREE.CylinderGeometry(0.9, 0.88, 0.07, 14, 1, true);
+const DOWNLIGHT_TRIM_GEO = new THREE.RingGeometry(0.88, 1.28, 16);
+const DOWNLIGHT_LENS_GEO = new THREE.CircleGeometry(0.86, 14);
 
 export function downlight(
   parent: THREE.Object3D,
@@ -114,20 +139,19 @@ export function downlight(
   M: MaterialLibrary,
   r = 0.14
 ): THREE.Mesh {
-  // Architectural recessed baffle collar + brushed aluminum outer trim + optical lens
-  const baffle = new THREE.Mesh(
-    new THREE.CylinderGeometry(r * 0.9, r * 0.88, 0.07, 18, 1, true),
-    M.dark
-  );
+  const baffle = new THREE.Mesh(DOWNLIGHT_BAFFLE_GEO, M.dark);
+  baffle.scale.set(r, 1, r);
   baffle.position.set(x, y + 0.032, z);
   parent.add(baffle);
 
-  const trim = new THREE.Mesh(new THREE.RingGeometry(r * 0.88, r * 1.28, 20), M.metal);
+  const trim = new THREE.Mesh(DOWNLIGHT_TRIM_GEO, M.metal);
+  trim.scale.set(r, r, 1);
   trim.rotation.x = Math.PI / 2;
   trim.position.set(x, y - 0.002, z);
   parent.add(trim);
 
-  const m = new THREE.Mesh(new THREE.CircleGeometry(r * 0.86, 18), M.lamp);
+  const m = new THREE.Mesh(DOWNLIGHT_LENS_GEO, M.lamp);
+  m.scale.set(r, r, 1);
   m.rotation.x = Math.PI / 2;
   m.position.set(x, y + 0.006, z);
   parent.add(m);
@@ -1108,37 +1132,46 @@ export function shelfUnit(
   return g;
 }
 
+const GOOSENECK_POLE_MAT = new THREE.MeshStandardMaterial({ color: 0x525861, roughness: 0.42, metalness: 0.72 });
+const GOOSENECK_LAMP_HEAD_MAT = new THREE.MeshBasicMaterial({ color: 0xfff0cf, toneMapped: false });
+const GOOSENECK_POLE_GEOS = new Map<number, THREE.BufferGeometry>();
+
+function getGooseneckPoleGeo(sideDir: number): THREE.BufferGeometry {
+  const dir = sideDir >= 0 ? 1 : -1;
+  let g = GOOSENECK_POLE_GEOS.get(dir);
+  if (!g) {
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 6.2, 0),
+      new THREE.Vector3(0, 7.1, -dir * 0.55),
+      new THREE.Vector3(0, 7.02, -dir * 1.35),
+    ]);
+    g = new THREE.TubeGeometry(curve, 12, 0.095, 8, false);
+    GOOSENECK_POLE_GEOS.set(dir, g);
+  }
+  return g;
+}
+
 export function gooseneckLamp(
   parent: THREE.Object3D,
   x: number,
   y: number,
   z: number,
   sideDir: number,
-  M: MaterialLibrary
+  _M: MaterialLibrary
 ) {
-  const poleMat = new THREE.MeshStandardMaterial({ color: 0x525861, roughness: 0.42, metalness: 0.72 });
-  const lampHead = new THREE.MeshBasicMaterial({ color: 0xfff0cf, toneMapped: false });
-
-  const curve = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0, 0, 0),
-    new THREE.Vector3(0, 6.2, 0),
-    new THREE.Vector3(0, 7.1, -sideDir * 0.55),
-    new THREE.Vector3(0, 7.02, -sideDir * 1.35),
-  ]);
-  const pole = new THREE.Mesh(new THREE.TubeGeometry(curve, 14, 0.095, 8, false), poleMat);
+  const pole = new THREE.Mesh(getGooseneckPoleGeo(sideDir), GOOSENECK_POLE_MAT);
   pole.position.set(x, y, z);
   pole.castShadow = true;
   parent.add(pole);
 
-  // Flared base collar
-  cylAt(parent, 0.13, 0.18, 0.65, x, y + 0.325, z, poleMat, true, true, 12);
+  cylAt(parent, 0.13, 0.18, 0.65, x, y + 0.325, z, GOOSENECK_POLE_MAT, true, true, 12);
 
-  // Sculpted luminaire hood
-  const hood = new THREE.Mesh(getRoundedBox(0.36, 0.12, 0.72, 0.04, 2), poleMat);
+  const hood = new THREE.Mesh(getRoundedBox(0.36, 0.12, 0.72, 0.04, 2), GOOSENECK_POLE_MAT);
   hood.position.set(x, y + 7.05, z - sideDir * 1.35);
   parent.add(hood);
 
-  const lens = new THREE.Mesh(getRoundedBox(0.28, 0.04, 0.56, 0.02, 2), lampHead);
+  const lens = new THREE.Mesh(getRoundedBox(0.28, 0.04, 0.56, 0.02, 2), GOOSENECK_LAMP_HEAD_MAT);
   lens.position.set(x, y + 6.98, z - sideDir * 1.35);
   parent.add(lens);
 }

@@ -11,7 +11,7 @@ export interface ArchitecturalMaterials {
   ashlarStone: THREE.MeshStandardMaterial;
   standingSeam: THREE.MeshStandardMaterial;
   bronzeMullion: THREE.MeshStandardMaterial;
-  poolWater: THREE.MeshPhysicalMaterial;
+  poolWater: THREE.MeshStandardMaterial;
   planterBox: THREE.MeshStandardMaterial;
   mulchEarth: THREE.MeshStandardMaterial;
   riverStoneLight: THREE.MeshStandardMaterial;
@@ -273,15 +273,13 @@ export function getArchitecturalMaterials(M: MaterialLibrary): ArchitecturalMate
       metalness: 0.54,
       envMapIntensity: 0.55,
     }),
-    poolWater: new THREE.MeshPhysicalMaterial({
+    poolWater: new THREE.MeshStandardMaterial({
       color: 0x1ea7cb,
       roughness: 0.08,
-      metalness: 0.05,
-      clearcoat: 1.0,
-      clearcoatRoughness: 0.06,
+      metalness: 0.12,
       transparent: true,
       opacity: 0.84,
-      envMapIntensity: 1.0,
+      envMapIntensity: 1.05,
     }),
     planterBox: new THREE.MeshStandardMaterial({
       map: M.textures.concreteTex,

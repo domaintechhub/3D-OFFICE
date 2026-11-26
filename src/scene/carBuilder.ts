@@ -26,7 +26,7 @@ export interface CarRig {
   /** Wheel radius in meters (for exact angular velocity omega = v / R) */
   wheelRadius: number;
   /** Body paint material */
-  bodyMat: THREE.MeshPhysicalMaterial;
+  bodyMat: THREE.MeshStandardMaterial;
   /** Dynamic headlamp / DRL material */
   headLampMat: THREE.MeshStandardMaterial;
   /** Dynamic tail / brake lamp material */
@@ -223,20 +223,20 @@ let contactShadowTex!: THREE.CanvasTexture;
 let headPoolTex!: THREE.CanvasTexture;
 
 let matTyre!: THREE.MeshStandardMaterial;
-let matAlloyRim!: THREE.MeshPhysicalMaterial;
+let matAlloyRim!: THREE.MeshStandardMaterial;
 let matRimPocket!: THREE.MeshStandardMaterial;
 let matRotor!: THREE.MeshStandardMaterial;
 let matTrim!: THREE.MeshStandardMaterial;
 let matCladding!: THREE.MeshStandardMaterial;
-let matChrome!: THREE.MeshPhysicalMaterial;
-let matGlass!: THREE.MeshPhysicalMaterial;
-let matSunroof!: THREE.MeshPhysicalMaterial;
-let matMirrorGlass!: THREE.MeshPhysicalMaterial;
+let matChrome!: THREE.MeshStandardMaterial;
+let matGlass!: THREE.MeshStandardMaterial;
+let matSunroof!: THREE.MeshStandardMaterial;
+let matMirrorGlass!: THREE.MeshStandardMaterial;
 let matInterior!: THREE.MeshStandardMaterial;
 let matGrille!: THREE.MeshStandardMaterial;
 let matUnderbody!: THREE.MeshStandardMaterial;
 let matContactShadow!: THREE.MeshBasicMaterial;
-let matLensCover!: THREE.MeshPhysicalMaterial;
+let matLensCover!: THREE.MeshStandardMaterial;
 let matSafariRack!: THREE.MeshStandardMaterial;
 
 const plateTexCache = new Map<string, THREE.CanvasTexture>();
@@ -512,13 +512,11 @@ function ensureSharedAssets() {
     metalness: 0.02,
     envMapIntensity: 0.28,
   });
-  matAlloyRim = new THREE.MeshPhysicalMaterial({
+  matAlloyRim = new THREE.MeshStandardMaterial({
     color: 0xd4dbe3,
-    metalness: 0.88,
-    roughness: 0.19,
-    clearcoat: 0.65,
-    clearcoatRoughness: 0.12,
-    envMapIntensity: 1.25,
+    metalness: 0.9,
+    roughness: 0.16,
+    envMapIntensity: 1.28,
   });
   matRimPocket = new THREE.MeshStandardMaterial({
     color: 0x22262e,
@@ -544,33 +542,28 @@ function ensureSharedAssets() {
     metalness: 0.06,
     envMapIntensity: 0.28,
   });
-  matChrome = new THREE.MeshPhysicalMaterial({
+  matChrome = new THREE.MeshStandardMaterial({
     color: 0xe6ecf2,
-    metalness: 0.94,
-    roughness: 0.12,
-    clearcoat: 0.4,
+    metalness: 0.95,
+    roughness: 0.11,
     envMapIntensity: 1.35,
   });
-  matGlass = new THREE.MeshPhysicalMaterial({
+  matGlass = new THREE.MeshStandardMaterial({
     color: 0x0e1824,
-    roughness: 0.04,
-    metalness: 0.12,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.03,
+    roughness: 0.05,
+    metalness: 0.18,
     envMapIntensity: 1.45,
     transparent: true,
     opacity: 0.76,
     depthWrite: false,
   });
-  matSunroof = new THREE.MeshPhysicalMaterial({
+  matSunroof = new THREE.MeshStandardMaterial({
     color: 0x090f17,
     roughness: 0.05,
-    metalness: 0.18,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.03,
+    metalness: 0.24,
     envMapIntensity: 1.5,
   });
-  matMirrorGlass = new THREE.MeshPhysicalMaterial({
+  matMirrorGlass = new THREE.MeshStandardMaterial({
     color: 0xaab8c8,
     metalness: 0.96,
     roughness: 0.05,
@@ -606,12 +599,10 @@ function ensureSharedAssets() {
     polygonOffsetFactor: -4,
     polygonOffsetUnits: -16,
   });
-  matLensCover = new THREE.MeshPhysicalMaterial({
+  matLensCover = new THREE.MeshStandardMaterial({
     color: 0xeaf4ff,
     roughness: 0.06,
-    metalness: 0.05,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.04,
+    metalness: 0.1,
     envMapIntensity: 1.2,
     transparent: true,
     opacity: 0.34,
@@ -1280,13 +1271,11 @@ export function makeCar(col: number, style: CarStyle = 'sedan', options?: CarBui
   root.add(bodyPivot);
 
   // Metallic automotive clearcoat paint
-  const bodyMat = new THREE.MeshPhysicalMaterial({
+  const bodyMat = new THREE.MeshStandardMaterial({
     color: col,
-    roughness: isSafari ? 0.34 : isShowroom ? 0.18 : 0.24,
-    metalness: isSafari ? 0.25 : 0.62,
-    clearcoat: isSafari ? 0.45 : 1.0,
-    clearcoatRoughness: isSafari ? 0.26 : isShowroom ? 0.04 : 0.08,
-    envMapIntensity: isShowroom ? 1.35 : 1.15,
+    roughness: isSafari ? 0.3 : isShowroom ? 0.14 : 0.19,
+    metalness: isSafari ? 0.28 : 0.68,
+    envMapIntensity: isShowroom ? 1.4 : 1.2,
   });
 
   // Per-vehicle dynamic lighting materials

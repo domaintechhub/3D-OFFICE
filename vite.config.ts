@@ -1,7 +1,21 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig} from 'vite';
+import { defineConfig, type Plugin } from 'vite';
+import { writeStandaloneDistFile } from './standaloneExport.ts';
+
+function emitStandaloneHtmlPlugin(): Plugin {
+  let emitted = false;
+  return {
+    name: 'dth-emit-standalone-html',
+    apply: 'build',
+    async closeBundle() {
+      if (emitted || process.env.DTH_SKIP_STANDALONE === '1') return;
+      emitted = true;
+      await writeStandaloneDistFile();
+    },
+  };
+}
 
 export default defineConfig(({ command }) => {
   if (command === 'build') {
@@ -13,6 +27,7 @@ export default defineConfig(({ command }) => {
     plugins: [
       react(),
       tailwindcss(),
+      emitStandaloneHtmlPlugin(),
     ],
     resolve: {
       alias: {
@@ -25,8 +40,14 @@ export default defineConfig(({ command }) => {
       sourcemap: false,
       target: 'es2022',
       chunkSizeWarningLimit: 1200,
-      rollupOptions: {
+      rolldownOptions: {
         output: {
+          minify: {
+            compress: {
+              dropConsole: true,
+              dropDebugger: true,
+            },
+          },
           manualChunks(id) {
             if (id.includes('node_modules/three/')) return 'three-vendor';
             if (id.includes('node_modules/react') || id.includes('node_modules/lucide-react')) {
