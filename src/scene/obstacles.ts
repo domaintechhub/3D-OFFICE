@@ -125,13 +125,38 @@ function buildCollidersForLevel(lv: number): FloorColliderSet {
   const circles: CircleObstacle[] = [];
 
   if (lv === -1) {
-    // B1 · Server Room
+    // B1 · Server Room (Core rack pavilions + redesigned West Briefing Lounge & East Viewing Gallery)
     addBox(boxes, -8.55, 3.1, 7.6, 0.96);
     addBox(boxes, -8.55, 5.6, 7.6, 0.96);
     addBox(boxes, 5.65, 3.1, 7.6, 0.96);
     addBox(boxes, 5.65, 5.6, 7.6, 0.96);
     [-6.5, -2.5, 1.5].forEach((x) => addBox(boxes, x, 1.0, 1.52, 0.94));
     circles.push({ x: -12.9, z: 7.8, r: 0.22 }, { x: -12.3, z: 7.8, r: 0.22 });
+    // West Lounge divider, briefing table, armchairs, credenza, shelf & planters
+    addBox(boxes, -14.8, 3.2, 0.18, 4.42);
+    addBox(boxes, -17.4, 0.88, 3.68, 0.62);
+    addBox(boxes, -23.5, 0.88, 1.84, 0.44);
+    addBox(boxes, -21.6, 0.92, 2.24, 0.5);
+    circles.push(
+      { x: -19.8, z: 4.6, r: 1.2 },
+      { x: -21.25, z: 3.55, r: 0.56 },
+      { x: -18.35, z: 3.55, r: 0.56 },
+      { x: -21.25, z: 5.65, r: 0.56 },
+      { x: -18.35, z: 5.65, r: 0.56 },
+      { x: -24.4, z: 6.2, r: 0.48 },
+      { x: -15.4, z: 6.4, r: 0.44 }
+    );
+    // East Viewing Gallery divider, standing briefing island, stools, shelf, credenza & planters
+    addBox(boxes, 13.0, 3.2, 0.18, 4.42);
+    addBox(boxes, 17.6, 4.4, 3.56, 1.2);
+    addBox(boxes, 21.8, 0.88, 1.84, 0.44);
+    addBox(boxes, 16.4, 0.88, 3.28, 0.62);
+    addBox(boxes, 21.8, 6.4, 2.44, 0.5);
+    circles.push(
+      { x: 13.8, z: 6.4, r: 0.44 },
+      { x: 16.8, z: 5.45, r: 0.36 },
+      { x: 18.4, z: 5.45, r: 0.36 }
+    );
     // Glazed lift security vestibule enclosures & shafts (solid in basement)
     boxes.push(
       { minX: -29.6, maxX: -25.5, minZ: 8.92, maxZ: 11.12 },
@@ -141,7 +166,7 @@ function buildCollidersForLevel(lv: number): FloorColliderSet {
   }
 
   if (lv === -2) {
-    // B2 · Power Room
+    // B2 · Power Room (Equipment + redesigned West Energy Lounge & East Viewing Alcove)
     boxes.push({ minX: -10.25, maxX: -2.2, minZ: 0.55, maxZ: 1.48 });
     boxes.push({ minX: 0.75, maxX: 4.85, minZ: 0.6, maxZ: 1.45 });
     [4.9, 6.9, 8.7].forEach((z) => boxes.push({ minX: -6.82, maxX: -0.58, minZ: z - 0.44, maxZ: z + 0.44 }));
@@ -149,7 +174,26 @@ function buildCollidersForLevel(lv: number): FloorColliderSet {
     boxes.push({ minX: 7.95, maxX: 10.45, minZ: 2.6, maxZ: 4.25 });
     // Power & Battery Analytics Workstation Desk (x=4.5, z=5.65, w=3.28, d=1.08)
     addBox(boxes, 4.5, 5.65, 3.28, 1.08);
-    circles.push({ x: 18, z: 0.5, r: 0.25 });
+    // West Energy Lounge divider, table, armchairs, specimen vitrine, shelf & planters
+    addBox(boxes, -12.6, 3.2, 0.18, 4.42);
+    addBox(boxes, -19.2, 4.6, 3.16, 1.38);
+    addBox(boxes, -18.8, 0.92, 3.26, 0.76);
+    addBox(boxes, -23.2, 0.88, 1.84, 0.44);
+    addBox(boxes, -15.4, 0.92, 2.24, 0.5);
+    circles.push(
+      { x: -20.1, z: 3.45, r: 0.54 },
+      { x: -18.3, z: 3.45, r: 0.54 },
+      { x: -20.1, z: 5.75, r: 0.54 },
+      { x: -18.3, z: 5.75, r: 0.54 },
+      { x: -24.2, z: 6.2, r: 0.48 },
+      { x: -14.2, z: 6.4, r: 0.44 }
+    );
+    // East Gallery divider, credenza, bench & planters
+    addBox(boxes, 13.4, 3.2, 0.18, 4.42);
+    addBox(boxes, 15.6, 0.9, 2.88, 0.68);
+    addBox(boxes, 19.6, 4.8, 2.68, 0.94);
+    addBox(boxes, 21.8, 6.4, 2.44, 0.5);
+    circles.push({ x: 14.2, z: 6.4, r: 0.44 }, { x: 18, z: 0.5, r: 0.25 });
     boxes.push(
       { minX: -29.6, maxX: -25.5, minZ: 8.92, maxZ: 11.12 },
       { minX: 25.5, maxX: 29.6, minZ: 8.92, maxZ: 11.12 }

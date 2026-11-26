@@ -80,6 +80,7 @@ import {
 import type { BuildingId } from './districtData';
 import { makeCanvasTex, plateTex, svcSignTex } from './textures';
 import { TrafficLightSystem } from './trafficLights';
+import { buildRealEstateRedesignedBasements } from './basementRealEstate';
 
 export interface PickTarget {
   mesh: THREE.Object3D;
@@ -2901,7 +2902,7 @@ export function buildSceneArchitecture(
   });
 
   /* =========================================================
-     6 · BASEMENTS (B1 SERVER ROOM & B2 POWER ROOM)
+     6 · BASEMENTS (B1 SERVER ROOM & B2 POWER ROOM — REAL ESTATE REDESIGN)
      ========================================================= */
   const basementGroup = new THREE.Group();
   scene.add(basementGroup);
@@ -2914,247 +2915,16 @@ export function buildSceneArchitecture(
   gB2.add(b2Ceiling);
   basementGroup.add(gB1, gB2);
 
-  boxAt(basementGroup, 1.6, 10.4, DEPTH + 2.6, -(WIDTH / 2 + 0.9), -5.6, DEPTH / 2 - 0.2, M.earth, false, false);
-  boxAt(basementGroup, 1.6, 10.4, DEPTH + 2.6, WIDTH / 2 + 0.9, -5.6, DEPTH / 2 - 0.2, M.earth, false, false);
-  boxAt(basementGroup, WIDTH + 3.4, 10.4, 1.6, 0, -5.6, -1.1, M.earth, false, false);
-  boxAt(basementGroup, WIDTH + 3.4, 0.8, DEPTH + 2.6, 0, -10.1, DEPTH / 2 - 0.2, M.earth, false, false);
-
-  BASE.forEach((b, bi) => {
-    const bg = bi === 0 ? gB1 : gB2;
-    const bc = bi === 0 ? b1Ceiling : b2Ceiling;
-    const y = b.y;
-    const ch = y + b.h;
-    boxAt(bg, WIDTH + 0.8, 0.4, DEPTH + 0.8, 0, y - 0.2, DEPTH / 2, M.baseSlab, false, true);
-    boxAt(bg, WIDTH + 0.8, 0.95, 0.34, 0, y - 0.72, DEPTH + 0.22, M.concrete, false, true, 0.04);
-    boxAt(bg, WIDTH - 0.4, ch - y, 0.36, 0, y + (ch - y) / 2, 0.18, M.baseWall, false, true);
-    [-1, 1].forEach((sd) =>
-      boxAt(bg, 0.36, ch - y, DEPTH - 0.2, sd * (WIDTH / 2 - 0.18), y + (ch - y) / 2, DEPTH / 2 - 0.4, M.baseWall, false, true)
-    );
-    boxAt(bc, WIDTH - 0.8, 0.06, DEPTH - 1.4, 0, ch - 0.08, DEPTH / 2 + 0.3, M.baseCeil, false, false);
-    [3.2, 6.6].forEach((z) => boxAt(bc, 10, 0.06, 0.14, -2, ch - 0.07, z, M.ledCool, false, false));
-  });
-
-  // B1 Server Room
-  const b1 = BASE[0];
-  const y1 = b1.y;
-  const ch1 = b1.y + b1.h;
-  boxAt(gB1, 24, 0.14, 8.8, -2, y1 + 0.07, 6.0, M.raised, false, true);
-  for (let blk = 0; blk < 2; blk++) {
-    for (let row = 0; row < 2; row++) {
-      const z = 3.1 + row * 2.5;
-      for (let i = 0; i < 7; i++) {
-        const x = (blk ? 2.2 : -12.0) + i * 1.15;
-        boxAt(gB1, 0.62, 1.95, 0.92, x, y1 + 0.14 + 0.98, z, M.rackBody, true, false, 0.03);
-        planeAt(gB1, 0.56, 1.82, x, y1 + 0.14 + 0.99, z + 0.468, M.rackFace);
-      }
-    }
-  }
-  [-6.5, -2.5, 1.5].forEach((x, i) => {
-    boxAt(gB1, 1.5, 2.1, 0.9, x, y1 + 1.05, 1.0, M.cabinet, true, false, 0.04);
-    boxAt(gB1, 1.3, 0.5, 0.04, x, y1 + 1.42, 1.46, M.dark, false, false);
-    boxAt(gB1, 0.46, 0.06, 0.03, x, y1 + 2.0, 1.47, i % 2 ? M.ledGreen : M.ledCyan, false, false);
-  });
-  [3.1, 5.6].forEach((z) => {
-    boxAt(gB1, 25, 0.09, 0.5, -2, ch1 - 0.6, z, M.tray, false, false);
-    for (let x = -13; x <= 9; x += 4) cylAt(gB1, 0.02, 0.02, 0.55, x, ch1 - 0.32, z, M.metal, false, false, 8);
-  });
-  const redCylMat = new THREE.MeshStandardMaterial({ color: 0xa8322a, roughness: 0.32, metalness: 0.25 });
-  [-12.9, -12.3].forEach((x) => {
-    cylAt(gB1, 0.17, 0.17, 1.4, x, y1 + 0.7, 7.8, redCylMat, true, false, 16);
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.17, 16, 10), redCylMat);
-    cap.position.set(x, y1 + 1.4, 7.8);
-    gB1.add(cap);
-    cylAt(gB1, 0.05, 0.05, 0.14, x, y1 + 1.6, 7.8, M.brass, false, false, 10);
-  });
-  const nocTex = makeCanvasTex('noc', 1024, 512, (g, W2, H2) => {
-    const lW = W2 / 2;
-    const lH = H2 / 2;
-    g.save();
-    g.setTransform(2, 0, 0, 2, 0, 0);
-    g.fillStyle = '#08111a';
-    g.fillRect(0, 0, lW, lH);
-    g.strokeStyle = 'rgba(90,200,255,0.28)';
-    g.lineWidth = 2;
-    for (let i = 0; i < 4; i++) {
-      for (let j = 0; j < 2; j++) {
-        g.strokeRect(18 + i * 122, 16 + j * 118, 106, 100);
-        g.fillStyle = 'rgba(90,235,160,0.85)';
-        for (let k = 0; k < 7; k++) g.fillRect(30 + i * 122 + k * 13, 30 + j * 118 + (k % 3) * 22, 7, 34 + k * 3);
-      }
-    }
-    g.fillStyle = '#bae6fd';
-    g.font = '700 24px "Plus Jakarta Sans",ui-sans-serif,sans-serif';
-    g.fillText('CORE · 42 NODES · 18.4 TB/s', 20, lH - 16);
-    g.restore();
-  }, true, true);
-  planeAt(gB1, 6.4, 1.9, -1.2, ch1 - 1.1, 0.38, new THREE.MeshBasicMaterial({ map: nocTex, toneMapped: false }));
-  planeAt(
+  buildRealEstateRedesignedBasements({
+    basementGroup,
     gB1,
-    4.2,
-    0.92,
-    9.6,
-    ch1 - 0.72,
-    0.38,
-    new THREE.MeshBasicMaterial({ map: svcSignTex('b1sign', 'SERVER ROOM', b1.sub), transparent: true, toneMapped: false })
-  );
-
-  // B2 Power Room
-  const b2 = BASE[1];
-  const y2 = b2.y;
-  const ch2 = b2.y + b2.h;
-  boxAt(gB2, 27, 0.02, 0.2, -2, y2 + 0.021, 9.5, M.warn, false, false);
-  boxAt(gB2, 27, 0.02, 0.08, -2, y2 + 0.021, 8.9, M.paint, false, false);
-  for (let i = 0; i < 6; i++) {
-    const x = -9.6 + i * 1.35;
-    boxAt(gB2, 1.2, 2.2, 0.82, x, y2 + 1.1, 1.02, M.cabinet, true, false, 0.04);
-    boxAt(gB2, 0.86, 0.32, 0.03, x, y2 + 1.56, 1.44, M.dark, false, false);
-    boxAt(gB2, 0.06, 0.06, 0.03, x - 0.3, y2 + 1.76, 1.45, M.ledGreen, false, false);
-    boxAt(gB2, 0.06, 0.06, 0.03, x + 0.3, y2 + 1.76, 1.45, M.ledRed, false, false);
-  }
-  const invTex = makeCanvasTex('inv', 512, 256, (g, W2, H2) => {
-    const lW = W2 / 2;
-    const lH = H2 / 2;
-    g.save();
-    g.setTransform(2, 0, 0, 2, 0, 0);
-    g.fillStyle = '#0a1016';
-    g.fillRect(0, 0, lW, lH);
-    g.fillStyle = '#79e6a6';
-    g.font = '700 32px "Plus Jakarta Sans",ui-sans-serif,sans-serif';
-    g.fillText('PV 18.4 kW', 18, 42);
-    g.fillStyle = '#bae6fd';
-    g.font = '600 24px "Plus Jakarta Sans",ui-sans-serif,sans-serif';
-    g.fillText('AC 17.9 kW · 98%', 18, 82);
-    g.fillStyle = '#ffb14a';
-    g.fillText('GRID 0', 18, 110);
-    g.restore();
-  }, true, true);
-  for (let i = 0; i < 3; i++) {
-    const x = 1.4 + i * 1.4;
-    boxAt(gB2, 1.24, 2.0, 0.72, x, y2 + 1.0, 1.02, M.cabinet, true, false, 0.04);
-    planeAt(gB2, 0.66, 0.33, x, y2 + 1.36, 1.39, new THREE.MeshBasicMaterial({ map: invTex, toneMapped: false }));
-    boxAt(gB2, 0.9, 0.11, 0.03, x, y2 + 1.82, 1.39, M.warn, false, false);
-  }
-  for (let row = 0; row < 2; row++) {
-    for (let i = 0; i < 5; i++) {
-      const x = -6.4 + i * 1.35;
-      const z = 4.9 + row * 2.0;
-      boxAt(gB2, 0.78, 1.8, 0.82, x, y2 + 0.9, z, M.rackBody, true, false, 0.03);
-      boxAt(gB2, 0.56, 0.06, 0.03, x, y2 + 1.56, z + 0.42, M.ledGreen, false, false);
-    }
-  }
-  for (let i = 0; i < 5; i++) {
-    const x = -6.4 + i * 1.35;
-    boxAt(gB2, 0.78, 1.8, 0.82, x, y2 + 0.9, 8.7, M.rackBody, true, false, 0.03);
-    boxAt(gB2, 0.56, 0.06, 0.03, x, y2 + 1.56, 9.12, M.ledGreen, false, false);
-  }
-  // Sculpted service trolley
-  boxAt(gB2, 1.5, 0.72, 0.7, 2.2, y2 + 0.52, 8.9, M.cabinet, true, false, 0.04);
-  [
-    [-0.55, 8.9],
-    [-0.55, 9.55],
-    [0.55, 8.9],
-    [0.55, 9.55],
-  ].forEach((p) => cylAt(gB2, 0.06, 0.06, 0.16, p[0] + 1.0, y2 + 0.08, p[1], M.dark, false, false, 10));
-
-  const txMat = new THREE.MeshStandardMaterial({ color: 0x33453c, roughness: 0.54, metalness: 0.35, envMapIntensity: 0.45 });
-  boxAt(gB2, 2.4, 1.9, 1.5, 9.2, y2 + 0.95, 3.4, txMat, true, false, 0.06);
-  for (let i = 0; i < 8; i++) boxAt(gB2, 0.05, 1.3, 0.06, 8.15 + i * 0.16, y2 + 0.95, 4.16, txMat, false, false, 0.01);
-  // HV ceramic bushings on transformer top
-  [-0.55, 0, 0.55].forEach((ox) => cylAt(gB2, 0.06, 0.08, 0.36, 9.2 + ox, y2 + 2.15, 3.4, M.ceramicMat, false, false, 12));
-  boxAt(gB2, 2.5, 0.12, 1.6, 9.2, y2 + 1.96, 3.4, M.dark, false, false, 0.03);
-
-  // Power & Battery Analytics Workstation Desk (x = 4.5, z = 5.65, dual seated monitors)
-  {
-    const dx = 4.5;
-    const dz = 5.65;
-    // Anti-static operator floor mat & contact shadow
-    boxAt(gB2, 3.85, 0.018, 2.35, dx, y2 + 0.01, dz + 0.35, M.slate, false, true, 0.008);
-    boxAt(gB2, 3.9, 0.012, 2.4, dx, y2 + 0.006, dz + 0.35, M.warn, false, false);
-    contact(gB2, dx, y2, dz + 0.25, 3.8, 2.1, 0.4, M.textures.shadowTex);
-
-    // Chamfered oak desktop (top surface at y2 + 0.80) + steel A-frame legs & modesty panel
-    boxAt(gB2, 3.24, 0.04, 1.05, dx, y2 + 0.78, dz, M.oakDesk, true, true, 0.014);
-    [-1.46, 1.46].forEach((lx) => {
-      boxAt(gB2, 0.05, 0.75, 0.05, dx + lx, y2 + 0.375, dz - 0.42, M.dark, true, false, 0.008);
-      boxAt(gB2, 0.05, 0.75, 0.05, dx + lx, y2 + 0.375, dz + 0.42, M.dark, true, false, 0.008);
-      boxAt(gB2, 0.05, 0.04, 0.9, dx + lx, y2 + 0.74, dz, M.dark, false, false, 0.008);
-      boxAt(gB2, 0.045, 0.035, 0.88, dx + lx, y2 + 0.035, dz, M.dark, false, false, 0.008);
-    });
-    boxAt(gB2, 3.05, 0.42, 0.032, dx, y2 + 0.54, dz - 0.48, M.acousticFelt, true, true, 0.008);
-    boxAt(gB2, 3.08, 0.022, 0.038, dx, y2 + 0.76, dz - 0.48, M.metal, false, false, 0.005);
-    // Under-desk rolling drawer pedestal & cable tray
-    boxAt(gB2, 0.44, 0.56, 0.54, dx, y2 + 0.3, dz + 0.14, M.cabinet, true, true, 0.015);
-    boxAt(gB2, 2.86, 0.06, 0.14, dx, y2 + 0.67, dz - 0.3, M.metal, false, false, 0.008);
-
-    // Compact desktop oscilloscope / battery diagnostic analyzer unit centered between monitors
-    boxAt(gB2, 0.34, 0.2, 0.18, dx, y2 + 0.9, dz - 0.2, M.cabinet, true, false, 0.012);
-    boxAt(gB2, 0.2, 0.12, 0.015, dx - 0.04, y2 + 0.91, dz - 0.105, M.ledCyan, false, false);
-    boxAt(gB2, 0.04, 0.04, 0.02, dx + 0.11, y2 + 0.94, dz - 0.105, M.ledGreen, false, false);
-
-    // Dual tracked ergonomic chairs + dual clickable live Power & Battery SCADA monitors
-    [
-      { sx: 3.7, role: 'Senior High-Voltage Power Lead', task: 'Analyzing solar PV generation, HV transformer load & switchgear curves', sw: 1 },
-      { sx: 5.3, role: 'Junior Battery & Storage Tech', task: 'Logging LiFePO4 battery row cell balance & inverter efficiency', sw: -1 },
-    ].forEach((seat, k) => {
-      addTrackedChair(gB2, seat.sx, y2, 6.42, Math.PI, -2, 1, 0.45, seat.sw);
-      exMon(gB2, seat.sx, y2 + 0.8, dz - 0.18, 0, 'power', k, {
-        lv: -2,
-        zone: 'Power Room',
-        role: seat.role,
-        color: '#ffb14a',
-        seatX: seat.sx,
-        seatZ: 6.42,
-        screenTask: seat.task,
-      });
-    });
-
-    // Overhead linear troffer illuminating the B2 analytics workstation
-    ceilingLinearLight(b2Ceiling, dx, ch2 - 0.07, dz + 0.1, 3.2, 0.2, M);
-  }
-
-  cylAt(gB2, 0.14, 0.14, ch2 - y2, 18, y2 + (ch2 - y2) / 2, 0.5, M.conduit, true, false, 14);
-  boxAt(gB2, 0.55, 0.42, 0.24, 18, y2 + 3.5, 0.62, M.cabinet, false, false, 0.03);
-  boxAt(gB2, 12.5, 0.12, 0.42, 11.4, ch2 - 0.72, 0.75, M.tray, false, false);
-  for (let x = 6; x <= 17; x += 3.7) cylAt(gB2, 0.025, 0.025, 0.5, x, ch2 - 0.45, 0.75, M.metal, false, false, 8);
-  planeAt(
+    b1Ceiling,
     gB2,
-    4.4,
-    0.96,
-    10.2,
-    ch2 - 0.78,
-    0.38,
-    new THREE.MeshBasicMaterial({ map: svcSignTex('b2sign', 'POWER ROOM', b2.sub, '#ffb14a'), transparent: true, toneMapped: false })
-  );
-  boxAt(gB2, 0.34, 0.2, 0.12, 15.5, ch2 - 0.3, 0.6, M.ledGreen, false, false);
-
-  // Basement lift-only glazed security lobbies
-  [-1, 1].forEach((sd) => {
-    const cx = sd * LIFTX;
-    const dir = -sd;
-    const x0 = cx + dir * 1.02;
-    const x1 = cx + dir * 2.95;
-    const midX = (x0 + x1) / 2;
-    const run = Math.abs(x1 - x0);
-    BASE.forEach((b, bi) => {
-      const bg = bi === 0 ? gB1 : gB2;
-      const y = b.y;
-      [-1, 1].forEach((q) => {
-        boxAt(bg, run, 1.0, 0.12, midX, y + 0.5, LANE + q * 0.96, M.baseWall, true, true, 0.02);
-        boxAt(bg, run, 1.4, 0.05, midX, y + 1.72, LANE + q * 0.96, M.glass, false, false);
-        boxAt(bg, run, 0.08, 0.16, midX, y + 2.44, LANE + q * 0.96, M.metal, false, false, 0.02);
-      });
-      boxAt(bg, 0.16, 2.42, 0.13, x1, y + 1.21, LANE - 0.67, M.metal, true, false, 0.02);
-      boxAt(bg, 0.16, 2.42, 0.13, x1, y + 1.21, LANE + 0.67, M.metal, true, false, 0.02);
-      boxAt(bg, 0.16, 0.14, 1.47, x1, y + 2.4, LANE, M.metal, true, false, 0.02);
-      [-1, 1].forEach((q) => {
-        boxAt(bg, 0.05, 2.26, 0.6, x1, y + 1.16, LANE + q * 0.3, M.glass, false, false);
-        boxAt(bg, 0.07, 2.26, 0.05, x1, y + 1.16, LANE + q * 0.61, M.metal, false, false);
-      });
-      boxAt(bg, 0.06, 0.26, 0.14, x1 + dir * 0.12, y + 1.32, LANE + 0.82, M.black, false, false, 0.015);
-      boxAt(bg, 0.03, 0.07, 0.06, x1 + dir * 0.15, y + 1.38, LANE + 0.82, M.ledGreen, false, false);
-      boxAt(bg, 0.12, 0.3, 2.06, x0, y + 2.62, LANE, M.black, false, false);
-      boxAt(bg, run - 0.2, 0.03, 1.78, midX, y + 0.02, LANE, M.raised, false, true);
-    });
+    b2Ceiling,
+    M,
+    screenReg,
+    addTrackedChair,
+    exMon,
   });
 
   /* =========================================================

@@ -1,7 +1,5 @@
 import * as THREE from 'three';
-import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 
 /**
  * Standard Mixamo / glTF Humanoid 20-bone hierarchy used across DomainTechHub Office.
@@ -59,7 +57,7 @@ export interface ManagedGltfOptions {
 }
 
 /**
- * Creates a GLTFLoader backed by a THREE.LoadingManager (with DRACOLoader & KTX2Loader)
+ * Creates a GLTFLoader backed by a THREE.LoadingManager
  * so callers receive unified onProgress telemetry across geometry, textures, and buffers.
  */
 export function createManagedGltfLoader(options: ManagedGltfOptions = {}): {
@@ -102,31 +100,11 @@ export function createManagedGltfLoader(options: ManagedGltfOptions = {}): {
 
   const loader = new GLTFLoader(manager);
 
-  const draco = new DRACOLoader(manager);
-  if (options.dracoDecoderPath) {
-    draco.setDecoderPath(options.dracoDecoderPath);
-  }
-  loader.setDRACOLoader(draco);
-
-  const ktx2 = new KTX2Loader(manager);
-  if (options.ktx2TranscoderPath) {
-    ktx2.setTranscoderPath(options.ktx2TranscoderPath);
-  }
-  if (options.renderer) {
-    try {
-      ktx2.detectSupport(options.renderer);
-    } catch {
-      // Software WebGL or headless context without compressed texture support
-    }
-  }
-  loader.setKTX2Loader(ktx2);
-
   return {
     manager,
     loader,
     dispose: () => {
-      draco.dispose();
-      ktx2.dispose();
+      // Nothing extra to dispose on plain GLTFLoader
     },
   };
 }
